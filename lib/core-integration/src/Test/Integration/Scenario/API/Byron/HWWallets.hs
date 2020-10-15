@@ -314,6 +314,8 @@ spec = describe "BYRON_HW_WALLETS" $ do
             expectListSize 0 rt
 
         it "Can get coin selection" $ \ctx -> do
+            pendingWith
+                "Unable to assign derivation paths to change outputs."
             (w, mnemonics) <- fixtureIcarusWalletMws ctx
             let pubKey = pubKeyFromMnemonics mnemonics
             r <- request

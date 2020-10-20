@@ -180,6 +180,8 @@ module Cardano.Wallet
 import Prelude hiding
     ( log )
 
+import Debug.Trace
+    ( trace )
 import Cardano.Address.Derivation
     ( XPrv )
 import Cardano.BM.Data.Severity
@@ -1576,7 +1578,17 @@ assignChangeAddresses
     :: forall s m. (GenChange s, Monad m)
     => ArgGenChange s -> [Coin] -> StateT s m [TxOut]
 assignChangeAddresses argGenChange =
-    mapM $ \coin -> flip TxOut coin <$> state (genChange argGenChange)
+    mapM $ \coin -> do
+        addr <- state (genChange argGenChange)
+        let traceMessage = mconcat
+                [ "########\n"
+                , "genChange returned "
+                , show (toText addr)
+                , " for "
+                , show coin
+                ]
+        trace traceMessage $
+            pure $ TxOut addr coin
 
 -- | Produce witnesses and construct a transaction from a given
 -- selection. Requires the encryption passphrase in order to decrypt
@@ -1726,17 +1738,30 @@ selectCoinsExternal ctx wid argGenChange selectCoins = do
 
     fullyQualifiedInputs
         :: Monad m => s -> [(TxIn, TxOut)] -> e -> ExceptT e m (NonEmpty input)
-    fullyQualifiedInputs s inputs e = flip ensureNonEmpty e .
+    fullyQualifiedInputs s inputs e =
+        trace traceMessage $
+        flip ensureNonEmpty e .
         fmap mkInput =<< qualifyAddresses s e (view #address . snd) inputs
       where
         mkInput ((txin, txout), path) = (txin, txout, path)
+        traceMessage = mconcat
+            [ "########\n"
+            , "fullyQualifiedInputs called with "
+            , show (toText . view #address . snd <$> inputs)
+            ]
 
     fullyQualifiedChange
         :: Monad m => s -> [TxOut] -> e -> ExceptT e m [change]
     fullyQualifiedChange s txouts e =
-        fmap mkChange <$> qualifyAddresses s e (view #address) txouts
+        trace traceMessage $
+            fmap mkChange <$> qualifyAddresses s e (view #address) txouts
       where
         mkChange (TxOut address amount, derivationPath) = TxChange {..}
+        traceMessage = mconcat
+            [ "########\n"
+            , "fullyQualifiedChange called with "
+            , show (toText . view #address <$> txouts)
+            ]
 
 data ErrSelectCoinsExternal e
     = ErrSelectCoinsExternalNoSuchWallet ErrNoSuchWallet

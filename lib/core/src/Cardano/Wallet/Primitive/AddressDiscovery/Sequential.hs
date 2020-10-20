@@ -138,6 +138,8 @@ import GHC.Stack
     ( HasCallStack )
 import GHC.TypeLits
     ( KnownNat, Nat, natVal )
+import Debug.Trace
+    ( trace )
 
 import qualified Data.List as L
 import qualified Data.List.NonEmpty as NE
@@ -398,14 +400,17 @@ lookupAddress
 lookupAddress alterSt !target !pool =
     case paymentKeyFingerprint @k target of
         Left _ ->
+            trace (traceMessage <> " no paymentKeyFingerprint") $
             (Nothing, pool)
         Right fingerprint ->
             case Map.alterF lookupF fingerprint (indexedKeys pool) of
                 (Just ix, keys') ->
+                    trace (traceMessage <> " Just") $
                     ( Just ix
                     , extendAddressPool @n ix (pool { indexedKeys = keys'})
                     )
                 (Nothing, _) ->
+                    trace (traceMessage <> " Nothing") $
                     ( Nothing
                     , pool
                     )
@@ -413,6 +418,11 @@ lookupAddress alterSt !target !pool =
     lookupF = \case
         Nothing -> (Nothing, Nothing)
         Just (ix, st) -> (Just ix, Just (ix, alterSt st))
+    traceMessage = mconcat
+        [ "########\n"
+        , "lookupAddress called with"
+        , "addr:", show (toText target), " "
+        ]
 
 -- | If an address is discovered near the edge, we extend the address sequence,
 -- otherwise we return the pool untouched.
@@ -693,7 +703,7 @@ instance
     , MkKeyFingerprint k Address
     ) => IsOurs (SeqState n k) Address
   where
-    isOurs addr (SeqState !s1 !s2 !ixs !rpk !prefix) =
+    isOurs addr (SeqState !s1 !s2 !ixs !rpk !prefix) = trace traceMessage $
         let
             DerivationPrefix (purpose, coinType, accountIx) = prefix
             (internal, !s1') = lookupAddress @n (const Used) addr s1
@@ -704,7 +714,8 @@ instance
                 Just ix -> updatePendingIxs ix ixs
 
             ours = case (external, internal) of
-                (Just addrIx, _) -> Just $ NE.fromList
+                (Just addrIx, _) -> trace (traceMessage <> "Just external") $
+                    Just $ NE.fromList
                     [ DerivationIndex $ getIndex purpose
                     , DerivationIndex $ getIndex coinType
                     , DerivationIndex $ getIndex accountIx
@@ -712,7 +723,8 @@ instance
                     , DerivationIndex $ getIndex addrIx
                     ]
 
-                (_, Just addrIx) -> Just $ NE.fromList
+                (_, Just addrIx) -> trace (traceMessage <> "Just internal") $
+                    Just $ NE.fromList
                     [ DerivationIndex $ getIndex purpose
                     , DerivationIndex $ getIndex coinType
                     , DerivationIndex $ getIndex accountIx
@@ -720,9 +732,16 @@ instance
                     , DerivationIndex $ getIndex addrIx
                     ]
 
-                _ -> Nothing
+                _ -> trace (traceMessage <> " Nothing") Nothing
         in
             (ixs' `deepseq` ours `deepseq` ours, SeqState s1' s2' ixs' rpk prefix)
+      where
+        traceMessage = mconcat
+            [ "########\n"
+            , "isOurs called with"
+            , "addr:", show (toText addr), " "
+            , "ixs:", show ixs, " "
+            ]
 
 instance
     ( SoftDerivation k
@@ -742,8 +761,18 @@ instance
             accountXPub = accountPubKey intPool
             addressXPub = deriveAddressPublicKey accountXPub UTxOInternal ix
             addr = mkAddress addressXPub rpk
+            traceMessage = mconcat
+                [ "########\n"
+                , "genChange called: "
+                , "addr: ", show (toText addr)
+                , "pending: ", show pending
+                , "pending': ", show pending'
+                ]
         in
+            trace traceMessage $
             (addr, SeqState intPool extPool pending' rpk path)
+      where
+
 
 instance
     ( IsOurs (SeqState n k) Address

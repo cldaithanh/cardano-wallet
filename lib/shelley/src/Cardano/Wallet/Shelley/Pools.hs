@@ -74,7 +74,6 @@ import Cardano.Wallet.Primitive.Slotting
     )
 import Cardano.Wallet.Primitive.Types
     ( ActiveSlotCoefficient (..)
-    , PoolMetadataGCStatus (..)
     , BlockHeader (..)
     , CertificatePublicationTime (..)
     , Coin (..)
@@ -84,6 +83,7 @@ import Cardano.Wallet.Primitive.Types
     , PoolFlag (..)
     , PoolId
     , PoolLifeCycleStatus (..)
+    , PoolMetadataGCStatus (..)
     , PoolMetadataSource (..)
     , PoolRegistrationCertificate (..)
     , PoolRetirementCertificate (..)
@@ -213,6 +213,8 @@ data StakePoolLayer = StakePoolLayer
     , putSettings :: Settings -> IO ()
 
     , getSettings :: IO Settings
+
+    , getGCMetadataStatus :: IO PoolMetadataGCStatus
     }
 
 newStakePoolLayer
@@ -232,6 +234,7 @@ newStakePoolLayer gcStatus nl db@DBLayer {..} worker = do
         , forceMetadataGC = _forceMetadataGC tvTid
         , putSettings = _putSettings tvTid
         , getSettings = _getSettings
+        , getGCMetadataStatus = _getGCMetadataStatus
         }
   where
     _getPoolLifeCycleStatus
@@ -345,6 +348,9 @@ newStakePoolLayer gcStatus nl db@DBLayer {..} worker = do
                     Nothing -> STM.atomically $ writeTVar gcStatus NotStarted
                     Just gc -> STM.atomically $ writeTVar gcStatus (Restarting gc)
                 atomically $ putLastMetadataGC $ fromIntegral @Int 0
+
+    _getGCMetadataStatus =
+        readTVarIO gcStatus
 
     -- Stop the sync thread, carry out an action, and restart the sync thread.
     bracketSyncThread :: TVar ThreadId -> IO a -> IO ()

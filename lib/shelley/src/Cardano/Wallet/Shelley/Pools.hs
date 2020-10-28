@@ -80,7 +80,6 @@ import Cardano.Wallet.Primitive.Types
     , EpochNo (..)
     , GenesisParameters (..)
     , PoolCertificate (..)
-    , PoolFlag (..)
     , PoolId
     , PoolLifeCycleStatus (..)
     , PoolMetadataGCStatus (..)
@@ -384,6 +383,7 @@ data PoolDbData = PoolDbData
     , retirementCert :: Maybe PoolRetirementCertificate
     , nProducedBlocks :: Quantity "block" Word64
     , metadata :: Maybe StakePoolMetadata
+    , delisted :: Bool
     }
 
 -- | Top level combine-function that merges DB and LSQ data.
@@ -459,7 +459,7 @@ combineDbAndLsqData ti nOpt lsqData =
             , Api.margin =
                 Quantity $ poolMargin $ registrationCert dbData
             , Api.retirement = retirementEpochInfo
-            , Api.delisted = poolFlag (registrationCert dbData) == Delisted
+            , Api.delisted = delisted dbData
             }
 
     toApiEpochInfo ep = do
@@ -511,8 +511,9 @@ combineChainData
     -> Map PoolId PoolRetirementCertificate
     -> Map PoolId (Quantity "block" Word64)
     -> Map StakePoolMetadataHash StakePoolMetadata
+    -> Set PoolId
     -> Map PoolId PoolDbData
-combineChainData registrationMap retirementMap prodMap metaMap =
+combineChainData registrationMap retirementMap prodMap metaMap delistedSet =
     Map.map mkPoolDbData $
         Map.merge
             registeredNoProductions
@@ -533,12 +534,13 @@ combineChainData registrationMap retirementMap prodMap metaMap =
         :: (PoolRegistrationCertificate, Quantity "block" Word64)
         -> PoolDbData
     mkPoolDbData (registrationCert, n) =
-        PoolDbData registrationCert mRetirementCert n meta
+        PoolDbData registrationCert mRetirementCert n meta delisted
       where
         metaHash = snd <$> poolMetadata registrationCert
         meta = flip Map.lookup metaMap =<< metaHash
         mRetirementCert =
             Map.lookup (view #poolId registrationCert) retirementMap
+        delisted = view #poolId registrationCert `Set.member` delistedSet
 
 readPoolDbData :: DBLayer IO -> EpochNo -> IO (Map PoolId PoolDbData)
 readPoolDbData DBLayer {..} currentEpoch = atomically $ do
@@ -558,6 +560,7 @@ readPoolDbData DBLayer {..} currentEpoch = atomically $ do
         retirementCertificates
         <$> readTotalProduction
         <*> readPoolMetadata
+        <*> (Set.fromList <$> readDelistedPools)
 
 --
 -- Monitoring stake pool

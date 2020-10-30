@@ -44,7 +44,6 @@ module Cardano.Wallet.Api.Types
 
     -- * API Types
     , ApiAddress (..)
-    , ApiListStakePools (..)
     , ApiCertificate (..)
     , ApiEpochInfo (..)
     , ApiSelectCoinsData (..)
@@ -390,12 +389,6 @@ data MaintenanceAction = GcStakePools
 
 newtype ApiMaintenanceAction = ApiMaintenanceAction
     { maintenanceAction :: MaintenanceAction
-    } deriving (Eq, Generic, Show)
-
-data ApiListStakePools apiPool = ApiListStakePools
-    { pools :: [apiPool]
-    , gcStatus :: !(Maybe (ApiT PoolMetadataGCStatus))
-        -- 'Nothing' in the case of Jormungandr.
     } deriving (Eq, Generic, Show)
 
 data ApiAddress (n :: NetworkDiscriminant) = ApiAddress
@@ -1343,11 +1336,6 @@ instance ToJSON (ApiT PoolMetadataGCStatus) where
     toJSON (ApiT (HasRun gctime)) =
         object [ "status" .= String "has_run"
             , "last_run" .= ApiT (Iso8601Time (posixSecondsToUTCTime gctime)) ]
-
-instance FromJSON a => FromJSON (ApiListStakePools a) where
-    parseJSON = genericParseJSON defaultRecordTypeOptions
-instance ToJSON a => ToJSON (ApiListStakePools a) where
-    toJSON = genericToJSON defaultRecordTypeOptions
 
 instance FromJSON ByronWalletPutPassphraseData where
     parseJSON = genericParseJSON defaultRecordTypeOptions

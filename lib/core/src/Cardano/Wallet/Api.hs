@@ -127,6 +127,7 @@ import Cardano.Wallet.Api.Types
     , ApiNetworkInformation
     , ApiNetworkParameters
     , ApiPoolId
+    , ApiPoolMetadataGCStatus
     , ApiPostRandomAddressData
     , ApiPutAddressesDataT
     , ApiSelectCoinsDataT
@@ -448,7 +449,7 @@ type ListStakePools apiPool = "stake-pools"
 
 type MetadataGCStatus = "stake-pools"
     :> "metadata-gc-status"
-    :> Get '[JSON] (ApiT PoolMetadataGCStatus)
+    :> Get '[JSON] ApiPoolMetadataGCStatus
 
 -- | https://input-output-hk.github.io/cardano-wallet/api/#operation/joinStakePool
 type JoinStakePool n = "stake-pools"

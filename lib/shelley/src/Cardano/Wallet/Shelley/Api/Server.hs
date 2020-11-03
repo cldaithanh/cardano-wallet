@@ -108,6 +108,7 @@ import Cardano.Wallet.Api.Types
     , MaintenanceAction (..)
     , SettingsPutData (..)
     , SomeByronWalletPostData (..)
+    , mkApiPoolMetadataGCStatus
     )
 import Cardano.Wallet.Primitive.AddressDerivation
     ( DelegationAddress (..), PaymentAddress (..) )
@@ -250,7 +251,7 @@ server byron icarus shelley spl ntp =
         :<|> quitStakePool shelley
         :<|> delegationFee shelley
         :<|> _poolMaintenance
-        :<|> liftIO (ApiT <$> getGCMetadataStatus spl)
+        :<|> liftIO (mkApiPoolMetadataGCStatus <$> getGCMetadataStatus spl)
       where
         _poolMaintenance = \case
             ApiMaintenanceAction GcStakePools ->

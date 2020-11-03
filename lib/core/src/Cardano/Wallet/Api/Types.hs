@@ -55,6 +55,9 @@ module Cardano.Wallet.Api.Types
     , ApiCoinSelectionOutput (..)
     , ApiStakePool (..)
     , ApiStakePoolMetrics (..)
+    , ApiPoolMetadataGCStatus (..)
+    , mkApiPoolMetadataGCStatus
+    , ApiPoolMetadataGCStatusOption (..)
     , ApiWallet (..)
     , ApiWalletPassphrase (..)
     , ApiWalletPassphraseInfo (..)
@@ -191,7 +194,6 @@ import Cardano.Wallet.Primitive.Types
     , HistogramBar (..)
     , NetworkParameters (..)
     , PoolId (..)
-    , PoolMetadataGCStatus (..)
     , ShowFmt (..)
     , SlotInEpoch (..)
     , SlotLength (..)
@@ -279,7 +281,7 @@ import Data.Text.Class
 import Data.Time.Clock
     ( NominalDiffTime, UTCTime )
 import Data.Time.Clock.POSIX
-    ( posixSecondsToUTCTime, utcTimeToPOSIXSeconds )
+    ( posixSecondsToUTCTime )
 import Data.Time.Text
     ( iso8601, iso8601ExtendedUtc, utcTimeFromText, utcTimeToText )
 import Data.Word
@@ -1306,36 +1308,15 @@ instance FromJSON WalletPutPassphraseData where
 instance ToJSON  WalletPutPassphraseData where
     toJSON = genericToJSON defaultRecordTypeOptions
 
-instance FromJSON (ApiT PoolMetadataGCStatus) where
-    parseJSON = withObject "PoolMetadataGCStatus" $ \o -> do
-        (status' :: String) <- o .: "status"
-        last_run <- o .:? "last_run"
-        case (status', last_run) of
-            ("restarting", Just (ApiT (Iso8601Time gctime)))
-                -> pure $ ApiT (Restarting $ utcTimeToPOSIXSeconds gctime)
-            ("has_run", Just (ApiT (Iso8601Time gctime)))
-                -> pure $ ApiT (HasRun $ utcTimeToPOSIXSeconds gctime)
-            ("restarting", Nothing)
-                -> fail "missing field last_run"
-            ("has_run", Nothing)
-                -> fail "missing field last_run"
-            ("not_applicable", _)
-                -> pure $ ApiT NotApplicable
-            ("not_started", _)
-                -> pure $ ApiT NotStarted
-            _ -> fail ("Unknown status: " <> status')
+instance FromJSON ApiPoolMetadataGCStatus where
+    parseJSON = genericParseJSON defaultRecordTypeOptions
+instance ToJSON ApiPoolMetadataGCStatus where
+    toJSON = genericToJSON defaultRecordTypeOptions
 
-instance ToJSON (ApiT PoolMetadataGCStatus) where
-    toJSON (ApiT (NotApplicable)) =
-        object [ "status" .= String "not_applicable" ]
-    toJSON (ApiT (NotStarted)) =
-        object [ "status" .= String "not_started" ]
-    toJSON (ApiT (Restarting gctime)) =
-        object [ "status" .= String "restarting"
-            , "last_run" .= ApiT (Iso8601Time (posixSecondsToUTCTime gctime)) ]
-    toJSON (ApiT (HasRun gctime)) =
-        object [ "status" .= String "has_run"
-            , "last_run" .= ApiT (Iso8601Time (posixSecondsToUTCTime gctime)) ]
+instance FromJSON ApiPoolMetadataGCStatusOption where
+    parseJSON = genericParseJSON defaultRecordTypeOptions
+instance ToJSON ApiPoolMetadataGCStatusOption where
+    toJSON = genericToJSON defaultRecordTypeOptions
 
 instance FromJSON ByronWalletPutPassphraseData where
     parseJSON = genericParseJSON defaultRecordTypeOptions
@@ -1435,6 +1416,27 @@ instance FromJSON ApiStakePoolMetrics where
     parseJSON = genericParseJSON defaultRecordTypeOptions
 instance ToJSON ApiStakePoolMetrics where
     toJSON = genericToJSON defaultRecordTypeOptions
+
+data ApiPoolMetadataGCStatus = ApiPoolMetadataGCStatus
+    { status :: ApiPoolMetadataGCStatusOption
+    , lastRun :: Maybe (ApiT Iso8601Time)
+    } deriving (Eq, Generic, Show)
+
+data ApiPoolMetadataGCStatusOption
+    = NotApplicable
+    | NotStarted
+    | Restarting
+    | HasRun
+    deriving (Eq, Show, Generic)
+
+mkApiPoolMetadataGCStatus :: W.PoolMetadataGCStatus -> ApiPoolMetadataGCStatus
+mkApiPoolMetadataGCStatus = uncurry ApiPoolMetadataGCStatus . \case
+    W.NotApplicable -> (NotApplicable, Nothing)
+    W.NotStarted -> (NotStarted, Nothing)
+    W.Restarting t -> (Restarting, toIso8601Time t)
+    W.HasRun t -> (HasRun, toIso8601Time t)
+  where
+    toIso8601Time = Just . ApiT . Iso8601Time . posixSecondsToUTCTime
 
 instance FromJSON (ApiT WalletName) where
     parseJSON = parseJSON >=> eitherToParser . bimap ShowFmt ApiT . fromText

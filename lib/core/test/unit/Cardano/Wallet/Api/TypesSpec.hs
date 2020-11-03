@@ -61,6 +61,8 @@ import Cardano.Wallet.Api.Types
     , ApiNetworkInformation (..)
     , ApiNetworkParameters (..)
     , ApiNtpStatus (..)
+    , ApiPoolMetadataGCStatus (..)
+    , ApiPoolMetadataGCStatusOption (..)
     , ApiPostRandomAddressData
     , ApiPutAddressesData (..)
     , ApiSelectCoinsAction (..)
@@ -149,7 +151,6 @@ import Cardano.Wallet.Primitive.Types
     , Hash (..)
     , HistogramBar (..)
     , PoolId (..)
-    , PoolMetadataGCStatus (..)
     , PoolMetadataSource
     , PoolOwner (..)
     , Settings
@@ -327,7 +328,7 @@ spec = do
         \and match existing golden files" $ do
             jsonRoundtripAndGolden $ Proxy @(ApiAddress ('Testnet 0))
             jsonRoundtripAndGolden $ Proxy @(ApiT DerivationIndex)
-            jsonRoundtripAndGolden $ Proxy @(ApiT PoolMetadataGCStatus)
+            jsonRoundtripAndGolden $ Proxy @ApiPoolMetadataGCStatus
             jsonRoundtripAndGolden $ Proxy @ApiEpochInfo
             jsonRoundtripAndGolden $ Proxy @(ApiSelectCoinsData ('Testnet 0))
             jsonRoundtripAndGolden $ Proxy @(ApiCoinSelection ('Testnet 0))
@@ -1087,7 +1088,11 @@ instance Arbitrary NominalDiffTime where
 instance Arbitrary Iso8601Time where
     arbitrary = Iso8601Time <$> genUniformTime
 
-instance Arbitrary PoolMetadataGCStatus where
+instance Arbitrary ApiPoolMetadataGCStatus where
+    arbitrary = genericArbitrary
+    shrink = genericShrink
+
+instance Arbitrary ApiPoolMetadataGCStatusOption where
     arbitrary = genericArbitrary
     shrink = genericShrink
 
@@ -1795,7 +1800,7 @@ instance ToSchema SettingsPutData where
 instance ToSchema (ApiT Settings) where
     declareNamedSchema _ = declareSchemaForDefinition "ApiGetSettings"
 
-instance ToSchema (ApiT PoolMetadataGCStatus) where
+instance ToSchema (ApiPoolMetadataGCStatus) where
     declareNamedSchema _ = declareSchemaForDefinition "ApiGCStatus"
 
 instance ToSchema WalletPutPassphraseData where

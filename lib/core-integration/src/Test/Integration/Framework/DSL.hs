@@ -70,9 +70,12 @@ module Test.Integration.Framework.DSL
     , postWallet'
     , postByronWallet
     , emptyWallet
+    , emptyWallet'
     , emptyWalletWith
     , emptyByronWalletFromXPrvWith
     , rewardWallet
+
+    , withResource
 
     -- * Wallet helpers
     , listFilteredWallets
@@ -270,7 +273,7 @@ import Control.Monad.Catch
 import Control.Monad.IO.Class
     ( MonadIO, liftIO )
 import Control.Monad.Trans.Resource
-    ( ResourceT, allocate, runResourceT )
+    ( ReleaseKey, ResourceT, allocate, runResourceT, unprotect )
 import Control.Retry
     ( capDelay, constantDelay, retrying )
 import Crypto.Hash
@@ -775,6 +778,24 @@ eventuallyUsingDelay delay timeout desc io = liftIO $ do
 utcIso8601ToText :: UTCTime -> Text
 utcIso8601ToText = utcTimeToText iso8601ExtendedUtc
 
+-- | For usage with Hspec's @aroundWith@.
+--
+-- Optimally we'd generalize this w.r.t. the @ResourceT@-returning functions,
+-- but we'd then need to record the release keys, which might cause boilerplate
+-- unless we come up with something.
+withResource
+    :: (ctx -> ResourceT IO (ReleaseKey, a))
+    -> ((ctx, a) -> IO ())
+    -> (ctx -> IO ())
+withResource mkResource action = \ctx -> do
+    (cleanup, a) <- runResourceT $ do
+        (k, a) <- mkResource ctx
+        cleanup <- fromMaybe (return ()) <$> unprotect k
+        return (cleanup, a)
+    action (ctx, a)
+    cleanup
+
+
 -- Functions for creating wallets.
 --
 -- Wallets are cleaned up automatically at the end of @runResourceT@ in your
@@ -880,14 +901,13 @@ emptyRandomWalletWithPasswd ctx rawPwd = do
         . CBOR.encodeBytes
         . BA.convert
 
-
-postWallet'
+postWallet''
     :: (MonadIO m, MonadCatch m)
     => Context t
     -> Headers
     -> Payload
-    -> ResourceT m (HTTP.Status, Either RequestException ApiWallet)
-postWallet' ctx headers payload = snd <$> allocate create (free . snd)
+    -> ResourceT m (ReleaseKey, (HTTP.Status, Either RequestException ApiWallet))
+postWallet'' ctx headers payload = allocate create (free . snd)
   where
     create =
         request @ApiWallet ctx (Link.postWallet @'Shelley) headers payload
@@ -895,6 +915,14 @@ postWallet' ctx headers payload = snd <$> allocate create (free . snd)
     free (Right w) = void $ request @Aeson.Value ctx
         (Link.deleteWallet @'Shelley w) Default Empty
     free (Left _) = return ()
+
+postWallet'
+    :: (MonadIO m, MonadCatch m)
+    => Context t
+    -> Headers
+    -> Payload
+    -> ResourceT m (HTTP.Status, Either RequestException ApiWallet)
+postWallet' ctx headers payload = snd <$> postWallet''  ctx headers payload
 
 postWallet
     :: (MonadIO m, MonadCatch m)
@@ -957,16 +985,23 @@ emptyWallet
     :: (MonadIO m, MonadCatch m)
     => Context t
     -> ResourceT m ApiWallet
-emptyWallet ctx = do
+emptyWallet ctx = snd <$> emptyWallet' ctx
+
+-- | Create an empty wallet (and a resourcet @ReleaseKey@)
+emptyWallet'
+    :: (MonadIO m, MonadCatch m)
+    => Context t
+    -> ResourceT m (ReleaseKey, ApiWallet)
+emptyWallet' ctx = do
     mnemonic <- liftIO $ (mnemonicToText . entropyToMnemonic) <$> genEntropy @160
     let payload = Json [aesonQQ| {
             "name": "Empty Wallet",
             "mnemonic_sentence": #{mnemonic},
             "passphrase": #{fixturePassphrase}
         }|]
-    r <- postWallet ctx payload
+    (k, r) <- postWallet'' ctx Default payload
     expectResponseCode HTTP.status201 r
-    return (getFromResponse id r)
+    return (k, (getFromResponse id r))
 
 -- | Create an empty wallet
 emptyWalletWith

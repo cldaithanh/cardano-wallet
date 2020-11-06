@@ -280,6 +280,7 @@ newDBFactory tr defaultFieldValues timeInterpreter = \case
 
     Just databaseDir -> do
         refs <- newRefCount
+        --pendingRemovalVar <- newMVar mempty
         pure DBFactory
             { withDatabase = \wid action -> withRef refs wid $ withDBLayer
                 tr

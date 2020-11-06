@@ -34,6 +34,7 @@ module Cardano.Wallet.Registry
 import Prelude hiding
     ( log, lookup )
 
+
 import Cardano.BM.Data.Severity
     ( Severity (..) )
 import Cardano.BM.Data.Tracer
@@ -59,9 +60,13 @@ import Control.Exception
     , finally
     )
 import Control.Monad
-    ( void )
+    ( forM, void, (>=>) )
 import Control.Monad.IO.Class
     ( MonadIO, liftIO )
+import Control.Monad.Trans.Class
+    ( lift )
+import Control.Monad.Trans.Maybe
+    ( MaybeT, runMaybeT )
 import Control.Tracer
     ( Tracer, traceWith )
 import Data.Foldable
@@ -74,6 +79,8 @@ import Data.Generics.Product.Typed
     ( HasType )
 import Data.Map.Strict
     ( Map )
+import Data.Maybe
+    ( catMaybes )
 import Data.Text
     ( Text )
 import Data.Text.Class
@@ -100,6 +107,170 @@ class HasType resource (WorkerCtx ctx) => HasWorkerCtx resource ctx where
         -> (WorkerMsg ctx -> WorkerLog (WorkerKey ctx) (WorkerMsg ctx))
         -> ctx
         -> WorkerCtx ctx
+
+
+{-
+
+create
+    start worker thread
+    create db file
+
+get
+    if deleted/deleting, 404 else 200
+
+delete
+    stop worker
+    finish ongoing requets
+    stop new requests
+    delete db when done
+
+
+Map (k (v, RefCount))
+
+
+create k v =
+    atomically $
+        Map.insert k v
+        spawnWorker
+
+withWallet =
+    (v, _) <- atomically $ retain
+    action
+    release
+  where
+    retain = modifyMVar $ Map.modify $ second (+1)
+
+release k =
+    (_, refCount) <- lookup
+    guard (refCount == 0)
+    atomically $ delete k
+
+-}
+
+
+data Registry m k v = Registry
+    { create :: k -> MaybeT m v -- Fails if it already exists
+    , get :: k -> MaybeT m v -- Fails if it doesn't exist
+    , destroy :: k -> m ()
+    , list :: m [v]
+    }
+
+data WalletId
+data SqliteContext
+
+newFileRegistry :: IO (Registry IO FilePath SqliteContext)
+newFileRegistry = do
+    return $ Registry
+        { create = undefined
+        , destroy = undefined
+        , get = undefined
+        , list = undefined -- list all files,
+        }
+
+
+-- with
+-- destroy
+--
+--
+
+-- When do we mean when we list wallets? Do we want to list the files in the
+-- directory, or the...
+--
+--
+-- State:
+-- DB File   Open DB Handle     Worker
+--  exists        exists         running
+--  exists        exists         not running
+--  exists        not exists     not running
+--  ...bah!
+--
+
+
+-- |
+--
+-- Example:
+-- a ~ WalletId
+-- b ~ FilePath -- Path to the DB file
+-- c ~ DBLayer -- Connection to DB
+--
+-- TODO: Does it actually do what we need?
+-- We need to keep track of pending removals.
+-- We need to let connections finish before deletion.
+-- We need to lookup connections on each request
+-- We need to start a worker once
+-- TODO: Does it handle race conditions? (Haven't thought about it yet)
+--
+-- Actors:
+-- Worker thread
+-- - Wants to call withResource
+-- - Wants withResource to fail, if it doesn't exist
+-- Request handler thread
+-- - Wants to call withResource
+-- - Wants withResource to fail, if it doesn't exist
+-- Wallet creation requests
+-- - Wants to create the wallet
+-- - Fail if it already exists
+-- - Wants to save the resulting DB connection
+-- Wallet delete requests
+-- - First close
+-- - Then remove file
+--
+-- Current solution:
+-- DBFactory
+-- - Has withResource
+-- - Doesn't fail if it already exists
+--
+-- We need:
+-- Some kind of `TVar (Map WalletId DBLayer)` since we need to save connections
+--
+-- We have
+-- createOrRead :: FilePath -> IO (SqliteContext, DBLayer)
+--
+-- fp :: WalletId -> FilePath
+--
+-- -- Retries to close connection. Throws otherwise I take.
+-- destroyDBLayer :: SqliteContext -> IO ()
+--
+-- deleteFile :: FilePath -> IO ()
+--
+-- May list files that haven't been created by the wallet
+-- May list files that are pending removal
+-- listDirectory :: FilePath -> FilePath
+--
+-- how do we get it to write to the TVar?
+--
+-- We have IO Map (FilePath FileHandle) on disk
+-- We have
+compose :: Monad m => Registry m a b -> Registry m b c -> Registry m a c
+compose r1 r2 = do
+    Registry
+        { create = create r1 >=> create r2
+        , destroy = \a -> do
+            -- Get the FilePath
+            mb <- runMaybeT $ get r1 a
+
+            -- Close the connection if it exists. Might take a while.
+            traverse_ (destroy r2) mb
+
+            -- Remove the file?
+            destroy r1 a
+        , get = get r1 >=> get r2
+        , list = do
+            -- Only return the elements existing in both registries.
+            bs <- list r1
+            catMaybes <$> forM bs (runMaybeT . get r2)
+        }
+
+-- State
+-- directory of wallets
+-- wallet worker contexts related to that
+--
+-- get = readfile >>= lookupDir \case Just cxx ->
+-- list = listDir
+--
+--
+
+
 
 {-------------------------------------------------------------------------------
                                 Worker Registry

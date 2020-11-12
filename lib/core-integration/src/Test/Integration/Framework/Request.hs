@@ -128,14 +128,11 @@ request ctx (verb, path) reqHeaders body = do
                 NonJson x -> RequestBodyLBS x
                 Empty -> mempty
 
-    handleResponse res = case responseStatus res of
-        s | s < status500 -> either
+    handleResponse res = let s = responseStatus res in
+        either
             (\err -> (s, Left $ DecodeFailure $ BL8.pack $ err <> ": " <> show res))
             ((s,) . Right)
             (Aeson.eitherDecode $ responseBody res)
-
-        -- TODO: decode API error responses into ClientError
-        s -> (s, Left $ decodeFailure res)
 
     handleException = \case
         e@InvalidUrlException{} ->

@@ -64,6 +64,8 @@ import Control.Monad.Trans.Resource
     ( runResourceT )
 import Data.Aeson
     ( ToJSON (..) )
+import Data.Either
+    ( isRight )
 import Data.Generics.Internal.VL.Lens
     ( view, (^.) )
 import Data.Proxy
@@ -150,6 +152,7 @@ import Test.QuickCheck.Monadic
 -- of cardano-crypto here.
 import qualified Cardano.Crypto.Wallet as CC
 import qualified Cardano.Wallet.Api.Link as Link
+import qualified Data.Aeson as Aeson
 import qualified Data.ByteString.Lazy as BL
 import qualified Data.Set as Set
 import qualified Data.Text as T
@@ -567,24 +570,26 @@ spec = describe "SHELLEY_WALLETS" $ do
         $ Hspec.it "WALLETS_DELETE_03 - Concurrent delete/read"
         $ \(ctx, w) -> property $ \(RaceTiming delta) -> monadicIO $ do
             run $ deleteAfter (100 - delta) w ctx
-            r <- run $ request @ApiWallet ctx
+            r <- run $ request @Aeson.Value ctx
                 (Link.getWallet @'Shelley w) Default Empty
             run $ liftIO $ threadDelay 100
             monitor $ QC.counterexample $
                 "request " <> show delta <> " microseconds after deletion"
                 <> "\n" <> show r
-            assert (fst r == HTTP.status404 || fst r == HTTP.status200)
+            assert (isRight $ snd r)
+            --assert (fst r == HTTP.status404 || fst r == HTTP.status200)
     withDeletingWallet
         $ Hspec.it "WALLETS_ADDR_03 - Concurrent delete/read"
         $ \(ctx, w) -> property $ \(RaceTiming delta) -> monadicIO $ do
             run $ deleteAfter (100 - delta) w ctx
-            r <- run $ request @[ApiAddress n] ctx
+            r <- run $ request @Aeson.Value ctx
                 (Link.listAddresses @'Shelley w) Default Empty
             run $ liftIO $ threadDelay 100
             monitor $ QC.counterexample $
                 "request " <> show delta <> " microseconds after deletion"
                 <> "\n" <> show r
-            assert (fst r == HTTP.status404 || fst r == HTTP.status200)
+            assert (isRight $ snd r)
+            --assert (fst r == HTTP.status404 || fst r == HTTP.status200)
 
     it "WALLETS_LIST_01 - Created a wallet can be listed" $ \ctx -> runResourceT $ do
         m18 <- liftIO $ genMnemonics M18

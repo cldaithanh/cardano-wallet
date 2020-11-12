@@ -557,19 +557,19 @@ spec = describe "SHELLEY_WALLETS" $ do
         expectResponseCode HTTP.status404 rg
         expectErrorMessage (errMsg404NoWallet $ w ^. walletId) rg
 
+    let withDeletingWallet = aroundWith (withResource emptyWallet')
     let deleteAfter micro w ctx = forkIO $ do
                 threadDelay micro
                 void $ request @ApiWallet ctx
                     (Link.deleteWallet @'Shelley w) Default Empty
-    let withDeletingWallet = aroundWith ((withResource emptyWallet')
-            . (\f -> \(ctx, w) -> deleteAfter 100 w ctx >> f (ctx, w)))
 
     withDeletingWallet
         $ Hspec.it "WALLETS_DELETE_03 - Concurrent delete/read"
         $ \(ctx, w) -> property $ \(RaceTiming delta) -> monadicIO $ do
-            run $ liftIO $ threadDelay (100 + delta)
+            run $ deleteAfter (100 - delta) w ctx
             r <- run $ request @ApiWallet ctx
                 (Link.getWallet @'Shelley w) Default Empty
+            run $ liftIO $ threadDelay 100
             monitor $ QC.counterexample $
                 "request " <> show delta <> " microseconds after deletion"
                 <> "\n" <> show r

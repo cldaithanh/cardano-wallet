@@ -100,8 +100,6 @@ import Cardano.Wallet.Primitive.Types.Tx
     , TxMeta (..)
     , TxStatus (..)
     )
-import Cardano.Wallet.Primitive.Types.UTxO
-    ( UTxO (..) )
 import Control.Monad
     ( when )
 import Data.Bifunctor
@@ -129,6 +127,7 @@ import GHC.Generics
 import Numeric.Natural
     ( Natural )
 
+import qualified Cardano.Wallet.Primitive.Types.UTxOIndex as UTxOIndex
 import qualified Data.Map.Strict as Map
 
 {-------------------------------------------------------------------------------
@@ -454,7 +453,7 @@ mReadTxHistory ti wid minWithdrawal order range mstatus db@(Database wallets txs
         , txInfoFee =
             fee tx
         , txInfoInputs =
-            (\(inp, amt) -> (inp, amt, Map.lookup inp $ getUTxO $ utxo cp))
+            (\(inp, amt) -> (inp, amt, UTxOIndex.lookup inp $ utxo cp))
                 <$> resolvedInputs tx
         , txInfoOutputs =
             outputs tx

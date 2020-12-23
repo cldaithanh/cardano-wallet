@@ -226,6 +226,7 @@ import qualified Cardano.Wallet.Primitive.Types.Hash as W
 import qualified Cardano.Wallet.Primitive.Types.TokenBundle as TokenBundle
 import qualified Cardano.Wallet.Primitive.Types.Tx as W
 import qualified Cardano.Wallet.Primitive.Types.UTxO as W
+import qualified Cardano.Wallet.Primitive.Types.UTxOIndex as UTxOIndex
 import qualified Data.List as L
 import qualified Data.Map.Strict as Map
 import qualified Data.Text as T
@@ -1518,15 +1519,15 @@ mkCheckpointEntity wid wal =
         }
     utxo =
         [ UTxO wid sl (TxId input) ix addr (TokenBundle.getCoin tokens)
-        | (W.TxIn input ix, W.TxOut addr tokens) <- utxoMap
+        | (W.TxIn input ix, W.TxOut addr tokens) <- utxoEntries
         ]
     utxoTokens =
         [ UTxOToken wid sl (TxId input) ix policy token quantity
-        | (W.TxIn input ix, W.TxOut {tokens}) <- utxoMap
+        | (W.TxIn input ix, W.TxOut {tokens}) <- utxoEntries
         , let tokenList = snd (TokenBundle.toFlatList tokens)
         , (AssetId policy token, quantity) <- tokenList
         ]
-    utxoMap = Map.assocs (W.getUTxO (W.utxo wal))
+    utxoEntries = UTxOIndex.toList (W.utxo wal)
 
 -- note: TxIn records must already be sorted by order
 -- and TxOut records must already by sorted by index.

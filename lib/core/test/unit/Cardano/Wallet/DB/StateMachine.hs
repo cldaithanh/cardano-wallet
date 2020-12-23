@@ -136,7 +136,7 @@ import Cardano.Wallet.Primitive.Types.RewardAccount
 import Cardano.Wallet.Primitive.Types.TokenBundle
     ( TokenBundle )
 import Cardano.Wallet.Primitive.Types.TokenMap
-    ( TokenMap )
+    ( AssetId, TokenMap )
 import Cardano.Wallet.Primitive.Types.TokenPolicy
     ( TokenName, TokenPolicyId )
 import Cardano.Wallet.Primitive.Types.TokenQuantity
@@ -154,6 +154,8 @@ import Cardano.Wallet.Primitive.Types.Tx
     )
 import Cardano.Wallet.Primitive.Types.UTxO
     ( UTxO (..) )
+import Cardano.Wallet.Primitive.Types.UTxOIndex
+    ( UTxOIndex )
 import Control.Foldl
     ( Fold (..) )
 import Control.Monad
@@ -184,6 +186,8 @@ import Data.Quantity
     ( Percentage (..), Quantity (..) )
 import Data.Set
     ( Set )
+import Data.Set.Strict.NonEmptySet
+    ( NonEmptySet )
 import Data.TreeDiff
     ( ToExpr (..), defaultExprViaShow, genericToExpr )
 import Data.Word
@@ -861,10 +865,16 @@ instance ToExpr s => ToExpr (Mock s) where
 instance (ToExpr k, ToExpr v) => ToExpr (NonEmptyMap k v) where
     toExpr = genericToExpr
 
+instance (ToExpr a) => ToExpr (NonEmptySet a) where
+    toExpr = genericToExpr
+
 instance ToExpr WalletId where
     toExpr = defaultExprViaShow
 
 instance ToExpr s => ToExpr (Wallet s) where
+    toExpr = genericToExpr
+
+instance ToExpr UTxOIndex where
     toExpr = genericToExpr
 
 instance ToExpr BlockHeader where
@@ -941,6 +951,9 @@ instance ToExpr TokenPolicyId where
     toExpr = genericToExpr
 
 instance ToExpr TokenQuantity where
+    toExpr = genericToExpr
+
+instance ToExpr AssetId where
     toExpr = genericToExpr
 
 instance ToExpr Address where

@@ -199,6 +199,7 @@ import Test.Utils.Time
 import qualified Cardano.Wallet.Primitive.AddressDerivation.Byron as Byron
 import qualified Cardano.Wallet.Primitive.AddressDerivation.Shelley as Shelley
 import qualified Cardano.Wallet.Primitive.AddressDiscovery.Sequential as Seq
+import qualified Cardano.Wallet.Primitive.Types.UTxOIndex as UTxOIndex
 import qualified Data.ByteArray as BA
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Char8 as B8
@@ -302,7 +303,7 @@ instance GenState s => Arbitrary (InitialCheckpoint s) where
     arbitrary = do
         cp <- arbitrary @(Wallet s)
         pure $ InitialCheckpoint $ unsafeInitWallet
-            (utxo cp)
+            (UTxOIndex.toUTxO $ utxo cp)
             (block0 ^. #header)
             (getState cp)
 
@@ -313,7 +314,7 @@ instance GenState s => Arbitrary (InitialCheckpoint s) where
 instance GenState s => Arbitrary (Wallet s) where
     shrink w =
         [ unsafeInitWallet u (currentTip w) s
-        | (u, s) <- shrink (utxo w, getState w) ]
+        | (u, s) <- shrink (UTxOIndex.toUTxO (utxo w), getState w) ]
     arbitrary = unsafeInitWallet
         <$> arbitrary
         <*> arbitrary

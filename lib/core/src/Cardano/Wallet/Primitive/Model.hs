@@ -10,6 +10,7 @@
 {-# LANGUAGE OverloadedLabels #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TypeApplications #-}
 
 -- |
 -- Copyright: © 2018-2020 IOHK
@@ -47,6 +48,7 @@ module Cardano.Wallet.Primitive.Model
     , totalBalance
     , totalUTxO
     , availableUTxO
+    , availableUTxOIndex
     , utxo
     ) where
 
@@ -80,6 +82,8 @@ import Cardano.Wallet.Primitive.Types.Tx
     )
 import Cardano.Wallet.Primitive.Types.UTxO
     ( Dom (..), UTxO (..), balance, excluding, restrictedBy )
+import Cardano.Wallet.Primitive.Types.UTxOIndex
+    ( UTxOIndex )
 import Control.DeepSeq
     ( NFData (..), deepseq )
 import Control.Monad
@@ -88,6 +92,8 @@ import Control.Monad.Extra
     ( mapMaybeM )
 import Control.Monad.Trans.State.Strict
     ( State, evalState, runState, state )
+import Data.Function
+    ( (&) )
 import Data.Functor
     ( (<&>) )
 import Data.Generics.Internal.VL.Lens
@@ -102,6 +108,8 @@ import Data.Quantity
     ( Quantity (..) )
 import Data.Set
     ( Set )
+import Data.Word
+    ( Word64 )
 import Fmt
     ( Buildable (..), indentF )
 import GHC.Generics
@@ -109,6 +117,8 @@ import GHC.Generics
 import Numeric.Natural
     ( Natural )
 
+import qualified Cardano.Wallet.Primitive.Types.TokenBundle as TokenBundle
+import qualified Cardano.Wallet.Primitive.Types.UTxOIndex as UTxOIndex
 import qualified Data.List.NonEmpty as NE
 import qualified Data.Map as Map
 import qualified Data.Set as Set
@@ -150,7 +160,7 @@ import qualified Data.Set as Set
 -- @
 data Wallet s = Wallet
     { -- | Unspent tx outputs belonging to this wallet
-      utxo :: UTxO
+      utxo :: UTxOIndex
 
       -- | Header of the latest applied block (current tip)
     , currentTip :: BlockHeader
@@ -169,7 +179,7 @@ instance NFData s => NFData (Wallet s) where
 instance Buildable s => Buildable (Wallet s) where
     build (Wallet u tip s) = "Wallet s\n"
         <> indentF 4 ("Tip: " <> build tip)
-        <> indentF 4 ("UTxO:\n" <> indentF 4 (build u))
+        <> indentF 4 ("UTxO:\n" <> indentF 4 (build $ UTxOIndex.toUTxO u))
         <> indentF 4 (build s)
 
 {-------------------------------------------------------------------------------
@@ -188,7 +198,7 @@ initWallet
     -> ([(Tx, TxMeta)], Wallet s)
 initWallet block s =
     let
-        ((FilteredBlock _ txs, u), s') = prefilterBlock block mempty s
+        ((FilteredBlock _ txs, u), s') = prefilterBlock block UTxOIndex.empty s
     in
         (txs, Wallet u (header block) s')
 
@@ -205,7 +215,7 @@ unsafeInitWallet
     -> s
     -- ^ Address discovery state
     -> Wallet s
-unsafeInitWallet = Wallet
+unsafeInitWallet = Wallet . UTxOIndex.fromUTxO
 
 -- | Update the state of an existing Wallet model
 updateState
@@ -279,8 +289,12 @@ applyBlocks (block0 :| blocks) cp =
 
 -- | Available balance = 'balance' . 'availableUTxO'
 availableBalance :: Set Tx -> Wallet s -> Natural
-availableBalance pending =
-    balance . availableUTxO pending
+availableBalance pending w = w
+    & availableUTxOIndex pending
+    & UTxOIndex.balance
+    & TokenBundle.getCoin
+    & unCoin
+    & fromIntegral @Word64 @Natural
 
 -- | Total balance = 'balance' . 'totalUTxO' +? rewards
 totalBalance
@@ -307,7 +321,19 @@ availableUTxO
     -> Wallet s
     -> UTxO
 availableUTxO pending (Wallet u _ _) =
-    u  `excluding` txIns pending
+    UTxOIndex.toUTxO u `excluding` txIns pending
+
+-- | Similar to `availableUTxO`, but returns an indexed UTxO set.
+--
+-- The index makes it possible to efficiently search for UTxO entries that
+-- contain a particular asset, without having to traverse the entire UTxO set.
+--
+availableUTxOIndex
+    :: Set Tx
+    -> Wallet s
+    -> UTxOIndex
+availableUTxOIndex pending (Wallet u _ _) =
+    UTxOIndex.deleteMany (txIns pending) u
 
 -- | Total UTxO = 'availableUTxO' @<>@ 'changeUTxO'
 totalUTxO
@@ -346,9 +372,9 @@ totalUTxO pending wallet@(Wallet _ _ s) =
 prefilterBlock
     :: (IsOurs s Address, IsOurs s RewardAccount)
     => Block
-    -> UTxO
+    -> UTxOIndex
     -> s
-    -> ((FilteredBlock, UTxO), s)
+    -> ((FilteredBlock, UTxOIndex), s)
 prefilterBlock b u0 = runState $ do
     delegations <- mapMaybeM ourDelegation (b ^. #delegations)
     (transactions, ourU) <- foldM applyTx (mempty, u0) (b ^. #transactions)
@@ -379,19 +405,26 @@ prefilterBlock b u0 = runState $ do
         , amount = Quantity amt
         , expiry = Nothing
         }
+
     applyTx
         :: (IsOurs s Address, IsOurs s RewardAccount)
-        => ([(Tx, TxMeta)], UTxO)
+        => ([(Tx, TxMeta)], UTxOIndex)
         -> Tx
-        -> State s ([(Tx, TxMeta)], UTxO)
+        -> State s ([(Tx, TxMeta)], UTxOIndex)
     applyTx (!txs, !u) tx = do
         ourU <- state $ utxoOurs tx
-        let ourIns = Set.fromList (inputs tx) `Set.intersection` dom (u <> ourU)
-        let u' = (u <> ourU) `excluding` ourIns
+        let ourIns = Set.intersection
+                (Set.fromList $ inputs tx)
+                (dom $ UTxOIndex.toUTxO u <> ourU)
+        let u' = u
+                & UTxOIndex.insertMany (Map.toList $ getUTxO ourU)
+                & UTxOIndex.deleteMany ourIns
         ourWithdrawals <- fmap (fromIntegral . unCoin . snd) <$>
             mapMaybeM ourWithdrawal (Map.toList $ withdrawals tx)
         let received = balance ourU
-        let spent = balance (u `restrictedBy` ourIns) + sum ourWithdrawals
+        let spent
+                = balance (UTxOIndex.toUTxO u `restrictedBy` ourIns)
+                + sum ourWithdrawals
         let hasKnownInput = ourIns /= mempty
         let hasKnownOutput = ourU /= mempty
         let hasKnownWithdrawal = ourWithdrawals /= mempty

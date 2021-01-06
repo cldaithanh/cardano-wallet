@@ -34,6 +34,7 @@ library
   exposed-modules:
       Cardano.Numeric.PositiveNatural
       Cardano.Numeric.Rounding
+      Cardano.Numeric.Util
 
 test-suite unit
   default-language:
@@ -61,3 +62,4 @@ test-suite unit
       Main.hs
   other-modules:
       Cardano.Numeric.PositiveNatural.Gen
+      Cardano.Numeric.UtilSpec

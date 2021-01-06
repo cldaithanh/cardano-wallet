@@ -33,6 +33,7 @@ library
       src
   exposed-modules:
       Cardano.Numeric.Rounding
+      Cardano.Numeric.Util
 
 test-suite unit
   default-language:
@@ -59,3 +60,4 @@ test-suite unit
   main-is:
       Main.hs
   other-modules:
+      Cardano.Numeric.UtilSpec

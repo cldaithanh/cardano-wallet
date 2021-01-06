@@ -33,6 +33,7 @@ library
       src
   exposed-modules:
       Cardano.Numeric.PositiveNatural
+      Cardano.Numeric.Rounding
 
 test-suite unit
   default-language:

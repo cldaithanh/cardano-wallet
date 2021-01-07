@@ -45,7 +45,7 @@ import Cardano.BM.Data.Tracer
 import Cardano.Wallet.Byron.Compatibility
     ( byronCodecConfig, protocolParametersFromUpdateState )
 import Cardano.Wallet.Logging
-    ( BracketLog (..), bracketTracer )
+    ( BracketLog (..), bracketTracer, combineTracers, produceTimings )
 import Cardano.Wallet.Network
     ( Cursor
     , ErrPostTx (..)
@@ -114,7 +114,7 @@ import Control.Monad.Trans.Except
 import Control.Retry
     ( RetryPolicyM, RetryStatus (..), capDelay, fibonacciBackoff, recovering )
 import Control.Tracer
-    ( Tracer, contramap, nullTracer, traceWith )
+    ( Tracer (..), contramap, nullTracer, traceWith )
 import Data.ByteArray.Encoding
     ( Base (..), convertToBase )
 import Data.ByteString.Lazy
@@ -123,6 +123,8 @@ import Data.Either.Extra
     ( eitherToMaybe )
 import Data.Function
     ( (&) )
+import Data.Functor
+    ( (<$) )
 import Data.List
     ( isInfixOf )
 import Data.Map
@@ -140,7 +142,7 @@ import Data.Text
 import Data.Text.Class
     ( ToText (..) )
 import Data.Time.Clock
-    ( NominalDiffTime )
+    ( DiffTime )
 import Data.Void
     ( Void )
 import Fmt
@@ -289,7 +291,8 @@ withNetworkLayer
     -> (NetworkLayer IO (CardanoBlock StandardCrypto) -> IO a)
         -- ^ Callback function with the network layer
     -> IO a
-withNetworkLayer tr np addrInfo (versionData, _) action = do
+withNetworkLayer trBase np addrInfo (versionData, _) action = do
+    tr <- addTimings trBase
     -- NOTE: We keep client connections running for accessing the node tip,
     -- submitting transactions, querying parameters and delegations/rewards.
     --
@@ -298,10 +301,10 @@ withNetworkLayer tr np addrInfo (versionData, _) action = do
     -- doesn't rely on the intersection to be up-to-date.
     let handlers = retryOnConnectionLost tr
 
-    queryRewardQ <- connectDelegationRewardsClient handlers
+    queryRewardQ <- connectDelegationRewardsClient tr handlers
 
     (nodeTipChan, networkParamsVar, interpreterVar, localTxSubmissionQ) <-
-        connectNodeTipClient handlers
+        connectNodeTipClient tr handlers
 
     (rewardsObserver, refreshRewards) <-
         newRewardBalanceFetcher tr gp queryRewardQ
@@ -334,13 +337,13 @@ withNetworkLayer tr np addrInfo (versionData, _) action = do
         , currentNodeEra =
             _currentNodeEra nodeEraVar
         , watchNodeTip =
-            _watchNodeTip nodeTipChan
+            _watchNodeTip tr nodeTipChan
         , nextBlocks =
             _nextBlocks
         , initCursor =
-            _initCursor
+            _initCursor tr
         , destroyCursor =
-            _destroyCursor
+            _destroyCursor tr
         , cursorSlotNo =
             _cursorSlotNo
         , currentProtocolParameters =
@@ -348,13 +351,13 @@ withNetworkLayer tr np addrInfo (versionData, _) action = do
         , currentSlottingParameters =
             snd <$> atomically (readTVar networkParamsVar)
         , postTx =
-            _postTx localTxSubmissionQ nodeEraVar
+            _postTx tr localTxSubmissionQ nodeEraVar
         , stakeDistribution =
-            _stakeDistribution queryRewardQ nodeEraVar
+            _stakeDistribution tr queryRewardQ nodeEraVar
         , getAccountBalance =
             _getAccountBalance rewardsObserver
         , timeInterpreter =
-            _timeInterpreter interpreterVar
+            _timeInterpreter (contramap MsgInterpreterLog tr) interpreterVar
         }
   where
     coinToQuantity (W.Coin x) = Quantity $ fromIntegral x
@@ -374,7 +377,8 @@ withNetworkLayer tr np addrInfo (versionData, _) action = do
 
     connectNodeTipClient
         :: HasCallStack
-        => RetryHandlers
+        => Tracer IO NetworkLayerLog
+        -> RetryHandlers
         -> IO ( Chan (Maybe AnyCardanoEra, Tip (CardanoBlock StandardCrypto))
               , TVar IO (W.ProtocolParameters, W.SlottingParameters)
               , TMVar IO (CardanoInterpreter StandardCrypto)
@@ -383,7 +387,7 @@ withNetworkLayer tr np addrInfo (versionData, _) action = do
                   (CardanoApplyTxErr StandardCrypto)
                   IO)
               )
-    connectNodeTipClient handlers = do
+    connectNodeTipClient tr handlers = do
         localTxSubmissionQ <- atomically newTQueue
         nodeTipChan <- newChan
         networkParamsVar <- atomically $ newTVar
@@ -401,17 +405,22 @@ withNetworkLayer tr np addrInfo (versionData, _) action = do
 
     connectDelegationRewardsClient
         :: HasCallStack
-        => RetryHandlers
+        => Tracer IO NetworkLayerLog
+        -> RetryHandlers
         -> IO (TQueue IO
                 (LocalStateQueryCmd (CardanoBlock StandardCrypto) IO))
-    connectDelegationRewardsClient handlers = do
+    connectDelegationRewardsClient tr handlers = do
         cmdQ <- atomically newTQueue
         let cl = mkDelegationRewardsClient tr cfg cmdQ
         link =<< async (connectClient tr handlers cl versionData addrInfo)
         pure cmdQ
 
-    _initCursor :: HasCallStack => [W.BlockHeader] -> IO Cursor
-    _initCursor headers = do
+    _initCursor
+        :: HasCallStack
+        => Tracer IO NetworkLayerLog
+        -> [W.BlockHeader]
+        -> IO Cursor
+    _initCursor tr headers = do
         chainSyncQ <- atomically newTQueue
         client <- mkWalletClient (contramap MsgChainSyncCmd tr) cfg gp chainSyncQ
         let handlers = failOnConnectionLost tr
@@ -435,7 +444,7 @@ withNetworkLayer tr np addrInfo (versionData, _) action = do
                 , "Here are the points we gave: " <> show headers
                 ]
 
-    _destroyCursor (Cursor thread _ _) = do
+    _destroyCursor tr (Cursor thread _ _) = do
         liftIO $ traceWith tr $ MsgDestroyCursor (asyncThreadId thread)
         cancel thread
 
@@ -461,7 +470,16 @@ withNetworkLayer tr np addrInfo (versionData, _) action = do
     -- all form of type-level indicator about the era. The 'SealedTx' type
     -- shouldn't be needed anymore since we've dropped jormungandr, so we could
     -- instead carry a transaction from cardano-api types with proper typing.
-    _postTx localTxSubmissionQ nodeEraVar tx = do
+    _postTx
+        :: Tracer IO NetworkLayerLog
+        -> TQueue IO (LocalTxSubmissionCmd
+                  (GenTx (CardanoBlock StandardCrypto))
+                  (CardanoApplyTxErr StandardCrypto)
+                  IO)
+        -> TVar IO AnyCardanoEra
+        -> W.SealedTx
+        -> ExceptT ErrPostTx IO ()
+    _postTx tr localTxSubmissionQ nodeEraVar tx = do
         era <- liftIO $ atomically $ readTVar nodeEraVar
         liftIO $ traceWith tr $ MsgPostTx tx
         case era of
@@ -485,7 +503,7 @@ withNetworkLayer tr np addrInfo (versionData, _) action = do
             AnyCardanoEra MaryEra ->
                 throwE $ ErrPostTxProtocolFailure "Invalid era: Mary"
 
-    _stakeDistribution queue eraVar bh coin = do
+    _stakeDistribution tr queue eraVar bh coin = do
         liftIO $ traceWith tr $ MsgWillQueryRewardsForStake coin
 
         era <- liftIO $ atomically $ readTVar eraVar
@@ -563,7 +581,7 @@ withNetworkLayer tr np addrInfo (versionData, _) action = do
             getRewardMap =
                 fromJustRewards . Map.lookup (Left coin)
 
-    _watchNodeTip nodeTipChan cb = do
+    _watchNodeTip tr nodeTipChan cb = do
         chan <- dupChan nodeTipChan
         let toBlockHeader = fromTip getGenesisBlockHash
         forever $ do
@@ -579,11 +597,12 @@ withNetworkLayer tr np addrInfo (versionData, _) action = do
 
     _timeInterpreter
         :: HasCallStack
-        => TMVar IO (CardanoInterpreter sc)
+        => Tracer IO TimeInterpreterLog
+        -> TMVar IO (CardanoInterpreter sc)
         -> TimeInterpreter (ExceptT PastHorizonException IO)
-    _timeInterpreter var = do
+    _timeInterpreter tr var = do
         let readInterpreter = liftIO $ atomically $ readTMVar var
-        mkTimeInterpreter (contramap MsgInterpreterLog tr) getGenesisBlockDate readInterpreter
+        mkTimeInterpreter tr getGenesisBlockDate readInterpreter
 
 --------------------------------------------------------------------------------
 --
@@ -1067,13 +1086,8 @@ debounce action = do
         unless (Just cur == prev) $ action cur
         atomically $ putTMVar mvar (Just cur)
 
--- | Convenience function to measure the time of a LSQ query,
--- and trace the result.
---
--- Such that we can get logs like:
--- >>> Query getAccountBalance took 51.664463s
---
--- fixme: put back time measurements using a tracer transformer
+-- | Convenience function to trace around a local state query.
+-- See 'addTimings'.
 bracketQuery
     :: MonadUnliftIO m
     => String
@@ -1081,6 +1095,18 @@ bracketQuery
     -> m a
     -> m a
 bracketQuery label tr = bracketTracer (contramap (MsgQuery label) tr)
+
+-- | A tracer transformer which processes 'MsgQuery' logs to make new
+-- 'MsgQueryTime' logs, so that we can get logs like:
+--
+-- >>> Query getAccountBalance took 51.664463s
+addTimings :: Tracer IO NetworkLayerLog -> IO (Tracer IO NetworkLayerLog)
+addTimings tr = combineTracers tr <$> produceTimings msgQuery trDiffTime
+  where
+    trDiffTime = contramap (uncurry MsgQueryTime) tr
+    msgQuery = \case
+        MsgQuery l b -> Just (l, b)
+        _ -> Nothing
 
 -- | A protocol client that will never leave the initial state.
 doNothingProtocol
@@ -1233,7 +1259,7 @@ data NetworkLayerLog where
     -- TODO: Combine ^^ and vv
     MsgInterpreterLog :: TimeInterpreterLog -> NetworkLayerLog
     MsgQuery :: String -> BracketLog -> NetworkLayerLog
-    MsgQueryTime :: String -> NominalDiffTime -> NetworkLayerLog
+    MsgQueryTime :: String -> DiffTime -> NetworkLayerLog
     MsgObserverLog
         :: ObserverLog W.RewardAccount W.Coin
         -> NetworkLayerLog
@@ -1360,6 +1386,6 @@ instance HasSeverityAnnotation NetworkLayerLog where
         MsgChainSyncCmd cmd                -> getSeverityAnnotation cmd
         MsgInterpreter{}                   -> Debug
         MsgQuery _ msg                     -> getSeverityAnnotation msg
-        MsgQueryTime{}                     -> Info
+        MsgQueryTime{}                     -> Debug
         MsgInterpreterLog msg              -> getSeverityAnnotation msg
         MsgObserverLog{}                   -> Debug

@@ -29,7 +29,7 @@ module Cardano.Wallet.Logging
       -- * Logging and timing IO actions
     , BracketLog (..)
     , bracketTracer
-    , fiddleOutcome
+    , bracketTracerAlarm
     , produceTimings
 
       -- * Combinators
@@ -78,6 +78,10 @@ import Data.Time.Clock.TAI
     ( AbsoluteTime, diffAbsoluteTime )
 import GHC.Generics
     ( Generic )
+import UnliftIO.Async
+    ( withAsync )
+import UnliftIO.Concurrent
+    ( threadDelay )
 import UnliftIO.Exception
     ( SomeException (..), displayException, isSyncException, withException )
 
@@ -160,20 +164,22 @@ stdoutTextTracer = Tracer $ liftIO . B8.putStrLn . T.encodeUtf8 . toText
 data BracketLog
     = BracketStart
     -- ^ Logged before the action starts.
+    | BracketProgress
+    -- ^ Can optionally be logged while an action is in progress.
     | BracketFinish
     -- ^ Logged after the action finishes.
     | BracketException LoggedException
     -- ^ Logged when the action throws an exception.
-    | BracketAsyncException LoggedException
-    -- ^ Logged when the action receives an async exception.
     deriving (Generic, Show, Eq, ToJSON)
 
 instance ToText BracketLog where
     toText = \case
         BracketStart -> "start"
+        BracketProgress -> ""
         BracketFinish -> "finish"
-        BracketException e -> "exception: " <> toText e
-        BracketAsyncException e -> "cancelled: " <> toText e
+        BracketException m@(LoggedException e)
+            | isSyncException e -> "exception: " <> toText m
+            | otherwise ->         "cancelled: " <> toText m
 
 instance HasPrivacyAnnotation BracketLog
 instance HasSeverityAnnotation BracketLog where
@@ -181,9 +187,11 @@ instance HasSeverityAnnotation BracketLog where
     -- course use different values.
     getSeverityAnnotation = \case
         BracketStart -> Debug
+        BracketProgress -> Debug
         BracketFinish -> Debug
-        BracketException _ -> Error
-        BracketAsyncException _ -> Debug
+        BracketException (LoggedException e)
+            | isSyncException e -> Error
+            | otherwise -> Debug
 
 newtype LoggedException = LoggedException SomeException
     deriving (Generic, Show)
@@ -197,18 +205,30 @@ instance Eq LoggedException where
 instance ToJSON LoggedException where
     toJSON e = object ["exception" .= toText e]
 
-exceptionMsg :: SomeException -> BracketLog
-exceptionMsg e = if isSyncException e
-    then BracketException $ LoggedException e
-    else BracketAsyncException $ LoggedException e
-
 -- | Run a monadic action with 'BracketLog' traced around it.
 bracketTracer :: MonadUnliftIO m => Tracer m BracketLog -> m a -> m a
 bracketTracer tr action = do
     traceWith tr BracketStart
     withException
         (action <* traceWith tr BracketFinish)
-        (traceWith tr . exceptionMsg)
+        (traceWith tr . BracketException . LoggedException)
+
+-- | The same as 'bracketTracer', except that an additional message is scheduled
+-- to be traced after the given time interval, if the action has not finished
+-- yet.
+--
+-- This is not a timeout; the action is allowed to complete.
+--
+-- Use it with 'produceTimings'.
+bracketTracerAlarm
+    :: MonadUnliftIO m
+    => Int  -- ^ Delay in nanoseconds
+    -> Tracer m BracketLog
+    -> m a
+    -> m a
+bracketTracerAlarm ns tr = bracketTracer tr . withAsync alarm . const
+  where
+    alarm = threadDelay ns >> traceWith tr BracketProgress
 
 instance MonadIO m => Outcome m BracketLog where
   type IntermediateValue BracketLog = AbsoluteTime
@@ -216,9 +236,9 @@ instance MonadIO m => Outcome m BracketLog where
 
   classifyObservable = pure . \case
       BracketStart -> OutcomeStarts
+      BracketProgress -> OutcomeOther
       BracketFinish -> OutcomeEnds
       BracketException _ -> OutcomeEnds
-      BracketAsyncException _ -> OutcomeEnds
 
   -- NOTE: The AbsoluteTime functions are required so that measurements are
   -- correct at times when leap seconds are applied. This is following the
@@ -239,17 +259,31 @@ instance MonadIO m => Outcome m (ctx, BracketLog) where
 -- | Get metric results from 'mkOutcomeExtractor' and throw away the rest.
 fiddleOutcome
     :: Monad m
-    => Tracer m (ctx, DiffTime)
+    => Tracer m (ctx, Maybe DiffTime)
     -> Tracer m (Either (ctx, BracketLog) (OutcomeFidelity (ctx, DiffTime)))
 fiddleOutcome tr = Tracer $ \case
-    Right (ProgressedNormally dt) -> runTracer tr dt
+    Right (ProgressedNormally dt) -> runTracer tr (Just <$> dt)
+    Left (ctx, _) -> runTracer tr (ctx, Nothing)
     _ -> pure ()
 
--- | Simple wrapper for 'mkOutcomeExtractor'
+-- | Simplified wrapper for 'mkOutcomeExtractor'. This produces a timings
+-- 'Tracer' from a 'Tracer' of messages @a@, and a function which can extract
+-- the 'BracketLog' from @a@.
+--
+-- The extractor function can provide @ctx@, which could be the name of the
+-- timed operation for example.
+--
+-- The produced tracer will make just one trace for each finished bracket.
+-- It contains the @ctx@ from the extractor and 'Just' the time difference.
+--
+-- If 'bracketTracerAlarm' was used to produce the source 'BracketLog' traces,
+-- then a 'Nothing' will also be traced when the timer lapses.
 produceTimings
     :: (MonadUnliftIO m, MonadMask m)
     => (a -> Maybe (ctx, BracketLog))
-    -> Tracer m (ctx, DiffTime)
+    -- ^ Function to extract BracketLog messages from @a@, paired with context.
+    -> Tracer m (ctx, Maybe DiffTime)
+    -- ^ The timings tracer, has time deltas for each finished bracket.
     -> m (Tracer m a)
 produceTimings f trDiffTime = do
     extractor <- mkOutcomeExtractor

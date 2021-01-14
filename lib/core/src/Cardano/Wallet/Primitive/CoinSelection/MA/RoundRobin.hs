@@ -251,23 +251,34 @@ runSelection available minimumBalance =
     assetSelectionLens (asset, minimumAssetQuantity) = SelectionLens
         { currentQuantity = assetQuantity asset . selected
         , minimumQuantity = unTokenQuantity minimumAssetQuantity
-        , selectQuantity = selectMatchingQuantity $ WithAsset asset
+        , selectQuantity = selectMatchingQuantity
+            [ WithAsset asset
+            ]
         }
 
     coinSelectionLens :: SelectionLens m SelectionState
     coinSelectionLens = SelectionLens
         { currentQuantity = coinQuantity . selected
         , minimumQuantity = fromIntegral $ unCoin minimumCoinQuantity
-        , selectQuantity = selectMatchingQuantity Any
+        , selectQuantity = selectMatchingQuantity
+            [ WithAdaOnly
+            , Any
+            ]
         }
 
 selectMatchingQuantity
     :: MonadRandom m
-    => SelectionFilter
+    => [SelectionFilter]
+        -- A list of selection filters, traversed from left to right if previous
+        -- filter failed. This allows for giving some filters priorities over
+        -- others.
     -> SelectionState
     -> m (Maybe SelectionState)
-selectMatchingQuantity f s =
-    fmap updateState <$> UTxOIndex.selectRandom (leftover s) f
+selectMatchingQuantity []    _ = pure Nothing
+selectMatchingQuantity (h:q) s = do
+    UTxOIndex.selectRandom (leftover s) h >>= \case
+        Just s' -> pure $ Just $ updateState s'
+        Nothing -> selectMatchingQuantity q s
   where
     updateState ((i, o), remaining) = SelectionState
         { leftover = remaining

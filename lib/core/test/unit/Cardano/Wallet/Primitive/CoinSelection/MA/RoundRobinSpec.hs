@@ -35,6 +35,8 @@ import Cardano.Wallet.Primitive.CoinSelection.MA.RoundRobin
     )
 import Cardano.Wallet.Primitive.Types.Coin
     ( Coin (..) )
+import Cardano.Wallet.Primitive.Types.Coin.Gen
+    ( genCoinSmallPositive, shrinkCoinSmallPositive )
 import Cardano.Wallet.Primitive.Types.TokenBundle
     ( TokenBundle )
 import Cardano.Wallet.Primitive.Types.TokenBundle.Gen
@@ -147,6 +149,8 @@ spec = describe "Cardano.Wallet.Primitive.CoinSelection.MA.RoundRobinSpec" $
             property prop_runSelection_UTxO_notEnough
         it "prop_runSelection_UTxO_exactlyEnough" $
             property prop_runSelection_UTxO_exactlyEnough
+        it "prop_runSelection_UTxO_extraSourceUsed" $
+            property prop_runSelection_UTxO_extraSourceUsed
         it "prop_runSelection_UTxO_moreThanEnough" $
             property prop_runSelection_UTxO_moreThanEnough
         it "prop_runSelection_UTxO_muchMoreThanEnough" $
@@ -348,20 +352,23 @@ prop_performSelection (Blind criteria) =
 --------------------------------------------------------------------------------
 
 prop_runSelection_UTxO_empty
-    :: TokenBundle -> Property
-prop_runSelection_UTxO_empty balanceRequested = monadicIO $ do
+    :: Maybe Coin
+    -> TokenBundle
+    -> Property
+prop_runSelection_UTxO_empty extraSource balanceRequested = monadicIO $ do
     SelectionState {selected, leftover} <-
-        run $ runSelection UTxOIndex.empty balanceRequested
+        run $ runSelection extraSource UTxOIndex.empty balanceRequested
     let balanceSelected = view #balance selected
     let balanceLeftover = view #balance leftover
     assert $ balanceSelected == TokenBundle.empty
     assert $ balanceLeftover == TokenBundle.empty
 
 prop_runSelection_UTxO_notEnough
-    :: Small UTxOIndex -> Property
+    :: Small UTxOIndex
+    -> Property
 prop_runSelection_UTxO_notEnough (Small index) = monadicIO $ do
     SelectionState {selected, leftover} <-
-        run $ runSelection index balanceRequested
+        run $ runSelection Nothing index balanceRequested
     let balanceSelected = view #balance selected
     let balanceLeftover = view #balance leftover
     assert $ balanceSelected == balanceAvailable
@@ -371,10 +378,11 @@ prop_runSelection_UTxO_notEnough (Small index) = monadicIO $ do
     balanceRequested = adjustAllQuantities (* 2) balanceAvailable
 
 prop_runSelection_UTxO_exactlyEnough
-    :: Small UTxOIndex -> Property
+    :: Small UTxOIndex
+    -> Property
 prop_runSelection_UTxO_exactlyEnough (Small index) = monadicIO $ do
     SelectionState {selected, leftover} <-
-        run $ runSelection index balanceRequested
+        run $ runSelection Nothing index balanceRequested
     let balanceSelected = view #balance selected
     let balanceLeftover = view #balance leftover
     assert $ balanceSelected == balanceRequested
@@ -382,11 +390,45 @@ prop_runSelection_UTxO_exactlyEnough (Small index) = monadicIO $ do
   where
     balanceRequested = view #balance index
 
+prop_runSelection_UTxO_extraSourceUsed
+    :: Maybe Coin
+    -> Small UTxOIndex
+    -> Property
+prop_runSelection_UTxO_extraSourceUsed extraSource (Small index) =
+    monadicIO $ case almostEverything of
+        Nothing ->
+            assert True
+        Just balanceRequested | balanceRequested == TokenBundle.empty -> do
+            SelectionState {selected,leftover} <-
+                run $ runSelection extraSource index balanceRequested
+            let balanceSelected = view #balance selected
+            let balanceLeftover = view #balance leftover
+            assert $ balanceLeftover == view #balance index
+            assert $ balanceSelected == TokenBundle.empty
+        Just balanceRequested -> do
+            monitor (cover 80 True "sometimes there are Ada")
+            SelectionState {selected} <-
+                run $ runSelection extraSource index balanceRequested
+            let balanceSelected = view #balance selected
+            let coinSelected = TokenBundle.coin $
+                    addExtraSource extraSource balanceSelected
+            monitor $ counterexample $ unlines
+                [ "balance selected: " <> show balanceSelected
+                ]
+            assert $ coinSelected >= TokenBundle.coin balanceRequested
+            assert $ balanceSelected /= TokenBundle.empty
+  where
+    almostEverything = TokenBundle.subtract
+        (view #balance index)
+        (TokenBundle.fromCoin (Coin 1))
+
 prop_runSelection_UTxO_moreThanEnough
-    :: Small UTxOIndex -> Property
-prop_runSelection_UTxO_moreThanEnough (Small index) = monadicIO $ do
+    :: Maybe Coin
+    -> Small UTxOIndex
+    -> Property
+prop_runSelection_UTxO_moreThanEnough extraSource (Small index) = monadicIO $ do
     SelectionState {selected, leftover} <-
-        run $ runSelection index balanceRequested
+        run $ runSelection extraSource index balanceRequested
     let balanceSelected = view #balance selected
     let balanceLeftover = view #balance leftover
     monitor $ cover 80
@@ -394,7 +436,13 @@ prop_runSelection_UTxO_moreThanEnough (Small index) = monadicIO $ do
         "assetsRequested ⊂ assetsAvailable"
     monitor $ cover 50 (Set.size assetsRequested >= 4)
         "size assetsRequested >= 4"
-    assert $ balanceRequested `leq` balanceSelected
+    monitor $ counterexample $ unlines
+        [ "balance available: " <> show balanceAvailable
+        , "balance requested: " <> show balanceRequested
+        , "balance selected:  " <> show balanceSelected
+        , "balance leftover:  " <> show balanceLeftover
+        ]
+    assert $ balanceRequested `leq` addExtraSource extraSource balanceSelected
     assert $ balanceAvailable == balanceSelected <> balanceLeftover
   where
     assetsAvailable = TokenBundle.getAssets balanceAvailable
@@ -404,14 +452,16 @@ prop_runSelection_UTxO_moreThanEnough (Small index) = monadicIO $ do
         cutAssetSetSizeInHalf balanceAvailable
 
 prop_runSelection_UTxO_muchMoreThanEnough
-    :: Blind (Large UTxOIndex) -> Property
-prop_runSelection_UTxO_muchMoreThanEnough (Blind (Large index)) =
+    :: Maybe Coin
+    -> Blind (Large UTxOIndex)
+    -> Property
+prop_runSelection_UTxO_muchMoreThanEnough extraSource (Blind (Large index)) =
     -- Generation of large UTxO sets takes longer, so limit the number of runs:
     withMaxSuccess 100 $
     checkCoverage $
     monadicIO $ do
         SelectionState {selected, leftover} <-
-            run $ runSelection index balanceRequested
+            run $ runSelection extraSource index balanceRequested
         let balanceSelected = view #balance selected
         let balanceLeftover = view #balance leftover
         monitor $ cover 80
@@ -419,7 +469,13 @@ prop_runSelection_UTxO_muchMoreThanEnough (Blind (Large index)) =
             "assetsRequested ⊂ assetsAvailable"
         monitor $ cover 50 (Set.size assetsRequested >= 4)
             "size assetsRequested >= 4"
-        assert $ balanceRequested `leq` balanceSelected
+        monitor $ counterexample $ unlines
+            [ "balance available: " <> show balanceAvailable
+            , "balance requested: " <> show balanceRequested
+            , "balance selected:  " <> show balanceSelected
+            , "balance leftover:  " <> show balanceLeftover
+            ]
+        assert $ balanceRequested `leq` addExtraSource extraSource balanceSelected
         assert $ balanceAvailable == balanceSelected <> balanceLeftover
   where
     assetsAvailable = TokenBundle.getAssets balanceAvailable
@@ -785,6 +841,11 @@ consecutivePairs xs = case tailMay xs of
 inAscendingPartialOrder :: (Foldable f, PartialOrd a) => f a -> Bool
 inAscendingPartialOrder = all (uncurry leq) . consecutivePairs . F.toList
 
+addExtraSource :: Maybe Coin -> TokenBundle -> TokenBundle
+addExtraSource extraSource =
+    TokenBundle.add
+        (maybe TokenBundle.empty TokenBundle.fromCoin extraSource)
+
 --------------------------------------------------------------------------------
 -- Arbitraries
 --------------------------------------------------------------------------------
@@ -839,3 +900,7 @@ instance Arbitrary (Large UTxOIndex) where
 instance Arbitrary (Small UTxOIndex) where
     arbitrary = Small <$> genUTxOIndexSmall
     shrink = fmap Small . shrinkUTxOIndexSmall . getSmall
+
+instance Arbitrary Coin where
+    arbitrary = genCoinSmallPositive
+    shrink = shrinkCoinSmallPositive

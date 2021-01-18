@@ -19,18 +19,23 @@ import Algebra.PartialOrd
     ( PartialOrd (..) )
 import Cardano.Wallet.Primitive.CoinSelection.MA.RoundRobin
     ( BalanceInsufficientError (..)
+    , InsufficientMinCoinValueError (..)
     , SelectionCriteria (..)
     , SelectionError (..)
     , SelectionLens (..)
     , SelectionResult (..)
+    , SelectionSkeleton (..)
     , SelectionState (..)
     , addCoin
+    , availableBalance
     , groupByKey
     , makeChange
-    , makeChangeForCoins
+    , makeChangeForCoin
     , makeChangeForKnownAsset
     , makeChangeForUnknownAsset
+    , mapMaybe
     , performSelection
+    , prepareOutputsWith
     , runRoundRobin
     , runSelection
     , runSelectionStep
@@ -63,7 +68,7 @@ import Cardano.Wallet.Primitive.Types.TokenQuantity
 import Cardano.Wallet.Primitive.Types.TokenQuantity.Gen
     ( genTokenQuantitySmallPositive, shrinkTokenQuantitySmallPositive )
 import Cardano.Wallet.Primitive.Types.Tx
-    ( TxOut )
+    ( TxOut, txOutCoin )
 import Cardano.Wallet.Primitive.Types.Tx.Gen
     ( genTxOutSmallRange, shrinkTxOutSmallRange )
 import Cardano.Wallet.Primitive.Types.UTxOIndex
@@ -75,7 +80,7 @@ import Control.Monad
 import Data.Bifunctor
     ( bimap, second )
 import Data.Function
-    ( (&) )
+    ( on, (&) )
 import Data.Functor.Identity
     ( Identity (..) )
 import Data.Generics.Internal.VL.Lens
@@ -194,11 +199,11 @@ spec = describe "Cardano.Wallet.Primitive.CoinSelection.MA.RoundRobinSpec" $
             property prop_makeChange
 
     parallel $ describe "Making change for coins" $ do
-        it "prop_makeChangeForCoins_sum" $
-            property prop_makeChangeForCoins_sum
-        it "prop_makeChangeForCoins_length" $
-            property prop_makeChangeForCoins_length
-        unitTests "makeChangeForCoins" unit_makeChangeForCoins
+        it "prop_makeChangeForCoin_sum" $
+            property prop_makeChangeForCoin_sum
+        it "prop_makeChangeForCoin_length" $
+            property prop_makeChangeForCoin_length
+        unitTests "makeChangeForCoin" unit_makeChangeForCoin
 
     parallel $ describe "Making change for unknown assets" $ do
         it "prop_makeChangeForUnknownAsset_sum" $
@@ -213,16 +218,6 @@ spec = describe "Cardano.Wallet.Primitive.CoinSelection.MA.RoundRobinSpec" $
         it "prop_makeChangeForKnownAsset_length" $
             property prop_makeChangeForKnownAsset_length
         unitTests "makeChangeForKnownAsset" unit_makeChangeForKnownAsset
-
-
---    parallel $ describe "Making change for surplus assets" $ do
---
---        it "prop_makeChangeForSurplusAssets_length" $
---            property prop_makeChangeForSurplusAssets_length
---        it "prop_makeChangeForSurplusAssets_sort" $
---            property prop_makeChangeForSurplusAssets_sort
---        it "prop_makeChangeForSurplusAssets_sum" $
---            property prop_makeChangeForSurplusAssets_sum
 
     parallel $ describe "Grouping and ungrouping" $ do
 
@@ -300,45 +295,54 @@ genSelectionCriteria genUTxOIndex = do
         choose (1, UTxOIndex.size utxoAvailable `div` 8)
     outputsToCover <- NE.fromList <$>
         replicateM outputCount genTxOutSmallRange
-    pure $ SelectionCriteria {outputsToCover, utxoAvailable}
+    extraCoinSource <- oneof [ pure Nothing, Just <$> genCoinSmall ]
+    pure $ SelectionCriteria {outputsToCover, utxoAvailable, extraCoinSource}
 
 balanceSufficient :: SelectionCriteria -> Bool
-balanceSufficient SelectionCriteria {outputsToCover, utxoAvailable} =
+balanceSufficient SelectionCriteria{outputsToCover,utxoAvailable,extraCoinSource} =
     balanceRequired `leq` balanceAvailable
   where
     balanceRequired = F.foldMap (view #tokens) outputsToCover
-    balanceAvailable = UTxOIndex.balance utxoAvailable
+    balanceAvailable = availableBalance utxoAvailable extraCoinSource
 
 prop_performSelection_small
-    :: Blind (Small SelectionCriteria)
+    :: MinCoinValueFor
+    -> CostFor
+    -> Blind (Small SelectionCriteria)
     -> Property
-prop_performSelection_small (Blind (Small criteria)) =
+prop_performSelection_small minCoinValueFor costFor (Blind (Small criteria)) =
     checkCoverage $
     cover 30 (balanceSufficient criteria)
         "balance sufficient" $
     cover 30 (not $ balanceSufficient criteria)
         "balance insufficient" $
-    prop_performSelection (Blind criteria)
+    prop_performSelection minCoinValueFor costFor (Blind criteria)
 
 prop_performSelection_large
-    :: Blind (Large SelectionCriteria)
+    :: MinCoinValueFor
+    -> CostFor
+    -> Blind (Large SelectionCriteria)
     -> Property
-prop_performSelection_large (Blind (Large criteria)) =
+prop_performSelection_large minCoinValueFor costFor (Blind (Large criteria)) =
     -- Generation of large UTxO sets takes longer, so limit the number of runs:
     withMaxSuccess 100 $
     checkCoverage $
     cover 50 (balanceSufficient criteria)
         "balance sufficient" $
-    prop_performSelection (Blind criteria)
+    prop_performSelection minCoinValueFor costFor (Blind criteria)
 
 prop_performSelection
-    :: Blind SelectionCriteria
+    :: MinCoinValueFor
+    -> CostFor
+    -> Blind SelectionCriteria
     -> Property
-prop_performSelection (Blind criteria) =
-    monadicIO $
-        either onFailure onSuccess =<< run (performSelection criteria)
+prop_performSelection minCoinValueFor costFor (Blind criteria) =
+    monadicIO $ either onFailure onSuccess =<< run (performSelection
+        (mkMinCoinValueFor minCoinValueFor)
+        (mkCostFor costFor)
+        criteria)
   where
-    SelectionCriteria outputsToCover utxoAvailable = criteria
+    SelectionCriteria{outputsToCover,utxoAvailable,extraCoinSource} = criteria
 
     onSuccess result = do
         monitor $ counterexample $ unlines
@@ -351,8 +355,13 @@ prop_performSelection (Blind criteria) =
             , "change balance:"
             , pretty (TokenBundle.Nested balanceChange)
             ]
+        let delta = TokenBundle.unsafeSubtract
+                balanceSelected
+                (balanceRequired <> balanceChange)
         assert $ balanceSufficient criteria
-        assert $ balanceSelected == balanceRequired <> balanceChange
+        assert $ on (==) (view #tokens)
+            balanceSelected (balanceRequired <> balanceChange)
+        assert $ TokenBundle.getCoin delta == expectedCost
         assert $ utxoAvailable
             == UTxOIndex.insertMany inputsSelected utxoRemaining
         assert $ utxoRemaining
@@ -360,13 +369,25 @@ prop_performSelection (Blind criteria) =
       where
         SelectionResult
             {inputsSelected, changeGenerated, utxoRemaining} = result
+        skeleton = SelectionSkeleton
+            { inputsSkeleton =
+                UTxOIndex.fromSequence inputsSelected
+            , outputsSkeleton =
+                outputsToCover
+            , changeSkeleton  =
+                fmap (TokenMap.getAssets . view #tokens) changeGenerated
+            }
         balanceSelected =
-            F.foldMap (view #tokens . snd) inputsSelected
+            availableBalance (inputsSkeleton skeleton) extraCoinSource
         balanceChange =
             F.fold changeGenerated
+        expectedCost =
+            mkCostFor costFor skeleton
 
     onFailure = \case
         BalanceInsufficient e -> onBalanceInsufficient e
+        InsufficientMinCoinValues es -> onInsufficientMinCoinValues es
+        UnableToConstructChange -> onUnableToConstructChange
 
     onBalanceInsufficient e = do
         monitor $ counterexample $ unlines
@@ -381,8 +402,25 @@ prop_performSelection (Blind criteria) =
       where
         BalanceInsufficientError errorBalanceAvailable errorBalanceRequired = e
 
-    balanceRequired = F.foldMap (view #tokens) outputsToCover
-    balanceAvailable = UTxOIndex.balance utxoAvailable
+    onInsufficientMinCoinValues es = do
+        monitor $ counterexample $ unlines
+            [ "InsufficientMinCoinValueError(s):"
+            , show es
+            , "expected / actual:"
+            , show $ NE.zip
+                (expectedMinCoinValue <$> es)
+                (actualMinCoinValue <$> es)
+            ]
+        assert $ all (\e -> expectedMinCoinValue e > actualMinCoinValue e) es
+      where
+        actualMinCoinValue
+            = txOutCoin . insufficientlyCoveredOutput
+
+    onUnableToConstructChange =
+        assert True -- TODO
+
+    balanceRequired  = F.foldMap (view #tokens) outputsToCover
+    balanceAvailable = availableBalance utxoAvailable extraCoinSource
 
 --------------------------------------------------------------------------------
 -- Running a selection (without making change)
@@ -652,13 +690,33 @@ linearMinCoin m =
 noMinCoin :: TokenMap -> Coin
 noMinCoin = const (Coin 0)
 
+data CostFor
+    = NoCost
+    | LinearCost
+    deriving (Eq, Show, Bounded, Enum)
+
+mkCostFor
+    :: CostFor
+    -> (SelectionSkeleton -> Coin)
+mkCostFor = \case
+    NoCost -> const noCost
+    LinearCost -> linearCost
+
 noCost :: Coin
 noCost = Coin 0
+
+linearCost :: SelectionSkeleton -> Coin
+linearCost SelectionSkeleton{inputsSkeleton, outputsSkeleton, changeSkeleton}
+    = Coin
+    $ fromIntegral
+    $ UTxOIndex.size inputsSkeleton
+    + NE.length outputsSkeleton
+    + NE.length changeSkeleton
 
 data MakeChangeData = MakeChangeData
     { inputBundles
         :: NonEmpty TokenBundle
-    , extraCoinSource
+    , extraInputCoins
         :: Maybe Coin
     , outputBundles
         :: NonEmpty TokenBundle
@@ -675,7 +733,7 @@ isValidMakeChangeData p = (&&)
   where
     totalInputValue = TokenBundle.add
         (F.fold $ inputBundles p)
-        (maybe TokenBundle.empty TokenBundle.fromCoin (extraCoinSource p))
+        (maybe TokenBundle.empty TokenBundle.fromCoin (extraInputCoins p))
     totalOutputValue = F.fold $ outputBundles p
     totalOutputCoinValue = TokenBundle.getCoin totalOutputValue
 
@@ -701,7 +759,7 @@ makeChangeWith
 makeChangeWith p = makeChange
     (mkMinCoinValueFor $ minCoinValueDef p)
     (cost p)
-    (extraCoinSource p) (inputBundles p)
+    (extraInputCoins p) (inputBundles p)
     (outputBundles p)
 
 prop_makeChange_identity
@@ -719,7 +777,7 @@ prop_makeChange_length p =
         Just xs -> length xs === length (outputBundles p)
   where
     change = makeChange noMinCoin noCost
-        (extraCoinSource p) (inputBundles p) (outputBundles p)
+        (extraInputCoins p) (inputBundles p) (outputBundles p)
 
 prop_makeChange
     :: MakeChangeData
@@ -765,7 +823,7 @@ prop_makeChange_success_delta p change =
   where
     totalInputValue = TokenBundle.add
         (F.fold (inputBundles p))
-        (maybe TokenBundle.empty TokenBundle.fromCoin (extraCoinSource p))
+        (maybe TokenBundle.empty TokenBundle.fromCoin (extraInputCoins p))
     totalInputCoin =
         TokenBundle.getCoin totalInputValue
     totalOutputValue =
@@ -815,7 +873,7 @@ prop_makeChange_fail_costTooBig p =
   where
     totalInputValue = TokenBundle.add
         (F.fold (inputBundles p))
-        (maybe TokenBundle.empty TokenBundle.fromCoin (extraCoinSource p))
+        (maybe TokenBundle.empty TokenBundle.fromCoin (extraInputCoins p))
     totalOutputValue =
         F.fold $ outputBundles p
 
@@ -861,7 +919,7 @@ prop_makeChange_fail_minValueTooBig p =
   where
     totalInputValue = TokenBundle.add
         (F.fold (inputBundles p))
-        (maybe TokenBundle.empty TokenBundle.fromCoin (extraCoinSource p))
+        (maybe TokenBundle.empty TokenBundle.fromCoin (extraInputCoins p))
     totalOutputValue =
         F.fold $ outputBundles p
 
@@ -869,22 +927,22 @@ prop_makeChange_fail_minValueTooBig p =
 -- Making change for coins
 --------------------------------------------------------------------------------
 
-prop_makeChangeForCoins_sum :: NonEmpty Coin -> Coin -> Property
-prop_makeChangeForCoins_sum weights surplus =
+prop_makeChangeForCoin_sum :: NonEmpty Coin -> Coin -> Property
+prop_makeChangeForCoin_sum weights surplus =
     surplus === F.foldr addCoin (Coin 0) changes
   where
-    changes = makeChangeForCoins weights surplus
+    changes = makeChangeForCoin weights surplus
 
-prop_makeChangeForCoins_length :: NonEmpty Coin -> Coin -> Property
-prop_makeChangeForCoins_length weights surplus =
+prop_makeChangeForCoin_length :: NonEmpty Coin -> Coin -> Property
+prop_makeChangeForCoin_length weights surplus =
     F.length changes === F.length weights
   where
-    changes = makeChangeForCoins weights surplus
+    changes = makeChangeForCoin weights surplus
 
-unit_makeChangeForCoins
+unit_makeChangeForCoin
     :: [Expectation]
-unit_makeChangeForCoins =
-    [ makeChangeForCoins weights surplus `shouldBe` expectation
+unit_makeChangeForCoin =
+    [ makeChangeForCoin weights surplus `shouldBe` expectation
     | (weights, surplus, expectation) <- matrix
     ]
   where
@@ -1278,3 +1336,9 @@ instance Arbitrary MinCoinValueFor where
     shrink = \case
         NoMinCoin -> []
         LinearMinCoin -> [NoMinCoin]
+
+instance Arbitrary CostFor where
+    arbitrary = arbitraryBoundedEnum
+    shrink = \case
+        NoCost -> []
+        LinearCost -> [NoCost]

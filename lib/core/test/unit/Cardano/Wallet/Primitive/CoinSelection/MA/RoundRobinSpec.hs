@@ -470,8 +470,8 @@ prop_runSelection_UTxO_extraSourceUsed
     -> Small UTxOIndex
     -> Property
 prop_runSelection_UTxO_extraSourceUsed extraSource (Small index) = do
-    let hasSomeAda = maybe False (/= TokenBundle.empty) almostEverything
-    cover 80 hasSomeAda "sometimes there are Ada" $ monadicIO $
+    let hasSomeAda = maybe False tokenBundleHasNonZeroCoin almostEverything
+    cover 80 hasSomeAda "sometimes there are ada" $ monadicIO $
         case almostEverything of
             Nothing ->
                 assert True
@@ -497,6 +497,8 @@ prop_runSelection_UTxO_extraSourceUsed extraSource (Small index) = do
     almostEverything = TokenBundle.subtract
         (view #balance index)
         (TokenBundle.fromCoin (Coin 1))
+    tokenBundleHasNonZeroCoin :: TokenBundle -> Bool
+    tokenBundleHasNonZeroCoin = (/= Coin 0) . TokenBundle.getCoin
 
 prop_runSelection_UTxO_moreThanEnough
     :: Maybe Coin

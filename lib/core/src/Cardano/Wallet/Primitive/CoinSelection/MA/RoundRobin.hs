@@ -191,7 +191,7 @@ data BalanceInsufficientError = BalanceInsufficientError
 data InsufficientMinCoinValueError = InsufficientMinCoinValueError
     { insufficientlyCoveredOutput
         :: !TxOut
-        -- ^ The invalid output which doesn't hold enough coin.
+        -- ^ The invalid output which doesn't have a high enough coin value.
     , expectedMinCoinValue
         :: !Coin
         -- ^ The minimum coin value expected for this output.
@@ -203,9 +203,9 @@ data InsufficientMinCoinValueError = InsufficientMinCoinValueError
 --
 -- However, users do not typically specify a minimum ada value themselves.
 -- One would rather send '10 Apple' and not '10 Apple & 1.2 Ada'. Therefore,
--- unless a coin value is explicitely specified, we do assign a coin value
--- manually for each non-ada output. That value is the minimum value
--- possible to make a particular output valid.
+-- unless a coin value is explicitly specified, we assign a coin value manually
+-- for each non-ada output. That value is the minimum value possible to make a
+-- particular output valid.
 prepareOutputsWith
     :: (TokenMap -> Coin)
     -> NonEmpty TxOut
@@ -242,7 +242,7 @@ performSelection
         -- particular output.
     -> (SelectionSkeleton -> Coin)
         -- ^ A function which computes the extra cost corresponding to a given
-        -- selection. This function must not depends on the value of each change
+        -- selection. This function must not depend on the value of each change
         -- output.
     -> SelectionCriteria
         -- ^ The selection goal we're trying to satify.
@@ -401,7 +401,7 @@ data SelectionState = SelectionState
 runSelection
     :: forall m. MonadRandom m
     => Maybe Coin
-        -- ^ An extra source of Ada, which can only be used after at least one
+        -- ^ An extra source of ada, which can only be used after at least one
         -- input has been selected.
     -> UTxOIndex
         -- ^ UTxO entries available for selection
@@ -450,9 +450,9 @@ runSelection mExtraCoinSource available minimumBalance =
 selectMatchingQuantity
     :: MonadRandom m
     => [SelectionFilter]
-        -- A list of selection filters, traversed from left to right if previous
-        -- filter failed. This allows for giving some filters priorities over
-        -- others.
+        -- A list of selection filters, traversed from left to right if the
+        -- previous filter failed. This allows for giving some filters
+        -- priorities over others.
     -> SelectionState
     -> m (Maybe SelectionState)
 selectMatchingQuantity []    _ = pure Nothing

@@ -139,7 +139,9 @@ import qualified Data.Set.Strict.NonEmptySet as NonEmptySet
 -- the 'checkInvariant' function.
 --
 data UTxOIndex = UTxOIndex
-    { index
+    { adaOnlyIndex
+        :: !(Set TxIn)
+    , assetIndex
         :: !(Map AssetId (NonEmptySet TxIn))
     , balance
         :: !TokenBundle
@@ -158,7 +160,8 @@ instance NFData UTxOIndex
 --
 empty :: UTxOIndex
 empty = UTxOIndex
-    { index = Map.empty
+    { adaOnlyIndex = Set.empty
+    , assetIndex = Map.empty
     , balance = TokenBundle.empty
     , utxo = Map.empty
     }
@@ -243,7 +246,8 @@ delete :: TxIn -> UTxOIndex -> UTxOIndex
 delete i u = case Map.lookup i (utxo u) of
     Nothing -> u
     Just o -> UTxOIndex
-        { index = F.foldl' deleteEntry (index u) (txOutAssets o)
+        { adaOnlyIndex = Set.delete i (adaOnlyIndex u)
+        , assetIndex = F.foldl' deleteEntry (assetIndex u) (txOutAssets o)
           -- This operation is safe, since we have already determined that the
           -- entry is a member of the index, and therefore the balance must be
           -- greater than or equal to the value of this output:
@@ -274,7 +278,7 @@ deleteMany = flip $ F.foldl' $ \u i -> delete i u
 -- | Returns the complete set of all assets contained in an index.
 --
 assets :: UTxOIndex -> Set AssetId
-assets = Map.keysSet . index
+assets = Map.keysSet . assetIndex
 
 -- | Returns the output corresponding to the given input, if one exists.
 --
@@ -335,7 +339,7 @@ selectRandom u selectionFilter =
     selectionSet :: Set TxIn
     selectionSet = case selectionFilter of
         Any -> Map.keysSet $ utxo u
-        WithAdaOnly -> entriesWithAdaOnly u
+        WithAdaOnly -> adaOnlyIndex u
         WithAsset a -> entriesWithAsset a u
 
 --------------------------------------------------------------------------------
@@ -346,17 +350,11 @@ selectRandom u selectionFilter =
 -- Utilities
 --------------------------------------------------------------------------------
 
-entriesWithAdaOnly :: UTxOIndex -> Set TxIn
-entriesWithAdaOnly u = Map.foldl'
-    (Set.difference)
-    (Map.keysSet $ utxo u)
-    (NonEmptySet.toSet <$> index u)
-
 -- | Returns the set of keys for entries that have non-zero quantities of the
 --   given asset.
 --
 entriesWithAsset :: AssetId -> UTxOIndex -> Set TxIn
-entriesWithAsset a = maybe mempty NonEmptySet.toSet . Map.lookup a . index
+entriesWithAsset a = maybe mempty NonEmptySet.toSet . Map.lookup a . assetIndex
 
 -- Inserts an entry, but without checking the following pre-condition:
 --
@@ -366,7 +364,8 @@ entriesWithAsset a = maybe mempty NonEmptySet.toSet . Map.lookup a . index
 --
 insertUnsafe :: TxIn -> TxOut -> UTxOIndex -> UTxOIndex
 insertUnsafe i o u = UTxOIndex
-    { index = F.foldl' insertEntry (index u) (txOutAssets o)
+    { adaOnlyIndex = (if isAdaOnly o then Set.insert i else id) (adaOnlyIndex u)
+    , assetIndex = F.foldl' insertEntry (assetIndex u) (txOutAssets o)
     , balance = balance u `TokenBundle.add` view #tokens o
     , utxo = Map.insert i o $ utxo u
     }
@@ -383,6 +382,9 @@ insertUnsafe i o u = UTxOIndex
       where
         createNew = NonEmptySet.singleton i
         updateOld = NonEmptySet.insert i
+
+isAdaOnly :: TxOut -> Bool
+isAdaOnly = TokenBundle.isCoin . view #tokens
 
 -- | Selects an element at random from the given set.
 --
@@ -409,13 +411,17 @@ data InvariantStatus
       -- ^ Indicates a successful check of the invariant.
     | InvariantBalanceError BalanceError
       -- ^ Indicates that the cached 'balance' value is incorrect.
-    | InvariantIndexIncomplete
-      -- ^ Indicates that the 'index' is missing one or more entries.
-    | InvariantIndexNonMinimal
-      -- ^ Indicates that the 'index' has one or more unnecessary entries.
+    | InvariantAssetIndexIncomplete
+      -- ^ Indicates that the asset index is missing one or more entries.
+    | InvariantAssetIndexNonMinimal
+      -- ^ Indicates that the asset index has one or more unnecessary entries.
+    | InvariantAdaIndexIncomplete
+      -- ^ Indicates that the ada index is missing one or more entries.
+    | InvariantAdaIndexNonMinimal
+      -- ^ Indicates that the ada index has one or more unnecessary entries.
     | InvariantAssetsInconsistent
-      -- ^ Indicates that the 'index' and the cached 'balance' value disagree
-      --   about which assets are included.
+      -- ^ Indicates that the asset index and the cached 'balance' value
+      --   disagree about which assets are included.
     deriving (Eq, Show)
 
 -- | Checks whether or not the invariant holds.
@@ -424,12 +430,16 @@ checkInvariant :: UTxOIndex -> InvariantStatus
 checkInvariant u
     | balanceStatus /= BalanceCorrect =
         InvariantBalanceError balanceError
-    | not (indexIsComplete u) =
-        InvariantIndexIncomplete
-    | not (indexIsMinimal u) =
-        InvariantIndexNonMinimal
+    | not (assetIndexIsComplete u) =
+        InvariantAssetIndexIncomplete
+    | not (assetIndexIsMinimal u) =
+        InvariantAssetIndexNonMinimal
     | not (assetsConsistent u) =
         InvariantAssetsInconsistent
+    | not (adaIndexIsComplete u) =
+        InvariantAdaIndexIncomplete
+    | not (adaIndexIsMinimal u) =
+        InvariantAdaIndexNonMinimal
     | otherwise =
         InvariantHolds
   where
@@ -466,11 +476,29 @@ checkBalance u
     balanceComputed = F.foldMap (view #tokens) (utxo u)
     balanceStored = balance u
 
+adaIndexIsComplete :: UTxOIndex -> Bool
+adaIndexIsComplete u = F.all entryIndexed $ Map.toList $ utxo u
+  where
+    entryIndexed :: (TxIn, TxOut) -> Bool
+    entryIndexed (i, o)
+        | isAdaOnly o = Set.member i (adaOnlyIndex u)
+        | otherwise = Set.notMember i (adaOnlyIndex u)
+
+adaIndexIsMinimal :: UTxOIndex -> Bool
+adaIndexIsMinimal u = F.all entryRequired $ adaOnlyIndex u
+  where
+    entryRequired :: TxIn -> Bool
+    entryRequired i = case Map.lookup i (utxo u) of
+        Nothing ->
+            False
+        Just o ->
+            isAdaOnly o
+
 -- | Checks that every entry in the 'utxo' map has a corresponding set of
 --   entries in the 'index'.
 --
-indexIsComplete :: UTxOIndex -> Bool
-indexIsComplete u = F.all entryIndexed $ Map.toList $ utxo u
+assetIndexIsComplete :: UTxOIndex -> Bool
+assetIndexIsComplete u = F.all entryIndexed $ Map.toList $ utxo u
   where
     entryIndexed :: (TxIn, TxOut) -> Bool
     entryIndexed (i, o) =
@@ -478,15 +506,15 @@ indexIsComplete u = F.all entryIndexed $ Map.toList $ utxo u
 
     indexed :: TxIn -> AssetId -> Bool
     indexed i asset =
-        case Map.lookup asset (index u) of
+        case Map.lookup asset (assetIndex u) of
             Nothing -> False
             Just is -> NonEmptySet.member i is
 
 -- | Checks that every entry in the 'index' is required by some entry in the
 --   'utxo' map.
 --
-indexIsMinimal :: UTxOIndex -> Bool
-indexIsMinimal u = F.all assetIsMinimal $ Map.toList $ index u
+assetIndexIsMinimal :: UTxOIndex -> Bool
+assetIndexIsMinimal u = F.all assetIsMinimal $ Map.toList $ assetIndex u
   where
     assetIsMinimal :: (AssetId, NonEmptySet TxIn) -> Bool
     assetIsMinimal (asset, is) =
@@ -505,4 +533,4 @@ indexIsMinimal u = F.all assetIsMinimal $ Map.toList $ index u
 --
 assetsConsistent :: UTxOIndex -> Bool
 assetsConsistent u =
-    Map.keysSet (index u) == TokenBundle.getAssets (balance u)
+    Map.keysSet (assetIndex u) == TokenBundle.getAssets (balance u)

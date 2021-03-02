@@ -39,7 +39,6 @@ import Cardano.Wallet.Primitive.CoinSelection.MA.RoundRobin
     , equipartitionTokenBundlesWithMaxQuantity
     , equipartitionTokenMap
     , equipartitionTokenMapWithMaxQuantity
-    , equipartitionTokenQuantity
     , fullBalance
     , groupByKey
     , makeChange
@@ -1192,7 +1191,7 @@ boundaryTest2 = BoundaryTestData
     }
   where
     assetA = AssetId (UnsafeTokenPolicyId $ Hash "A") (UnsafeTokenName "1")
-    q1 :| [q2] = equipartitionTokenQuantity maxTxOutTokenQuantity (() :| [()])
+    q1 :| [q2] = TokenQuantity.equipartition maxTxOutTokenQuantity (() :| [()])
     boundaryTestOutputs =
       [ (Coin 1_500_000, []) ]
     boundaryTestUTxO =
@@ -1221,7 +1220,7 @@ boundaryTest3 = BoundaryTestData
     }
   where
     assetA = AssetId (UnsafeTokenPolicyId $ Hash "A") (UnsafeTokenName "1")
-    q1 :| [q2] = equipartitionTokenQuantity
+    q1 :| [q2] = TokenQuantity.equipartition
         (TokenQuantity.succ maxTxOutTokenQuantity) (() :| [()])
     boundaryTestOutputs =
       [ (Coin 1_500_000, []) ]

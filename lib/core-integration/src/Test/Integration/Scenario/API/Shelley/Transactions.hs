@@ -172,7 +172,7 @@ import Test.Integration.Framework.TestData
     , steveToken
     )
 import UnliftIO.Concurrent
-    ( threadDelay )
+    ( forkIO, threadDelay )
 import Web.HttpApiData
     ( ToHttpApiData (..) )
 
@@ -391,6 +391,95 @@ spec = describe "SHELLEY_TRANSACTIONS" $ do
             expectField
                 (#balance . #available)
                 (`shouldBe` Quantity (initialAmt - feeMax - amt)) ra2
+
+    it "TRANS_CREATE_xx - Serial transactions" $ \ctx -> runResourceT $ do
+        wSrc <- fixtureWallet ctx
+        wDest <- emptyWallet ctx
+        addrs <- (map (view #id)) <$> listAddresses @n ctx wDest
+
+        let amt = minUTxOValue :: Natural
+        let n = 10
+        let batches = 100
+        forM_ [1 .. batches] $ \i' -> counterexample ("Batch #" <> show i') $ do
+            forM_ (zip [0..] (take n $ cycle addrs)) $ \(i, addr) -> counterexample ("Tx #" <> show i) $ do
+                let payload = Json [json|{
+                        "payments": [{
+                            "address": #{addr},
+                            "amount": {
+                                "quantity": #{amt},
+                                "unit": "lovelace"
+                            }
+                        }],
+                      "passphrase": #{fixturePassphrase}
+                    }|]
+
+                r <- request @(ApiTransaction n) ctx
+                    (Link.createTransaction @'Shelley wSrc) Default payload
+
+                verify r
+                    [ expectResponseCode HTTP.status202
+                    , expectField (#direction . #getApiT) (`shouldBe` Outgoing)
+                    , expectField (#status . #getApiT) (`shouldBe` Pending)
+                    , expectField #inputs $ \inputs' -> do
+                        inputs' `shouldSatisfy` all (isJust . source)
+                    ]
+
+            eventually "wDest balance is as expected" $ do
+                rd <- request @ApiWallet ctx
+                    (Link.getWallet @'Shelley wDest) Default Empty
+                verify rd
+                    [ expectField
+                            (#balance . #available)
+                            (`shouldBe` Quantity (fromIntegral n*amt*i'))
+                    , expectField
+                            (#balance . #total)
+                            (`shouldBe` Quantity (fromIntegral n*amt*i'))
+                    ]
+
+    it "TRANS_CREATE_xx - Concurrent transactions" $ \ctx -> runResourceT $ do
+        wSrc <- fixtureWallet ctx
+        wDest <- emptyWallet ctx
+        addrs <- (map (view #id)) <$> listAddresses @n ctx wDest
+
+        let amt = minUTxOValue :: Natural
+        let n = 10
+        let batches = 100
+        forM_ [1 .. batches] $ \i' -> counterexample ("Batch #" <> show i') $ do
+            forM_ (zip [0..] (take n $ cycle addrs)) $ \(i, addr) -> counterexample ("Tx #" <> show i) $ do
+                let payload = Json [json|{
+                        "payments": [{
+                            "address": #{addr},
+                            "amount": {
+                                "quantity": #{amt},
+                                "unit": "lovelace"
+                            }
+                        }],
+                      "passphrase": #{fixturePassphrase}
+                    }|]
+
+                forkIO $ do
+                    r <- request @(ApiTransaction n) ctx
+                        (Link.createTransaction @'Shelley wSrc) Default payload
+
+                    verify r
+                        [ expectResponseCode HTTP.status202
+                        , expectField (#direction . #getApiT) (`shouldBe` Outgoing)
+                        , expectField (#status . #getApiT) (`shouldBe` Pending)
+                        , expectField #inputs $ \inputs' -> do
+                            inputs' `shouldSatisfy` all (isJust . source)
+                        ]
+
+            eventually "wDest balance is as expected" $ do
+                rd <- request @ApiWallet ctx
+                    (Link.getWallet @'Shelley wDest) Default Empty
+                verify rd
+                    [ expectField
+                            (#balance . #available)
+                            (`shouldBe` Quantity (fromIntegral n*amt*i'))
+                    , expectField
+                            (#balance . #total)
+                            (`shouldBe` Quantity (fromIntegral n*amt*i'))
+                    ]
 
     it "TRANS_CREATE_02x - Multiple Output Tx to single wallet" $ \ctx -> runResourceT $ do
         wSrc <- fixtureWallet ctx

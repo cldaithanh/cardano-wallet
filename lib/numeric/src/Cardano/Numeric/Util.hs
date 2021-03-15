@@ -12,6 +12,9 @@ module Cardano.Numeric.Util
     , partitionNatural
     , unsafePartitionNatural
 
+      -- * Miscellaneous
+    , zeroSmallestToFitMaxBound
+
       -- * Partial orders
     , inAscendingPartialOrder
 
@@ -219,6 +222,31 @@ partitionNatural target weights
 
     totalWeight :: Natural
     totalWeight = F.sum weights
+
+zeroSmallestToFitMaxBound :: Natural -> NonEmpty Natural -> NonEmpty Natural
+zeroSmallestToFitMaxBound upperBound as = applySorted (go initialSum) as
+  where
+    go currentSum (x :| ys) | currentSum > upperBound =
+        case NE.nonEmpty ys of
+            Nothing -> 0 :| []
+            Just zs -> 0 `NE.cons` go (currentSum - x) zs
+    go _ xs = xs
+
+    initialSum = F.sum as
+
+applySorted
+    :: forall a b . Ord a
+    => (NonEmpty a -> NonEmpty b)
+    -> (NonEmpty a -> NonEmpty b)
+applySorted f values = f valuesSorted
+    & NE.zip indices
+    & NE.sortBy (comparing fst)
+    & fmap snd
+  where
+    (indices, valuesSorted) = values
+        & NE.zip ((0 :: Int) :| [1 .. ])
+        & NE.sortBy (comparing snd)
+        & NE.unzip
 
 --------------------------------------------------------------------------------
 -- Unsafe partitioning

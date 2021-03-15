@@ -8,7 +8,13 @@ module Cardano.Numeric.UtilSpec
 import Prelude
 
 import Cardano.Numeric.Util
-    ( equipartitionNatural, padCoalesce, partitionNatural )
+    ( equipartitionNatural
+    , padCoalesce
+    , partitionNatural
+    , zeroSmallestToFitMaxBound
+    )
+import Data.List
+    ( isSuffixOf )
 import Data.List.NonEmpty
     ( NonEmpty (..) )
 import Data.Maybe
@@ -26,6 +32,7 @@ import Test.QuickCheck
     , Property
     , arbitrarySizedNatural
     , checkCoverage
+    , cover
     , property
     , shrink
     , shrinkIntegral
@@ -69,6 +76,19 @@ spec = do
             property prop_partitionNatural_sum
         it "prop_partitionNatural_fair" $
             withMaxSuccess 1000 $ checkCoverage prop_partitionNatural_fair
+
+    describe "zeroSmallestToFitMaxBound " $ do
+
+        it "prop_zeroSmallestToFitMaxBound_coverage" $
+            property prop_zeroSmallestToFitMaxBound_coverage
+        it "prop_zeroSmallestToFitMaxBound_equality" $
+            property prop_zeroSmallestToFitMaxBound_equality
+        it "prop_zeroSmallestToFitMaxBound_length" $
+            property prop_zeroSmallestToFitMaxBound_length
+        it "prop_zeroSmallestToFitMaxBound_suffix" $
+            property prop_zeroSmallestToFitMaxBound_suffix
+        it "prop_zeroSmallestToFitMaxBound_sum" $
+            property prop_zeroSmallestToFitMaxBound_sum
 
 --------------------------------------------------------------------------------
 -- Coalescing values
@@ -173,6 +193,81 @@ prop_partitionNatural_fair target weights =
 
         totalWeight :: Natural
         totalWeight = F.sum weights
+
+--------------------------------------------------------------------------------
+-- Zeroing out small values to fit a maximum upper bound
+--------------------------------------------------------------------------------
+
+-- TODO: Use a dedicated data type to get the coverage we want.
+--
+-- It should test with
+--
+-- - different lengths of lists.
+-- - arrange that we cover:
+--     - one of the items being zeroed out
+--     - all of the items being zeroed out
+--     - other proportions
+--
+prop_zeroSmallestToFitMaxBound_coverage
+    :: Natural
+    -> NonEmpty Natural
+    -> Property
+prop_zeroSmallestToFitMaxBound_coverage upperBound as =
+    property $
+    checkCoverage $
+    cover 10 (asSum > upperBound)
+        "asSum > upperBound" $
+    cover 1 (asSum == upperBound)
+        "asSum = upperBound" $
+    cover 1 (asSum < upperBound)
+        "asSum < upperBound" $
+    cover 10 (rsSum > 0)
+        "rsSum > 0" $
+    cover 10 (rsNonZeroCount > 1)
+        "rsNonZeroCount > 1" $
+    True
+  where
+    asSum = F.sum as
+    rsSum = F.sum rs
+    rsNonZeroCount = length $ filter (> 0) $ F.toList rs
+    rs = zeroSmallestToFitMaxBound upperBound as
+
+prop_zeroSmallestToFitMaxBound_equality
+    :: Natural
+    -> NonEmpty Natural
+    -> Property
+prop_zeroSmallestToFitMaxBound_equality upperBound as
+    | total <= upperBound =
+        as === rs
+    | otherwise =
+        property $ F.all (\(r, a) -> r == a || r == 0) (rs `NE.zip` as)
+  where
+    rs = zeroSmallestToFitMaxBound upperBound as
+    total = F.sum as
+
+prop_zeroSmallestToFitMaxBound_length
+    :: Natural
+    -> NonEmpty Natural
+    -> Property
+prop_zeroSmallestToFitMaxBound_length upperBound as =
+    NE.length as === NE.length (zeroSmallestToFitMaxBound upperBound as)
+
+prop_zeroSmallestToFitMaxBound_suffix
+    :: Natural
+    -> NonEmpty Natural
+    -> Property
+prop_zeroSmallestToFitMaxBound_suffix upperBound as =
+    property $ dropWhile (== 0) rsSorted `isSuffixOf` asSorted
+  where
+    asSorted = NE.toList $ NE.sort as
+    rsSorted = NE.toList $ NE.sort $ zeroSmallestToFitMaxBound upperBound as
+
+prop_zeroSmallestToFitMaxBound_sum
+    :: Natural
+    -> NonEmpty Natural
+    -> Property
+prop_zeroSmallestToFitMaxBound_sum upperBound as =
+    property $ F.sum (zeroSmallestToFitMaxBound upperBound as) <= upperBound
 
 --------------------------------------------------------------------------------
 -- Arbitrary instances

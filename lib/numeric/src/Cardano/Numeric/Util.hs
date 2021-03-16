@@ -13,7 +13,7 @@ module Cardano.Numeric.Util
     , unsafePartitionNatural
 
       -- * Miscellaneous
-    , eraseValuesToMinimizeDistanceToTarget
+    , dropUntilSumIsMinimalDistanceToTarget
     , withSortedList
 
       -- * Partial orders
@@ -228,16 +228,19 @@ partitionNatural target weights
 --
 -- values `dropUntilSumIsMinimalDistanceToTarget` target
 --
+-- Finds the longest suffix of the given list for which the sum is at a minimal
+-- distance from the target, when all possible suffices are considered.
+--
 -- We need a property which checks that:
 --
 --  a longer suffix increases the distance
 --  a shorter suffix increase the distance or leaves it the same
 --
-eraseValuesToMinimizeDistanceToTarget
+dropUntilSumIsMinimalDistanceToTarget
     :: NonEmpty Natural
     -> Natural
     -> NonEmpty Natural
-eraseValuesToMinimizeDistanceToTarget as target =
+dropUntilSumIsMinimalDistanceToTarget as target =
     NE.fromList (prefix <> (0 <$ suffix))
   where
     prefix, suffix :: [Natural]

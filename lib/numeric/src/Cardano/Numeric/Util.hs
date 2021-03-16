@@ -13,7 +13,8 @@ module Cardano.Numeric.Util
     , unsafePartitionNatural
 
       -- * Miscellaneous
-    , zeroSmallestToFitMaxBound
+    , eraseValuesToMinimizeDistanceToTarget
+    , withSortedList
 
       -- * Partial orders
     , inAscendingPartialOrder
@@ -223,30 +224,57 @@ partitionNatural target weights
     totalWeight :: Natural
     totalWeight = F.sum weights
 
-zeroSmallestToFitMaxBound :: Natural -> NonEmpty Natural -> NonEmpty Natural
-zeroSmallestToFitMaxBound upperBound as = applySorted (go initialSum) as
+eraseValuesToMinimizeDistanceToTarget
+    :: Natural
+    -> NonEmpty Natural
+    -> NonEmpty Natural
+eraseValuesToMinimizeDistanceToTarget target as =
+    NE.fromList (prefix <> (0 <$ suffix))
   where
-    go currentSum (x :| ys) | currentSum > upperBound =
-        case NE.nonEmpty ys of
-            Nothing -> 0 :| []
-            Just zs -> 0 `NE.cons` go (currentSum - x) zs
-    go _ xs = xs
+    prefix, suffix :: [Natural]
+    (prefix, suffix) = NE.splitAt prefixLength as
 
-    initialSum = F.sum as
+    prefixLength :: Int
+    prefixLength = length aboveMinimumDistance + length atMinimumDistance - 1
 
-applySorted
-    :: forall a b . Ord a
-    => (NonEmpty a -> NonEmpty b)
+    aboveMinimumDistance, atMinimumDistance :: [Natural]
+    (aboveMinimumDistance, atMinimumDistance) = distances
+        & span (> minimumDistance)
+        & fmap (takeWhile (== minimumDistance))
+
+    distances :: [Natural]
+    distances = as
+        & cumulativeSum
+        & NE.cons 0
+        & NE.zipWith naturalDistance (NE.repeat target)
+        & NE.toList
+
+    minimumDistance :: Natural
+    minimumDistance = F.minimum distances
+
+withSortedList
+    :: Ord o
+    => (a -> o)
     -> (NonEmpty a -> NonEmpty b)
-applySorted f values = f valuesSorted
+    -> (NonEmpty a -> NonEmpty b)
+withSortedList order f values = f valuesSorted
     & NE.zip indices
-    & NE.sortBy (comparing fst)
+    & NE.sortWith fst
     & fmap snd
   where
     (indices, valuesSorted) = values
-        & NE.zip ((0 :: Int) :| [1 .. ])
-        & NE.sortBy (comparing snd)
+        & NE.zip (NE.iterate succ (0 :: Int))
+        & NE.sortWith (order . snd)
         & NE.unzip
+
+cumulativeSum :: Num a => NonEmpty a -> NonEmpty a
+cumulativeSum = NE.scanl1 (+)
+
+naturalDistance :: Natural -> Natural -> Natural
+naturalDistance a b
+    | a < b = b - a
+    | a > b = a - b
+    | otherwise = 0
 
 --------------------------------------------------------------------------------
 -- Unsafe partitioning

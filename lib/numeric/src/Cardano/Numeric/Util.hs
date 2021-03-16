@@ -224,11 +224,20 @@ partitionNatural target weights
     totalWeight :: Natural
     totalWeight = F.sum weights
 
+-- consider changing this to:
+--
+-- values `dropUntilSumIsMinimalDistanceToTarget` target
+--
+-- We need a property which checks that:
+--
+--  a longer suffix increases the distance
+--  a shorter suffix increase the distance or leaves it the same
+--
 eraseValuesToMinimizeDistanceToTarget
-    :: Natural
+    :: NonEmpty Natural
+    -> Natural
     -> NonEmpty Natural
-    -> NonEmpty Natural
-eraseValuesToMinimizeDistanceToTarget target as =
+eraseValuesToMinimizeDistanceToTarget as target =
     NE.fromList (prefix <> (0 <$ suffix))
   where
     prefix, suffix :: [Natural]
@@ -251,6 +260,8 @@ eraseValuesToMinimizeDistanceToTarget target as =
     minimumDistance :: Natural
     minimumDistance = F.minimum distances
 
+-- consider changing this to `sortApplyUnsort`
+--
 withSortedList
     :: Ord o
     => (a -> o)

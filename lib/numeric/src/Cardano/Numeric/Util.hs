@@ -239,15 +239,14 @@ eraseValuesToMinimizeDistanceToTarget target as =
 
     aboveMinimumDistance, atMinimumDistance :: [Natural]
     (aboveMinimumDistance, atMinimumDistance) = distances
-        & span (> minimumDistance)
+        & NE.span (> minimumDistance)
         & fmap (takeWhile (== minimumDistance))
 
-    distances :: [Natural]
+    distances :: NonEmpty Natural
     distances = as
         & cumulativeSum
         & NE.cons 0
         & NE.zipWith naturalDistance (NE.repeat target)
-        & NE.toList
 
     minimumDistance :: Natural
     minimumDistance = F.minimum distances

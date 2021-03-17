@@ -286,6 +286,8 @@ withReversedList
     -> (NonEmpty a -> NonEmpty a)
 withReversedList f = NE.reverse . f . NE.reverse
 
+-- Pre-condition: the supplied function preserves the length of the list.
+--
 withSortedList
     :: Ord o
     => (a -> o)

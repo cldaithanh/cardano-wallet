@@ -18,6 +18,7 @@ module Cardano.Numeric.Util
     , dropUntilSumIsMinimalDistanceToTarget
     , dropWhileNE
     , withSortedList
+    , withListSortedBy
     , cumulativeSum
     , naturalDistance
 
@@ -234,9 +235,9 @@ eraseSmallestValuesUntilSumIsMinimalDistanceToTarget
     -> Natural
     -> NonEmpty Natural
 eraseSmallestValuesUntilSumIsMinimalDistanceToTarget as target =
-    withSortedList id eraseSmallestValues as
+    withSortedList eraseValues as
   where
-    eraseSmallestValues
+    eraseValues
         = flip padHeadWith (0 <$ as)
         . flip dropUntilSumIsMinimalDistanceToTarget target
 
@@ -286,9 +287,17 @@ withReversedList
     -> (NonEmpty a -> NonEmpty a)
 withReversedList f = NE.reverse . f . NE.reverse
 
+withSortedList
+    :: Ord a
+    => (NonEmpty a -> NonEmpty b)
+    -- ^ A transformation on a sorted list that preserves the length.
+    -> (NonEmpty a -> NonEmpty b)
+    -- ^ The transformed result with the original order restored.
+withSortedList = withListSortedBy id
+
 -- Pre-condition: the supplied function preserves the length of the list.
 --
-withSortedList
+withListSortedBy
     :: Ord o
     => (a -> o)
     -- ^ A function that maps an element to a sortable element.
@@ -296,7 +305,7 @@ withSortedList
     -- ^ A transformation on a sorted list that preserves the length.
     -> (NonEmpty a -> NonEmpty b)
     -- ^ The transformed result with the original order restored.
-withSortedList order f values = f valuesSorted
+withListSortedBy order f values = f valuesSorted
     & NE.zip indices
     & NE.sortWith fst
     & fmap snd

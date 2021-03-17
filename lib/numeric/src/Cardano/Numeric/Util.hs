@@ -13,8 +13,13 @@ module Cardano.Numeric.Util
     , unsafePartitionNatural
 
       -- * Miscellaneous
+    , padHeadWith
+    , eraseSmallestValuesUntilSumIsMinimalDistanceToTarget
     , dropUntilSumIsMinimalDistanceToTarget
+    , dropWhileNE
     , withSortedList
+    , cumulativeSum
+    , naturalDistance
 
       -- * Partial orders
     , inAscendingPartialOrder
@@ -224,47 +229,63 @@ partitionNatural target weights
     totalWeight :: Natural
     totalWeight = F.sum weights
 
--- consider changing this to:
---
--- values `dropUntilSumIsMinimalDistanceToTarget` target
---
--- Finds the longest suffix of the given list for which the sum is at a minimal
--- distance from the target, when all possible suffices are considered.
---
--- We need a property which checks that:
---
---  a longer suffix increases the distance
---  a shorter suffix increase the distance or leaves it the same
---
+eraseSmallestValuesUntilSumIsMinimalDistanceToTarget
+    :: NonEmpty Natural
+    -> Natural
+    -> NonEmpty Natural
+eraseSmallestValuesUntilSumIsMinimalDistanceToTarget as target =
+    withSortedList id erase as
+  where
+    erase
+        = flip padHeadWith (0 <$ as)
+        . flip dropUntilSumIsMinimalDistanceToTarget target
+
+padHeadWith
+    :: NonEmpty Natural
+    -> NonEmpty Natural
+    -> NonEmpty Natural
+padHeadWith suffix padding
+    | Just prefix <- NE.nonEmpty mPrefix =
+        prefix <> suffix
+    | otherwise =
+        suffix
+  where
+    mPrefix = NE.take (NE.length padding - NE.length suffix) padding
+
 dropUntilSumIsMinimalDistanceToTarget
     :: NonEmpty Natural
     -> Natural
     -> NonEmpty Natural
 dropUntilSumIsMinimalDistanceToTarget as target =
-    NE.fromList (prefix <> (0 <$ suffix))
+    zipReversedWith
+        (curry fst)
+        (as)
+        (dropWhileNE (> minimumDistance) distances)
   where
-    prefix, suffix :: [Natural]
-    (prefix, suffix) = NE.splitAt prefixLength as
-
-    prefixLength :: Int
-    prefixLength = length aboveMinimumDistance + length atMinimumDistance - 1
-
-    aboveMinimumDistance, atMinimumDistance :: [Natural]
-    (aboveMinimumDistance, atMinimumDistance) = distances
-        & NE.span (> minimumDistance)
-        & fmap (takeWhile (== minimumDistance))
-
     distances :: NonEmpty Natural
-    distances = as
-        & cumulativeSum
-        & NE.cons 0
-        & NE.zipWith naturalDistance (NE.repeat target)
+    distances =
+        NE.zipWith
+            (naturalDistance)
+            (withReversedList cumulativeSum as)
+            (NE.repeat target)
 
     minimumDistance :: Natural
     minimumDistance = F.minimum distances
 
--- consider changing this to `sortApplyUnsort`
---
+zipReversedWith :: (a -> b -> c) -> NonEmpty a -> NonEmpty b -> NonEmpty c
+zipReversedWith f as bs =
+    NE.reverse $ NE.zipWith f (NE.reverse as) (NE.reverse bs)
+
+dropWhileNE :: (a -> Bool) -> NonEmpty a -> NonEmpty a
+dropWhileNE f as = case NE.dropWhile f as of
+    [] -> NE.last as :| []
+    (x : xs) -> x :| xs
+
+withReversedList
+    :: (NonEmpty a -> NonEmpty a)
+    -> (NonEmpty a -> NonEmpty a)
+withReversedList f = NE.reverse . f . NE.reverse
+
 withSortedList
     :: Ord o
     => (a -> o)

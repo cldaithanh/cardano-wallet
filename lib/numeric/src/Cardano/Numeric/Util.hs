@@ -300,9 +300,9 @@ withSortedList = withListSortedBy id
 withListSortedOn
     :: Ord o
     => (a -> o)
-    -- ^ A function that maps an element to a sortable element.
+    -- ^ A function that maps an element to a sortable value.
     -> (NonEmpty a -> NonEmpty b)
-    -- ^ A transformation on a sorted list that preserves the length.
+    -- ^ A length-preserving transformation on a sorted list.
     -> (NonEmpty a -> NonEmpty b)
     -- ^ The transformed result with the original order restored.
 withListSortedOn order f values = f valuesSorted

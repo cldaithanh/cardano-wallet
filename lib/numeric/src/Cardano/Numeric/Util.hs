@@ -297,7 +297,7 @@ withSortedList = withListSortedBy id
 
 -- Pre-condition: the supplied function preserves the length of the list.
 --
-withListSortedBy
+withListSortedOn
     :: Ord o
     => (a -> o)
     -- ^ A function that maps an element to a sortable element.
@@ -305,7 +305,7 @@ withListSortedBy
     -- ^ A transformation on a sorted list that preserves the length.
     -> (NonEmpty a -> NonEmpty b)
     -- ^ The transformed result with the original order restored.
-withListSortedBy order f values = f valuesSorted
+withListSortedOn order f values = f valuesSorted
     & NE.zip indices
     & NE.sortWith fst
     & fmap snd

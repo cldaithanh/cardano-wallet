@@ -234,9 +234,9 @@ eraseSmallestValuesUntilSumIsMinimalDistanceToTarget
     -> Natural
     -> NonEmpty Natural
 eraseSmallestValuesUntilSumIsMinimalDistanceToTarget as target =
-    withSortedList id erase as
+    withSortedList id eraseSmallestValues as
   where
-    erase
+    eraseSmallestValues
         = flip padHeadWith (0 <$ as)
         . flip dropUntilSumIsMinimalDistanceToTarget target
 
@@ -291,8 +291,11 @@ withReversedList f = NE.reverse . f . NE.reverse
 withSortedList
     :: Ord o
     => (a -> o)
+    -- ^ A function that maps an element to a sortable element.
     -> (NonEmpty a -> NonEmpty b)
+    -- ^ A transformation on a sorted list that preserves the length.
     -> (NonEmpty a -> NonEmpty b)
+    -- ^ The transformed result with the original order restored.
 withSortedList order f values = f valuesSorted
     & NE.zip indices
     & NE.sortWith fst

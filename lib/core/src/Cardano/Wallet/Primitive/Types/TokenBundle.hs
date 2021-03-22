@@ -40,6 +40,7 @@ module Cardano.Wallet.Primitive.Types.TokenBundle
     , isCoin
     , getCoin
     , setCoin
+    , adjustCoin
 
     -- * Arithmetic
     , add
@@ -283,6 +284,11 @@ getCoin (TokenBundle c _) = c
 --
 setCoin :: TokenBundle -> Coin -> TokenBundle
 setCoin b c = b { coin = c }
+
+-- | Adjusts the current ada 'Coin' value for a token bundle.
+--
+adjustCoin :: TokenBundle -> (Coin -> Coin) -> TokenBundle
+adjustCoin b f = setCoin b $ f $ getCoin b
 
 --------------------------------------------------------------------------------
 -- Arithmetic

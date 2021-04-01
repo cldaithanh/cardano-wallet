@@ -2,6 +2,7 @@
 {-# LANGUAGE DuplicateRecordFields #-}
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE OverloadedLabels #-}
+{-# LANGUAGE OverloadedLists #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
@@ -28,7 +29,7 @@ import Control.Monad
 import Control.Monad.Extra
     ( pureIf )
 import Data.Either.Extra
-    ( eitherToMaybe )
+    ( eitherToMaybe, maybeToEither )
 import Data.Function
     ( (&) )
 import Data.Functor
@@ -37,6 +38,8 @@ import Data.Generics.Internal.VL.Lens
     ( view )
 import Data.Generics.Labels
     ()
+import Data.List.NonEmpty
+    ( NonEmpty (..) )
 import Data.Maybe
     ( catMaybes, fromMaybe, listToMaybe )
 import Data.Ord
@@ -49,6 +52,7 @@ import qualified Cardano.Wallet.Primitive.Types.TokenBundle as TokenBundle
 import qualified Cardano.Wallet.Primitive.Types.TokenMap as TokenMap
 import qualified Data.Foldable as F
 import qualified Data.List as L
+import qualified Data.List.NonEmpty as NE
 import qualified Data.Map.Strict as Map
 
 --------------------------------------------------------------------------------
@@ -85,15 +89,17 @@ emptySelection = Selection
 
 initializeSelection
     :: Foldable f
-    => Monoid s
+    => (Monoid s, Ord s)
     => SelectionParameters s
     -> f (i, TokenBundle)
-    -> Maybe (Selection i s)
+    -> Either SelectionError (Selection i s)
 initializeSelection params entries = do
     selection <- addEntries paramsAdjusted emptySelection entries
-    reducedOutputBundles <- reduceOutputAdaQuantities
-        params (feeForEmptySelection params) (outputs selection)
-    pure selection {outputs = reducedOutputBundles}
+    let reducedOutputBundles = reduceOutputAdaQuantities
+            params (feeForEmptySelection params) (outputs selection)
+    case reducedOutputBundles of
+        Nothing -> Left SelectionAdaInsufficient
+        Just bs -> Right selection {outputs = bs}
   where
     paramsAdjusted = params {feeForEmptySelection = Coin 0}
 
@@ -439,7 +445,10 @@ data SelectionParameters s = SelectionParameters
 
 --------------------------------------------------------------------------------
 -- Functions that depend on selection parameters
---------------------------------------------------------------------------------
+----------------------------------------------------------------------------
+
+sizeOfOutputCoin :: SelectionParameters s -> Coin -> s
+sizeOfOutputCoin = undefined
 
 -- | The amount of ada an output has in excess of its minimum ada quantity.
 --
@@ -515,11 +524,14 @@ selectionOutputOrdering params =
 --   a transaction output, according to the given selection parameters.
 --
 tokenBundleIsValid :: SelectionParameters s -> TokenBundle -> Bool
-tokenBundleIsValid params b = and $ (\f -> f params b) <$>
-    [ tokenBundleSatisfiesMinimumAdaQuantity
-    , tokenBundleSizeWithinLimit
-    , tokenBundleQuantitiesWithinLimit
-    ]
+tokenBundleIsValid params b = and $ conditions <&> (\f -> f params b)
+  where
+    conditions :: [SelectionParameters s -> TokenBundle -> Bool]
+    conditions =
+        [ tokenBundleSatisfiesMinimumAdaQuantity
+        , tokenBundleSizeWithinLimit
+        , tokenBundleQuantitiesWithinLimit
+        ]
 
 -- | Indicates whether or not all the quantities within the given bundle are
 --   within the limit of what can be included in a transaction output.
@@ -564,81 +576,118 @@ tokenQuantityWithinLimit params q = case assess q of
 -- Extending selections
 --------------------------------------------------------------------------------
 
-type ExtendSelectionStrategy i s e =
-    SelectionParameters s -> Selection i s -> (i, e) -> Maybe (Selection i s)
+type AddEntry s i v =
+    SelectionParameters s
+        -> Selection i s
+        -> (i, v)
+        -> Either SelectionError (Selection i s)
+
+data SelectionError
+    = SelectionAdaInsufficient
+    | SelectionFull
 
 addEntries
-    :: Foldable f
+    :: (Foldable f, Monoid s, Ord s)
     => SelectionParameters s
     -> Selection i s
     -> f (i, TokenBundle)
-    -> Maybe (Selection i s)
-addEntries params selection entries =
-    foldM (\s e -> addEntry params s e) selection entries
+    -> Either SelectionError (Selection i s)
+addEntries params =
+    foldM $ \selection entry -> addEntry params selection entry
 
-addEntry :: ExtendSelectionStrategy i s TokenBundle
+addEntry :: (Monoid s, Ord s) => AddEntry s i TokenBundle
 addEntry params selection (inputId, inputBundle)
     | Just inputCoin <- TokenBundle.toCoin inputBundle =
         addCoin params selection (inputId, inputCoin)
     | otherwise =
         addBundle params selection (inputId, inputBundle)
 
-applyFirstSuccessfulStrategy
-    :: [ExtendSelectionStrategy i s e]
-    -> ExtendSelectionStrategy i s e
-applyFirstSuccessfulStrategy strategies params selection input =
-    maybesToMaybe $ strategies <&> (\s -> s params selection input)
+addEntryWithFirstSuccessfulStrategy
+    :: NonEmpty (AddEntry s i e)
+    -> AddEntry s i e
+addEntryWithFirstSuccessfulStrategy strategies params selection input =
+    eithersToEither $ strategies <&> (\s -> s params selection input)
 
 --------------------------------------------------------------------------------
--- Extending selections with additional coins
+-- Adding coins to selections
 --------------------------------------------------------------------------------
 
-addCoin :: ExtendSelectionStrategy i s Coin
-addCoin = applyFirstSuccessfulStrategy
-    [ addCoinIndependently
-    , addCoinToFeeExcess
+addCoin :: (Monoid s, Ord s) => AddEntry s i Coin
+addCoin = addEntryWithFirstSuccessfulStrategy
+    [ addCoinToFeeExcess
+    , addCoinIndependently
     ]
 
-addCoinIndependently :: ExtendSelectionStrategy i s Coin
-addCoinIndependently params selection (inputId, inputCoin) = do
-    outputCoin <- computeOutputCoin
-    pureIf (outputCoin >= minimumAdaQuantityForOutputCoin params)
-        $ selection
-        & addInput (inputId, TokenBundle.fromCoin inputCoin)
-        & addOutput params (TokenBundle.fromCoin outputCoin)
-  where
-    computeOutputCoin :: Maybe Coin
-    computeOutputCoin = coinFromInteger
-        $ coinToInteger inputCoin
-        - coinToInteger (feeForInput params)
-        - coinToInteger (feeForOutputCoin params inputCoin)
-
-addCoinToFeeExcess :: ExtendSelectionStrategy i s Coin
+addCoinToFeeExcess
+    :: forall s i. (Monoid s, Ord s)
+    => AddEntry s i Coin
 addCoinToFeeExcess params selection (inputId, inputCoin) = do
     newFeeExcess <- computeNewFeeExcess
-    pureIf (newFeeExcess >= feeExcess selection)
-        $ selection {feeExcess = newFeeExcess}
-        & addInput (inputId, TokenBundle.fromCoin inputCoin)
+    newSize <- computeNewSize
+    pure
+        $ selection {feeExcess = newFeeExcess, size = newSize}
+        & addInputCoin (inputId, inputCoin)
   where
-    computeNewFeeExcess :: Maybe Coin
-    computeNewFeeExcess = coinFromInteger
-        $ coinToInteger (feeExcess selection)
-        + coinToInteger inputCoin
-        - coinToInteger (feeForInput params)
+    computeNewFeeExcess :: Either SelectionError Coin
+    computeNewFeeExcess = do
+        newFeeExcess <- maybeToEither SelectionAdaInsufficient
+              $ coinFromInteger
+              $ coinToInteger (feeExcess selection)
+              + coinToInteger inputCoin
+              - coinToInteger (feeForInput params)
+        guardE (newFeeExcess >= feeExcess selection)
+            SelectionAdaInsufficient
+        pure newFeeExcess
+
+    computeNewSize :: Either SelectionError s
+    computeNewSize = guardSize params $ mconcat
+        [ size selection
+        , sizeOfInput params
+        ]
+
+addCoinIndependently
+    :: forall s i. (Monoid s, Ord s)
+    => AddEntry s i Coin
+addCoinIndependently params selection (inputId, inputCoin) = do
+    outputCoin <- computeOutputCoin
+    newSize <- computeNewSize outputCoin
+    pure
+        $ selection {size = newSize}
+        & addInputCoin (inputId, inputCoin)
+        & addOutputCoin params outputCoin
+  where
+    computeOutputCoin :: Either SelectionError Coin
+    computeOutputCoin = do
+        outputCoin <- maybeToEither SelectionAdaInsufficient
+            $ coinFromInteger
+            $ coinToInteger inputCoin
+            - coinToInteger (feeForInput params)
+            - coinToInteger (feeForOutputCoin params inputCoin)
+        guardE (outputCoin >= minimumAdaQuantityForOutputCoin params)
+            SelectionAdaInsufficient
+        pure outputCoin
+
+    computeNewSize :: Coin -> Either SelectionError s
+    computeNewSize outputCoin = guardSize params $ mconcat
+        [ size selection
+        , sizeOfInput params
+        , sizeOfOutputCoin params outputCoin
+        ]
 
 --------------------------------------------------------------------------------
--- Extending selections with additional bundles
+-- Adding bundles to selections
 --------------------------------------------------------------------------------
 
-addBundle :: ExtendSelectionStrategy i s TokenBundle
-addBundle = applyFirstSuccessfulStrategy
-    [ addBundleIndependently
-    , addBundleByReclaimingAda
-    , addBundleToBundle
-    , addBundleToCoin
-    ]
-
-addBundleIndependently :: ExtendSelectionStrategy i s TokenBundle
+addBundle :: AddEntry s i TokenBundle
+addBundle = addEntryWithFirstSuccessfulStrategy
+    []
+    --[ addBundleToCoin
+    --, addBundleToBundle
+    --, addBundleIndependently
+    --, addBundleByReclaimingAda
+    --]
+{-
+addBundleIndependently :: AddEntry s i TokenBundle
 addBundleIndependently params selection (inputId, inputBundle) = do
     outputCoin <- computeOutputCoin
     let minimumAdaQuantity = minimumAdaQuantityForOutput params inputMap
@@ -655,7 +704,7 @@ addBundleIndependently params selection (inputId, inputBundle) = do
         - coinToInteger (feeForInput params)
         - coinToInteger (feeForOutput params inputBundle)
 
-addBundleByReclaimingAda :: forall i s. ExtendSelectionStrategy i s TokenBundle
+addBundleByReclaimingAda :: forall i s. AddEntry s i TokenBundle
 addBundleByReclaimingAda params selection (inputId, inputBundle) =
     addInner =<< computeAdaToReclaim
   where
@@ -693,7 +742,7 @@ addBundleByReclaimingAda params selection (inputId, inputBundle) =
         + coinToInteger (minimumAdaQuantityForOutput params inputMap)
         - coinToInteger inputCoin
 
-addBundleToBundle :: ExtendSelectionStrategy i s TokenBundle
+addBundleToBundle :: AddEntry s i TokenBundle
 addBundleToBundle params selection (inputId, inputBundle) = do
     (bundleIndex, mergedBundle) <- findFirstValidMergedBundle
     let (prefix, suffix) = drop 1 <$> L.splitAt bundleIndex (outputs selection)
@@ -721,7 +770,7 @@ addBundleToBundle params selection (inputId, inputBundle) = do
             | otherwise =
                 TokenBundle.adjustCoin b (`Coin.distance` reduction)
 
-addBundleToCoin :: ExtendSelectionStrategy i s TokenBundle
+addBundleToCoin :: AddEntry s i TokenBundle
 addBundleToCoin params selection (inputId, inputBundle) = do
     (prefix, preexistingOutputCoin, suffix) <- findFirstPureAdaOutput
     outputCoin <- computeOutputCoin preexistingOutputCoin
@@ -747,7 +796,7 @@ addBundleToCoin params selection (inputId, inputBundle) = do
       where
         (prefix, suffix) =
             L.break TokenBundle.isCoin (outputs selection)
-
+-}
 --------------------------------------------------------------------------------
 -- Classification of coins and token bundles
 --------------------------------------------------------------------------------
@@ -880,8 +929,13 @@ addInput
     :: (i, TokenBundle)
     -> Selection i s
     -> Selection i s
-addInput input selection = selection
-    { inputs = input : inputs selection }
+addInput input selection = selection { inputs = input : inputs selection }
+
+addInputCoin
+    :: (i, Coin)
+    -> Selection i s
+    -> Selection i s
+addInputCoin = addInput . fmap TokenBundle.fromCoin
 
 addOutput
     :: SelectionParameters s
@@ -894,6 +948,13 @@ addOutput params outputBundle selection = selection
         (outputBundle)
         (outputs selection)
     }
+
+addOutputCoin
+    :: SelectionParameters s
+    -> Coin
+    -> Selection i s
+    -> Selection i s
+addOutputCoin params = addOutput params . TokenBundle.fromCoin
 
 newtype NegativeCoin = NegativeCoin
     { unNegativeCoin :: Coin
@@ -909,6 +970,16 @@ data TokenQuantityAssessment
     | TokenQuantityExceedsLimit
     deriving (Eq, Generic, Show)
 
+guardE :: Bool -> e -> Either e ()
+guardE = undefined
+
+guardSize :: Ord s => SelectionParameters s -> s -> Either SelectionError s
+guardSize params size
+    | size <= maximumSizeOfSelection params =
+        pure size
+    | otherwise =
+        Left SelectionFull
+
 coinFromInteger :: Integer -> Maybe Coin
 coinFromInteger i
     | i < fromIntegral (unCoin $ minBound @Coin) = Nothing
@@ -923,6 +994,13 @@ insertManyBy order itemsToInsert sortedItems =
     L.foldl' f sortedItems itemsToInsert
   where
     f acc itemToInsert = L.insertBy order itemToInsert acc
+
+eithersToEither :: NonEmpty (Either e a) -> Either e a
+eithersToEither eithers
+    | Just success <- maybesToMaybe $ NE.toList (eitherToMaybe <$> eithers) =
+        pure success
+    | otherwise =
+        NE.head eithers
 
 maybesToMaybe :: [Maybe a] -> Maybe a
 maybesToMaybe = listToMaybe . catMaybes

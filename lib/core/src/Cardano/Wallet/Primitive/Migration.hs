@@ -90,7 +90,7 @@ initializeSelection
     => (Monoid s, Ord s)
     => SelectionParameters s
     -> f (i, TokenBundle)
-    -> Either SelectionError (Selection i s)
+    -> Either (SelectionError s) (Selection i s)
 initializeSelection params entries = do
     selection <- addEntries paramsAdjusted emptySelection entries
     reducedOutputBundles <- maybeToEither SelectionAdaInsufficient $
@@ -577,18 +577,26 @@ type AddEntry s i v =
     SelectionParameters s
         -> Selection i s
         -> (i, v)
-        -> Either SelectionError (Selection i s)
+        -> Either (SelectionError s) (Selection i s)
 
-data SelectionError
+data SelectionError s
     = SelectionAdaInsufficient
     | SelectionFull
+     (SelectionFullError s)
+    deriving (Eq, Show)
+
+data SelectionFullError s = SelectionFullError
+    { selectionSizeMaximum :: s
+    , selectionSizeRequired :: s
+    }
+    deriving (Eq, Show)
 
 addEntries
     :: (Foldable f, Monoid s, Ord s)
     => SelectionParameters s
     -> Selection i s
     -> f (i, TokenBundle)
-    -> Either SelectionError (Selection i s)
+    -> Either (SelectionError s) (Selection i s)
 addEntries params =
     foldM $ \selection entry -> addEntry params selection entry
 
@@ -631,7 +639,7 @@ addCoinToFeeExcess params selection (inputId, inputCoin) = do
         $ selection {feeExcess = newFeeExcess, size = newSize}
         & addInputCoin (inputId, inputCoin)
   where
-    computeNewFeeExcess :: Either SelectionError Coin
+    computeNewFeeExcess :: Either (SelectionError s) Coin
     computeNewFeeExcess = do
         newFeeExcess <- maybeToEither SelectionAdaInsufficient
               $ coinFromInteger
@@ -642,7 +650,7 @@ addCoinToFeeExcess params selection (inputId, inputCoin) = do
             SelectionAdaInsufficient
         pure newFeeExcess
 
-    computeNewSize :: Either SelectionError s
+    computeNewSize :: Either (SelectionError s) s
     computeNewSize = guardSize params $ mconcat
         [ size selection
         , sizeOfInput params
@@ -659,7 +667,7 @@ addCoinAsNewOutput params selection (inputId, inputCoin) = do
         & addInputCoin (inputId, inputCoin)
         & addOutputCoin params outputCoin
   where
-    computeOutputCoin :: Either SelectionError Coin
+    computeOutputCoin :: Either (SelectionError s) Coin
     computeOutputCoin = do
         outputCoin <- maybeToEither SelectionAdaInsufficient
             $ coinFromInteger
@@ -670,7 +678,7 @@ addCoinAsNewOutput params selection (inputId, inputCoin) = do
             SelectionAdaInsufficient
         pure outputCoin
 
-    computeNewSize :: Coin -> Either SelectionError s
+    computeNewSize :: Coin -> Either (SelectionError s) s
     computeNewSize outputCoin = guardSize params $ mconcat
         [ size selection
         , sizeOfInput params
@@ -690,7 +698,7 @@ addBundleToExistingOutput params selection (inputId, inputBundle) = do
         & addInput (inputId, inputBundle)
         & addOutput params mergedBundle
   where
-    findFirstValidMergedBundle :: Either SelectionError (Int, TokenBundle)
+    findFirstValidMergedBundle :: Either (SelectionError s) (Int, TokenBundle)
     findFirstValidMergedBundle = maybeToEither SelectionAdaInsufficient
         $ outputs selection
         & fmap (<> inputBundle)
@@ -764,7 +772,7 @@ addBundleAsNewOutputWithoutReclaimingAda
   where
     TokenBundle inputCoin inputMap = inputBundle
 
-    computeOutputCoin :: Either SelectionError Coin
+    computeOutputCoin :: Either (SelectionError s) Coin
     computeOutputCoin = do
         outputCoin <- maybeToEither SelectionAdaInsufficient
             $ coinFromInteger
@@ -775,7 +783,7 @@ addBundleAsNewOutputWithoutReclaimingAda
             SelectionAdaInsufficient
         pure outputCoin
 
-    computeNewSize :: TokenBundle -> Either SelectionError s
+    computeNewSize :: TokenBundle -> Either (SelectionError s) s
     computeNewSize outputBundle = guardSize params $ mconcat
         [ size selection
         , sizeOfInput params
@@ -958,12 +966,17 @@ data TokenQuantityAssessment
 guardE :: Bool -> e -> Either e ()
 guardE = undefined
 
-guardSize :: Ord s => SelectionParameters s -> s -> Either SelectionError s
-guardSize params size
-    | size <= maximumSizeOfSelection params =
-        pure size
+guardSize :: Ord s => SelectionParameters s -> s -> Either (SelectionError s) s
+guardSize params selectionSizeRequired
+    | selectionSizeRequired <= selectionSizeMaximum =
+        pure selectionSizeRequired
     | otherwise =
-        Left SelectionFull
+        Left $ SelectionFull SelectionFullError
+            { selectionSizeMaximum
+            , selectionSizeRequired
+            }
+  where
+    selectionSizeMaximum = maximumSizeOfSelection params
 
 replaceHeadOfList :: [a] -> a -> [a]
 replaceHeadOfList as a = case as of

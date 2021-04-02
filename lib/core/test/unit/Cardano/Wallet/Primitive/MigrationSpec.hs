@@ -15,6 +15,7 @@ import Prelude
 
 import Cardano.Wallet.Primitive.Migration
     ( Selection (..)
+    , SelectionError (..)
     , SelectionInvariantStatus (..)
     , SelectionParameters (..)
     , TokenQuantityAssessment (..)
@@ -23,6 +24,7 @@ import Cardano.Wallet.Primitive.Migration
     , currentSizeOfSelection
     , emptySelection
     , feeForOutputCoin
+    , guardSize
     , minimumAdaQuantityForOutputCoin
     , selectionOutputOrdering
     )
@@ -84,6 +86,7 @@ import Test.QuickCheck
 
 import qualified Cardano.Wallet.Primitive.Types.TokenBundle as TokenBundle
 import qualified Cardano.Wallet.Primitive.Types.TokenMap as TokenMap
+import qualified Data.Foldable as F
 import qualified Data.List as L
 import qualified Data.List.NonEmpty as NE
 import qualified Data.Set as Set
@@ -212,12 +215,12 @@ type MockSelection = Selection MockInputId MockSize
 -- Some nearly-full selections
 genMockSelection :: MockSelectionParameters -> Gen MockSelection
 genMockSelection mockParams = do
-    let params = unMockSelectionParameters mockParams
-    outputCount <- choose (0, 10)
-    outputs <- replicateM outputCount genTokenBundleSmallRangePositive
-    undefined
-  where
-    --genChunk :: Gen ([TokenBundle], TokenBundle)
+    selectionCount <- choose (1, 10)
+    selections <- (:|)
+        <$> genMockSelectionSmall mockParams
+        <*> replicateM (selectionCount - 1) (genMockSelectionSmall mockParams)
+    let Just selection = concatMockSelections mockParams selections
+    pure selection
 
 genMockSelectionSmall :: MockSelectionParameters -> Gen MockSelection
 genMockSelectionSmall params = do
@@ -241,16 +244,23 @@ genInputTokenBundle params = do
     genAssetQuantity :: Gen (AssetId, TokenQuantity)
     genAssetQuantity = undefined
 
+type MockSelectionError = SelectionError MockSize
+
 concatMockSelections
     :: MockSelectionParameters
-    -> [MockSelection]
-    -> MockSelection
-concatMockSelections mockParams selections = Selection
-    concatenatedInputs
-    concatenatedOutputs
-    concatenatedFeeExcess
-    concatenatedSize
+    -> NonEmpty MockSelection
+    -> Maybe MockSelection
+concatMockSelections mockParams selections
+    | concatenatedSize <= maximumSizeOfSelection params =
+        Just concatenatedSelection
+    | otherwise =
+        Nothing
   where
+    concatenatedSelection = Selection
+        concatenatedInputs
+        concatenatedOutputs
+        concatenatedFeeExcess
+        concatenatedSize
     concatenatedInputs =
         (selections <&> inputs)
             & concat
@@ -263,7 +273,7 @@ concatMockSelections mockParams selections = Selection
             & L.sortBy (selectionOutputOrdering params)
     concatenatedFeeExcess =
         (selections <&> feeExcess)
-            & mconcat
+            & F.fold
     concatenatedSize =
         currentSizeOfSelection params $ Selection
             concatenatedInputs concatenatedOutputs (Coin 0) (MockSize 0)

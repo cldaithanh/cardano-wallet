@@ -42,6 +42,10 @@ import Cardano.Wallet.Primitive.Types.Tx
     ( TokenBundleSizeAssessment (..), TokenBundleSizeAssessor (..) )
 import Control.Monad
     ( replicateM )
+import Data.ByteArray.Encoding
+    ( Base (Base16), convertFromBase, convertToBase )
+import Data.ByteString
+    ( ByteString )
 import Data.Function
     ( (&) )
 import Data.Functor
@@ -81,15 +85,19 @@ import Test.QuickCheck
     , genericShrink
     , oneof
     , property
+    , vector
     , (===)
     )
 
 import qualified Cardano.Wallet.Primitive.Types.TokenBundle as TokenBundle
 import qualified Cardano.Wallet.Primitive.Types.TokenMap as TokenMap
+import qualified Data.ByteString as BS
 import qualified Data.Foldable as F
 import qualified Data.List as L
 import qualified Data.List.NonEmpty as NE
 import qualified Data.Set as Set
+import qualified Data.Text as T
+import qualified Data.Text.Encoding as T
 
 spec :: Spec
 spec = describe "Cardano.Wallet.Primitive.MigrationSpec" $
@@ -210,22 +218,45 @@ prop_addCoin_invariant (MockAddCoinData mockParams coins) =
 
 type MockSelection = Selection MockInputId MockSize
 
--- Some very small selections
--- Some medium size selections
--- Some nearly-full selections
 genMockSelection :: MockSelectionParameters -> Gen MockSelection
-genMockSelection mockParams = do
-    selectionCount <- choose (1, 10)
-    selections <- (:|)
-        <$> genMockSelectionSmall mockParams
-        <*> replicateM (selectionCount - 1) (genMockSelectionSmall mockParams)
-    let Just selection = concatMockSelections mockParams selections
-    pure selection
+genMockSelection mockParams =
+    oneof $ (\g -> g mockParams) <$>
+        [ genMockSelectionSmall
+        , genMockSelectionHalfFull
+        , genMockSelectionNearlyFull
+        ]
 
 genMockSelectionSmall :: MockSelectionParameters -> Gen MockSelection
-genMockSelectionSmall params = do
+genMockSelectionSmall mockParams = do
     undefined
+
+genMockSelectionHalfFull :: MockSelectionParameters -> Gen MockSelection
+genMockSelectionHalfFull mockParams =
+    enlargeUntilHalfFull =<< genMockSelectionSmall mockParams
   where
+    enlargeUntilHalfFull :: MockSelection -> Gen MockSelection
+    enlargeUntilHalfFull s1
+        | size s1 >= halfMaximumSizeOfSelection =
+            pure s1
+        | otherwise = do
+            s2 <- genMockSelectionSmall mockParams
+            case joinMockSelections mockParams s1 s2 of
+                Nothing -> pure s1
+                Just s3 -> enlargeUntilHalfFull s3
+    params = unMockSelectionParameters mockParams
+    halfMaximumSizeOfSelection =
+        mockSizeHalfSafe (maximumSizeOfSelection params)
+
+genMockSelectionNearlyFull :: MockSelectionParameters -> Gen MockSelection
+genMockSelectionNearlyFull mockParams =
+    enlargeUntilNearlyFull =<< genMockSelectionSmall mockParams
+  where
+    enlargeUntilNearlyFull :: MockSelection -> Gen MockSelection
+    enlargeUntilNearlyFull s1 = do
+        s2 <- genMockSelectionSmall mockParams
+        case joinMockSelections mockParams s1 s2 of
+            Nothing -> pure s1
+            Just s3 -> enlargeUntilNearlyFull s3
 
 -- Some large ada coins
 -- Some small ada coins
@@ -236,7 +267,7 @@ genInputTokenBundle :: MockSelectionParameters -> Gen TokenBundle
 genInputTokenBundle params = do
     assetCount <- oneof
         [ pure 0
-        , oneof [pure 1, choose (2, 8)]
+        , oneof [pure 1, choose (2, 10)]
         ]
     assets <- replicateM assetCount genAssetQuantity
     undefined
@@ -246,50 +277,45 @@ genInputTokenBundle params = do
 
 type MockSelectionError = SelectionError MockSize
 
-concatMockSelections
+joinMockSelections
     :: MockSelectionParameters
-    -> NonEmpty MockSelection
+    -> MockSelection
+    -> MockSelection
     -> Maybe MockSelection
-concatMockSelections mockParams selections
-    | concatenatedSize <= maximumSizeOfSelection params =
-        Just concatenatedSelection
+joinMockSelections mockParams s1 s2
+    | size joinedSelection <= maximumSizeOfSelection params =
+        Just joinedSelection
     | otherwise =
         Nothing
   where
-    concatenatedSelection = Selection
-        concatenatedInputs
-        concatenatedOutputs
-        concatenatedFeeExcess
-        concatenatedSize
-    concatenatedInputs =
-        (selections <&> inputs)
-            & concat
-            & fmap snd
-            & zip (NE.toList mockInputIds)
-            & reverse
-    concatenatedOutputs =
-        (selections <&> outputs)
-            & concat
+    joinedSelection = Selection
+        { inputs
+            = inputs s1 <> inputs s2
+        , outputs
+            = outputs s2 <> outputs s2
             & L.sortBy (selectionOutputOrdering params)
-    concatenatedFeeExcess =
-        (selections <&> feeExcess)
-            & F.fold
-    concatenatedSize =
-        currentSizeOfSelection params $ Selection
-            concatenatedInputs concatenatedOutputs (Coin 0) (MockSize 0)
-    params =
-        unMockSelectionParameters mockParams
+        , feeExcess
+            = feeExcess s1 <> feeExcess s2
+        , size
+            = size s1 <> size s2
+            & flip mockSizeSubtractSafe (sizeOfEmptySelection params)
+        }
+    params = unMockSelectionParameters mockParams
 
 --------------------------------------------------------------------------------
 -- Mock input identifiers
 --------------------------------------------------------------------------------
 
 newtype MockInputId = MockInputId
-    { unMockInputId :: Int }
-    deriving (Eq, Ord, Show)
+    { unMockInputId :: ByteString
+    }
+    deriving (Eq, Ord)
 
-mockInputIds :: NonEmpty MockInputId
-mockInputIds = MockInputId <$> 0 :| [1 ..]
+instance Show MockInputId where
+    show = T.unpack . T.decodeUtf8 . convertToBase Base16 . unMockInputId
+
+genMockInputId :: Gen MockInputId
+genMockInputId = MockInputId . BS.pack <$> vector 8
 
 --------------------------------------------------------------------------------
 -- Mock selection parameters
@@ -438,6 +464,14 @@ genMockSizeRange :: Natural -> Natural -> Gen MockSize
 genMockSizeRange minSize maxSize =
     MockSize . fromIntegral @Integer @Natural <$>
         choose (fromIntegral minSize, fromIntegral maxSize)
+
+mockSizeHalfSafe :: MockSize -> MockSize
+mockSizeHalfSafe (MockSize a) = MockSize $ a `div` 2
+
+mockSizeSubtractSafe :: MockSize -> MockSize -> MockSize
+mockSizeSubtractSafe (MockSize a) (MockSize b)
+    | a >= b = MockSize (a - b)
+    | otherwise = MockSize 0
 
 --------------------------------------------------------------------------------
 -- Mock sizes of empty selections

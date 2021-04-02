@@ -25,7 +25,7 @@ import Cardano.Wallet.Primitive.Types.TokenPolicy.Gen
     , tokenPolicies
     )
 import Cardano.Wallet.Primitive.Types.TokenQuantity.Gen
-    ( genTokenQuantitySmall, shrinkTokenQuantitySmall )
+    ( genTokenQuantitySmallPositive, shrinkTokenQuantitySmall )
 import Control.Monad
     ( replicateM )
 import Data.List
@@ -87,7 +87,7 @@ genTokenMapSmallRange = do
   where
     genAssetQuantity = (,)
         <$> genAssetIdSmallRange
-        <*> genTokenQuantitySmall
+        <*> genTokenQuantitySmallPositive
 
 shrinkTokenMapSmallRange :: TokenMap -> [TokenMap]
 shrinkTokenMapSmallRange

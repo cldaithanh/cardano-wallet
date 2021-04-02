@@ -173,7 +173,7 @@ prop_addCoin_invariant (MockAddCoinData mockParams coins) =
 
     selections :: NonEmpty MockSelection
     selections =
-        NE.scanl (\s i -> fromJust $ addCoin params s i) emptySelection inputs
+        NE.scanl (\s i -> fromRight $ addCoin params s i) emptySelection inputs
 
     transitions :: [(Coin, (MockSelection, MockSelection))]
     transitions = NE.toList coins `zip` consecutivePairs (NE.toList selections)
@@ -560,6 +560,10 @@ consecutivePairs xs = case tailMay xs of
 fromJust :: Maybe a -> a
 fromJust (Just a) = a
 fromJust Nothing = error "fromJust"
+
+fromRight :: Either e a -> a
+fromRight (Right a) = a
+fromRight (Left _) = error "fromRight"
 
 safeCoinPred :: Coin -> Coin
 safeCoinPred c = fromMaybe (Coin 0) (c `subtractCoin` Coin 1)

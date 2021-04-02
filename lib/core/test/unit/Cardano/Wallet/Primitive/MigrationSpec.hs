@@ -11,6 +11,9 @@
 module Cardano.Wallet.Primitive.MigrationSpec
     where
 
+-- TODO:
+-- Add Quiet Show instances
+--
 import Prelude
 
 import Cardano.Wallet.Primitive.Migration
@@ -228,6 +231,7 @@ genMockSelection mockParams =
 
 genMockSelectionSmall :: MockSelectionParameters -> Gen MockSelection
 genMockSelectionSmall mockParams = do
+    -- lots of possibilities here
     undefined
 
 genMockSelectionHalfFull :: MockSelectionParameters -> Gen MockSelection

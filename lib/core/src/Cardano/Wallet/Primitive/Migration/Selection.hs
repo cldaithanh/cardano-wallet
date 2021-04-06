@@ -185,7 +185,7 @@ data Selection i s = Selection
     , size :: !s
       -- ^ The current size of this selection.
     , rewardWithdrawal :: !Coin
-      -- ^ The current reward withdrawal amount, if any.
+      -- ^ The reward withdrawal amount, if any.
     }
     deriving (Eq, Generic, Show)
 
@@ -487,11 +487,15 @@ currentFee Selection {inputs, outputs, rewardWithdrawal}
     | otherwise =
         Left (NegativeCoin adaDifference)
   where
-    adaBalanceIn = F.foldMap (TokenBundle.getCoin . snd) inputs
-        <> rewardWithdrawal
-    adaBalanceOut = F.foldMap (TokenBundle.getCoin) outputs
-    adaDifference = Coin.distance adaBalanceIn adaBalanceOut
+    adaBalanceIn =
+        F.foldMap (TokenBundle.getCoin . snd) inputs <> rewardWithdrawal
+    adaBalanceOut =
+        F.foldMap (TokenBundle.getCoin) outputs
+    adaDifference =
+        Coin.distance adaBalanceIn adaBalanceOut
 
+-- | Calculates the current size of a selection.
+--
 currentSize
     :: Monoid s
     => SelectionParameters s
@@ -501,6 +505,9 @@ currentSize params selection = mconcat
     [ sizeOfEmptySelection params
     , F.foldMap (const $ sizeOfInput params) (inputs selection)
     , F.foldMap (sizeOfOutput params) (outputs selection)
+    , if (rewardWithdrawal selection > Coin 0)
+        then sizeOfRewardWithdrawal params
+        else mempty
     ]
 
 -- | Calculates the minimum permissible fee for a selection.
@@ -580,13 +587,12 @@ initialize _params _entries = undefined
 --------------------------------------------------------------------------------
 
 finalize :: Selection i s -> Selection i s
-finalize selection =
-    selection
-        { feeExcess = Coin 0
-        , outputs = increaseOutputAdaQuantities
-            (feeExcess selection)
-            (outputs selection)
-        }
+finalize selection = selection
+    { feeExcess = Coin 0
+    , outputs = increaseOutputAdaQuantities
+        (feeExcess selection)
+        (outputs selection)
+    }
 
 --------------------------------------------------------------------------------
 -- Extending a selection

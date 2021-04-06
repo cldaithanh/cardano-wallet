@@ -75,6 +75,7 @@ import Test.QuickCheck
     , vector
     )
 
+import qualified Cardano.Wallet.Primitive.Types.Coin as Coin
 import qualified Cardano.Wallet.Primitive.Types.TokenBundle as TokenBundle
 import qualified Cardano.Wallet.Primitive.Types.TokenMap as TokenMap
 import qualified Data.ByteString as BS
@@ -212,9 +213,43 @@ genMockSelection mockParams =
         ]
 
 genMockSelectionSmall :: MockSelectionParameters -> Gen MockSelection
-genMockSelectionSmall _mockParams = do
-    -- lots of possibilities here
-    undefined
+genMockSelectionSmall mockParams = oneof
+    [ genSingleInputCoinNoOutput
+    , genSingleInputCoinSingleOutput
+    --, genSingleInputBundleSingleOutput
+    --, genMultipleInputBundlesSingleOutput
+    ]
+  where
+    genSingleInputCoinNoOutput :: Gen MockSelection
+    genSingleInputCoinNoOutput = do
+        coin <- genCoin
+        inputId <- genMockInputId
+        pure Selection
+            { inputs = [(inputId, TokenBundle.fromCoin coin)]
+            , outputs = []
+            , feeExcess = coin `Coin.distance` fee
+            , size = sizeOfInput params <> sizeOfEmptySelection params
+            , rewardWithdrawal = Coin 0
+            }
+      where
+        genCoin :: Gen Coin
+        genCoin = oneof
+            [ pure fee
+            , genCoinRange (fee <> Coin 1) (stimes (1000 :: Int) fee)
+            ]
+        fee :: Coin
+        fee = feeForEmptySelection params <> feeForInput params
+
+    genSingleInputCoinSingleOutput :: Gen MockSelection
+    genSingleInputCoinSingleOutput = undefined
+
+    --genSingleInputBundleSingleOutput :: Gen MockSelection
+    --genSingleInputBundleSingleOutput = undefined
+
+    --genMultipleInputBundlesSingleOutput :: Gen MockSelection
+    --genMultipleInputBundlesSingleOutput = undefined
+
+    params = unMockSelectionParameters mockParams
 
 genMockSelectionHalfFull :: MockSelectionParameters -> Gen MockSelection
 genMockSelectionHalfFull mockParams =
@@ -285,6 +320,8 @@ joinMockSelections mockParams s1 s2
         , size
             = size s1 <> size s2
             & flip mockSizeSubtractSafe (sizeOfEmptySelection params)
+        , rewardWithdrawal
+            = rewardWithdrawal s1 <> rewardWithdrawal s2
         }
     params = unMockSelectionParameters mockParams
 
@@ -314,12 +351,16 @@ data MockSelectionParameters = MockSelectionParameters
         :: MockFeeForInput
     , mockFeeForOutput
         :: MockFeeForOutput
+    , mockFeeForRewardWithdrawal
+        :: MockFeeForRewardWithdrawal
     , mockSizeOfEmptySelection
         :: MockSizeOfEmptySelection
     , mockSizeOfInput
         :: MockSizeOfInput
     , mockSizeOfOutput
         :: MockSizeOfOutput
+    , mockSizeOfRewardWithdrawal
+        :: MockSizeOfRewardWithdrawal
     , mockMaximumSizeOfOutput
         :: MockMaximumSizeOfOutput
     , mockMaximumSizeOfSelection
@@ -341,6 +382,9 @@ unMockSelectionParameters m = SelectionParameters
     , feeForOutput =
         unMockFeeForOutput
             $ view #mockFeeForOutput m
+    , feeForRewardWithdrawal =
+        unMockFeeForRewardWithdrawal
+            $ view #mockFeeForRewardWithdrawal m
     , sizeOfEmptySelection =
         unMockSizeOfEmptySelection
             $ view #mockSizeOfEmptySelection m
@@ -350,6 +394,9 @@ unMockSelectionParameters m = SelectionParameters
     , sizeOfOutput =
         unMockSizeOfOutput
             $ view #mockSizeOfOutput m
+    , sizeOfRewardWithdrawal =
+        unMockSizeOfRewardWithdrawal
+            $ view #mockSizeOfRewardWithdrawal m
     , maximumSizeOfOutput =
         unMockMaximumSizeOfOutput
             $ view #mockMaximumSizeOfOutput m
@@ -366,9 +413,11 @@ genMockSelectionParameters = MockSelectionParameters
     <$> genMockFeeForEmptySelection
     <*> genMockFeeForInput
     <*> genMockFeeForOutput
+    <*> genMockFeeForRewardWithdrawal
     <*> genMockSizeOfEmptySelection
     <*> genMockSizeOfInput
     <*> genMockSizeOfOutput
+    <*> genMockSizeOfRewardWithdrawal
     <*> genMockMaximumSizeOfOutput
     <*> genMockMaximumSizeOfSelection
     <*> genMockMinimumAdaQuantityForOutput
@@ -426,6 +475,21 @@ genMockFeeForOutput :: Gen MockFeeForOutput
 genMockFeeForOutput = MockFeeForOutput
     <$> genCoinRange (Coin 0) (Coin 10)
     <*> genCoinRange (Coin 0) (Coin 10)
+
+--------------------------------------------------------------------------------
+-- Mock fees for reward withdrawal
+--------------------------------------------------------------------------------
+
+newtype MockFeeForRewardWithdrawal = MockFeeForRewardWithdrawal
+    { unMockFeeForRewardWithdrawal :: Coin }
+    deriving (Eq, Show)
+
+genMockFeeForRewardWithdrawal :: Gen MockFeeForRewardWithdrawal
+genMockFeeForRewardWithdrawal = MockFeeForRewardWithdrawal
+    <$> genCoinRange (Coin 0) (Coin 10)
+
+instance Arbitrary MockFeeForRewardWithdrawal where
+    arbitrary = genMockFeeForRewardWithdrawal
 
 --------------------------------------------------------------------------------
 -- Mock sizes
@@ -499,6 +563,18 @@ genMockSizeOfOutput :: Gen MockSizeOfOutput
 genMockSizeOfOutput = MockSizeOfOutput
     <$> genMockSizeRange 0 10
     <*> genMockSizeRange 0 10
+
+--------------------------------------------------------------------------------
+-- Mock sizes of reward withdrawals
+--------------------------------------------------------------------------------
+
+newtype MockSizeOfRewardWithdrawal = MockSizeOfRewardWithdrawal
+    { unMockSizeOfRewardWithdrawal :: MockSize }
+    deriving (Eq, Generic, Ord, Show)
+
+genMockSizeOfRewardWithdrawal :: Gen MockSizeOfRewardWithdrawal
+genMockSizeOfRewardWithdrawal =
+    MockSizeOfRewardWithdrawal <$> genMockSizeRange 0 10
 
 --------------------------------------------------------------------------------
 -- Mock maximum sizes of outputs
@@ -599,12 +675,16 @@ nullSelectionParameters = SelectionParameters
         Coin 0
     , feeForOutput =
         const (Coin 0)
+    , feeForRewardWithdrawal =
+        Coin 0
     , sizeOfEmptySelection =
         MockSize 0
     , sizeOfInput =
         MockSize 0
     , sizeOfOutput =
         const (MockSize 0)
+    , sizeOfRewardWithdrawal =
+        MockSize 0
     , maximumSizeOfOutput =
         SelectionOutputSizeAssessor (const SelectionOutputSizeWithinLimit)
     , maximumSizeOfSelection =

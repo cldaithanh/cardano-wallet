@@ -28,6 +28,7 @@ module Cardano.Wallet.Primitive.Migration.Selection
     , finalize
     -- * Extending a selection
     , addEntry
+    , addRewardWithdrawal
 
     ----------------------------------------------------------------------------
     -- Internal interface
@@ -101,12 +102,16 @@ data SelectionParameters s = SelectionParameters
       -- ^ The constant fee for a selection input.
     , feeForOutput :: TokenBundle -> Coin
       -- ^ The variable fee for a selection output.
+    , feeForRewardWithdrawal :: Coin
+      -- ^ The constant fee for a reward withdrawal.
     , sizeOfEmptySelection :: s
       -- ^ The constant size of an empty selection.
     , sizeOfInput :: s
       -- ^ The constant size of a selection input.
     , sizeOfOutput :: TokenBundle -> s
       -- ^ The variable size of a selection output.
+    , sizeOfRewardWithdrawal :: s
+      -- ^ The constant size of a reward withdrawal.
     , maximumSizeOfOutput :: SelectionOutputSizeAssessor
       -- ^ The maximum size of a selection output.
     , maximumSizeOfSelection :: s
@@ -179,6 +184,8 @@ data Selection i s = Selection
       -- ^ The excess over the minimum permissible fee for this selection.
     , size :: !s
       -- ^ The current size of this selection.
+    , rewardWithdrawal :: !Coin
+      -- ^ The current reward withdrawal amount, if any.
     }
     deriving (Eq, Generic, Show)
 
@@ -474,13 +481,14 @@ checkSizeWithinLimit params selection
 -- | Calculates the current fee for a selection.
 --
 currentFee :: Selection i s -> Either NegativeCoin Coin
-currentFee Selection {inputs, outputs}
+currentFee Selection {inputs, outputs, rewardWithdrawal}
     | adaBalanceIn >= adaBalanceOut =
         Right adaDifference
     | otherwise =
         Left (NegativeCoin adaDifference)
   where
-    adaBalanceIn  = F.foldMap (TokenBundle.getCoin . snd) inputs
+    adaBalanceIn = F.foldMap (TokenBundle.getCoin . snd) inputs
+        <> rewardWithdrawal
     adaBalanceOut = F.foldMap (TokenBundle.getCoin) outputs
     adaDifference = Coin.distance adaBalanceIn adaBalanceOut
 
@@ -502,6 +510,9 @@ minimumFee params selection = mconcat
     [ feeForEmptySelection
     , F.foldMap (const feeForInput) (inputs selection)
     , F.foldMap feeForOutput (outputs selection)
+    , if (rewardWithdrawal selection > Coin 0)
+        then feeForRewardWithdrawal params
+        else Coin 0
     ]
   where
     SelectionParameters
@@ -560,6 +571,7 @@ initialize params entries = do
         , outputs = []
         , feeExcess = Coin 0
         , size = mempty
+        , rewardWithdrawal = Coin 0
         }
 
 --------------------------------------------------------------------------------
@@ -612,6 +624,16 @@ addEntryWithFirstSuccessfulStrategy
     -> AddEntry s i e
 addEntryWithFirstSuccessfulStrategy strategies params selection input =
     eithersToEither $ strategies <&> (\s -> s params selection input)
+
+addRewardWithdrawal
+    :: Selection i s
+    -> Coin
+    -> Selection i s
+addRewardWithdrawal selection withdrawal = selection
+    -- TODO: check that the invariant is not violated.
+    { rewardWithdrawal = rewardWithdrawal selection <> withdrawal
+    , feeExcess = feeExcess selection <> withdrawal
+    }
 
 --------------------------------------------------------------------------------
 -- Adding coins to a selection

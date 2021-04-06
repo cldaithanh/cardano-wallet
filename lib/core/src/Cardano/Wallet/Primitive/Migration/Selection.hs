@@ -9,12 +9,31 @@
 
 module Cardano.Wallet.Primitive.Migration.Selection
     (
-      -- * Selection parameters
+    ----------------------------------------------------------------------------
+    -- Public interface
+    ----------------------------------------------------------------------------
+
+    -- * Selection parameters
       SelectionParameters (..)
     , SelectionOutputSizeAssessor (..)
     , SelectionOutputSizeAssessment (..)
 
-      -- * Selection parameter functions
+    -- * Selections
+    , Selection (..)
+    , SelectionError (..)
+
+    -- * Initializing a selection
+    , initialize
+    -- * Finalizing a selection
+    , finalize
+    -- * Extending a selection
+    , addEntry
+
+    ----------------------------------------------------------------------------
+    -- Internal interface
+    ----------------------------------------------------------------------------
+
+    -- * Selection parameter functions
     , excessAdaForOutput
     , feeForOutputCoin
     , minimumAdaQuantityForOutputCoin
@@ -22,9 +41,6 @@ module Cardano.Wallet.Primitive.Migration.Selection
     , outputIsValid
     , outputSatisfiesMinimumAdaQuantity
     , outputSizeWithinLimit
-
-    -- * Selections
-    , Selection (..)
 
     -- * Selection invariants
     , SelectionInvariantStatus (..)
@@ -35,15 +51,6 @@ module Cardano.Wallet.Primitive.Migration.Selection
     , currentSize
     , minimumFee
     , outputOrdering
-
-    -- * Selection errors
-    , SelectionError (..)
-
-    -- * Selection initialization
-    , initialize
-
-    -- * Selection extension
-    , addEntry
 
     ) where
 
@@ -554,6 +561,13 @@ initialize params entries = do
         , feeExcess = Coin 0
         , size = mempty
         }
+
+--------------------------------------------------------------------------------
+-- Finalizing a selection
+--------------------------------------------------------------------------------
+
+finalize :: SelectionParameters s -> Selection i s -> Selection i s
+finalize _params _selection = undefined
 
 --------------------------------------------------------------------------------
 -- Extending a selection

@@ -75,7 +75,7 @@ import Test.QuickCheck
     , vector
     )
 
-import qualified Cardano.Wallet.Primitive.Types.Coin as Coin
+-- import qualified Cardano.Wallet.Primitive.Types.Coin as Coin
 import qualified Cardano.Wallet.Primitive.Types.TokenBundle as TokenBundle
 import qualified Cardano.Wallet.Primitive.Types.TokenMap as TokenMap
 import qualified Data.ByteString as BS
@@ -213,7 +213,8 @@ genMockSelection mockParams =
         ]
 
 genMockSelectionSmall :: MockSelectionParameters -> Gen MockSelection
-genMockSelectionSmall mockParams = oneof
+genMockSelectionSmall _mockParams = undefined
+    {-oneof
     [ genSingleInputCoinNoOutput
     , genSingleInputCoinSingleOutput
     --, genSingleInputBundleSingleOutput
@@ -225,7 +226,7 @@ genMockSelectionSmall mockParams = oneof
         coin <- genCoin
         inputId <- genMockInputId
         pure Selection
-            { inputs = [(inputId, TokenBundle.fromCoin coin)]
+            { inputs = (inputId, TokenBundle.fromCoin coin) :| []
             , outputs = []
             , feeExcess = coin `Coin.distance` fee
             , size = sizeOfInput params <> sizeOfEmptySelection params
@@ -243,14 +244,14 @@ genMockSelectionSmall mockParams = oneof
     genSingleInputCoinSingleOutput :: Gen MockSelection
     genSingleInputCoinSingleOutput = undefined
 
-    --genSingleInputBundleSingleOutput :: Gen MockSelection
-    --genSingleInputBundleSingleOutput = undefined
+    -- genSingleInputBundleSingleOutput :: Gen MockSelection
+    -- genSingleInputBundleSingleOutput = undefined
 
-    --genMultipleInputBundlesSingleOutput :: Gen MockSelection
-    --genMultipleInputBundlesSingleOutput = undefined
+    -- genMultipleInputBundlesSingleOutput :: Gen MockSelection
+    -- genMultipleInputBundlesSingleOutput = undefined
 
     params = unMockSelectionParameters mockParams
-
+-}
 genMockSelectionHalfFull :: MockSelectionParameters -> Gen MockSelection
 genMockSelectionHalfFull mockParams =
     enlargeUntilHalfFull =<< genMockSelectionSmall mockParams
@@ -314,7 +315,7 @@ joinMockSelections mockParams s1 s2
             = inputs s1 <> inputs s2
         , outputs
             = outputs s2 <> outputs s2
-            & L.sortBy (outputOrdering params)
+            & NE.sortBy (outputOrdering params)
         , feeExcess
             = feeExcess s1 <> feeExcess s2
         , size

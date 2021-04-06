@@ -63,8 +63,8 @@ import Cardano.Wallet.Primitive.Types.TokenBundle
     ( TokenBundle (..) )
 import Cardano.Wallet.Primitive.Types.TokenMap
     ( TokenMap )
-import Control.Monad
-    ( foldM )
+-- import Control.Monad
+--    ( foldM )
 import Data.Either.Extra
     ( eitherToMaybe, maybeToEither )
 import Data.Function
@@ -176,9 +176,9 @@ outputSizeWithinLimit params b = case assess b of
 --------------------------------------------------------------------------------
 
 data Selection i s = Selection
-    { inputs :: ![(i, TokenBundle)]
+    { inputs :: NonEmpty (i, TokenBundle)
       -- ^ The selected inputs, in the reverse order to which they were added.
-    , outputs :: ![TokenBundle]
+    , outputs :: NonEmpty TokenBundle
       -- ^ The generated outputs, in descending order of excess ada.
     , feeExcess :: !Coin
       -- ^ The excess over the minimum permissible fee for this selection.
@@ -418,7 +418,7 @@ checkOutputOrder params selection
     orderActual =
         outputs selection
     orderExpected =
-        L.sortBy (outputOrdering params) (outputs selection)
+        NE.sortBy (outputOrdering params) (outputs selection)
 
 --------------------------------------------------------------------------------
 -- Selection invariant: selection size (in comparison to the stored value)
@@ -556,7 +556,8 @@ initialize
     => SelectionParameters s
     -> f (i, TokenBundle)
     -> Either (SelectionError s) (Selection i s)
-initialize params entries = do
+initialize _params _entries = undefined
+{-
     selection <- addEntries paramsAdjusted empty entries
     reducedOutputBundles <- maybeToEither SelectionAdaInsufficient $
         reduceOutputAdaQuantities
@@ -573,7 +574,7 @@ initialize params entries = do
         , size = mempty
         , rewardWithdrawal = Coin 0
         }
-
+-}
 --------------------------------------------------------------------------------
 -- Finalizing a selection
 --------------------------------------------------------------------------------
@@ -590,7 +591,7 @@ type AddEntry s i v =
         -> Selection i s
         -> (i, v)
         -> Either (SelectionError s) (Selection i s)
-
+{-
 addEntries
     :: (Foldable f, Monoid s, Ord s)
     => SelectionParameters s
@@ -599,7 +600,7 @@ addEntries
     -> Either (SelectionError s) (Selection i s)
 addEntries params =
     foldM $ \selection entry -> addEntry params selection entry
-
+-}
 addEntry :: (Monoid s, Ord s) => AddEntry s i TokenBundle
 addEntry params selection (inputId, inputBundle)
     | Just inputCoin <- TokenBundle.toCoin inputBundle =
@@ -702,17 +703,23 @@ addCoinAsNewOutput params selection (inputId, inputCoin) = do
 addBundleToExistingOutput :: Ord s => AddEntry s i TokenBundle
 addBundleToExistingOutput params selection (inputId, inputBundle) = do
     (bundleIndex, mergedBundle) <- findFirstValidMergedBundle
-    let (prefix, suffix) = drop 1 <$> L.splitAt bundleIndex (outputs selection)
-    pure
-        $ selection {outputs = prefix <> suffix}
-        & addInput (inputId, inputBundle)
-        & addOutput params mergedBundle
+    let (prefix, suffix) = drop 1 <$> NE.splitAt bundleIndex (outputs selection)
+    let remainingOutputs = prefix <> suffix
+    case remainingOutputs of
+        [] -> pure
+            $ selection {outputs = mergedBundle :| []}
+            & addInput (inputId, inputBundle)
+        o : os -> pure
+            $ selection {outputs = o :| os}
+            & addInput (inputId, inputBundle)
+            & addOutput params mergedBundle
   where
     findFirstValidMergedBundle :: Either (SelectionError s) (Int, TokenBundle)
     findFirstValidMergedBundle = maybeToEither SelectionAdaInsufficient
         $ outputs selection
         & fmap (<> inputBundle)
         & fmap (`safeReduceBundleCoin` feeForInput params)
+        & NE.toList
         & zip [0 ..]
         & filter (outputIsValid params . snd)
         & listToMaybe
@@ -807,10 +814,10 @@ addBundleAsNewOutputWithoutReclaimingAda
 reduceOutputAdaQuantities
     :: SelectionParameters s
     -> Coin
-    -> [TokenBundle]
-    -> Maybe [TokenBundle]
+    -> NonEmpty TokenBundle
+    -> Maybe (NonEmpty TokenBundle)
 reduceOutputAdaQuantities params reductionRequired bundles =
-    go reductionRequired [] bundles
+    NE.fromList <$> go reductionRequired [] (NE.toList bundles)
   where
     go (Coin 0) reducedBundles remainingBundles =
         Just $ insertManyBy (outputOrdering params)
@@ -831,7 +838,8 @@ addInput
     :: (i, TokenBundle)
     -> Selection i s
     -> Selection i s
-addInput input selection = selection { inputs = input : inputs selection }
+addInput input selection = selection
+    { inputs = NE.cons input (inputs selection) }
 
 addInputCoin
     :: (i, Coin)
@@ -845,10 +853,10 @@ addOutput
     -> Selection i s
     -> Selection i s
 addOutput params outputBundle selection = selection
-    { outputs = L.insertBy
+    { outputs = NE.fromList $ L.insertBy
         (outputOrdering params)
         (outputBundle)
-        (outputs selection)
+        (NE.toList $ outputs selection)
     }
 
 addOutputCoin
@@ -878,10 +886,8 @@ guardSize params selectionSizeRequired
   where
     selectionSizeMaximum = maximumSizeOfSelection params
 
-replaceHeadOfList :: [a] -> a -> [a]
-replaceHeadOfList as a = case as of
-    _ : xs -> a : xs
-    [] -> []
+replaceHeadOfList :: NonEmpty a -> a -> NonEmpty a
+replaceHeadOfList (_ :| as) a = a :| as
 
 coinFromInteger :: Integer -> Maybe Coin
 coinFromInteger i
@@ -900,10 +906,10 @@ insertManyBy order itemsToInsert sortedItems =
 
 eithersToEither :: NonEmpty (Either e a) -> Either e a
 eithersToEither eithers
-    | Just success <- maybesToMaybe $ NE.toList (eitherToMaybe <$> eithers) =
+    | Just success <- maybesToMaybe (eitherToMaybe <$> eithers) =
         pure success
     | otherwise =
         NE.head eithers
 
-maybesToMaybe :: [Maybe a] -> Maybe a
-maybesToMaybe = listToMaybe . catMaybes
+maybesToMaybe :: NonEmpty (Maybe a) -> Maybe a
+maybesToMaybe = listToMaybe . catMaybes . NE.toList

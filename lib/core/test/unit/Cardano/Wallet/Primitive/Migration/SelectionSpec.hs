@@ -8,7 +8,7 @@
 {-# LANGUAGE TypeApplications #-}
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 
-module Cardano.Wallet.Primitive.MigrationSpec
+module Cardano.Wallet.Primitive.Migration.SelectionSpec
     where
 
 -- TODO:
@@ -16,27 +16,22 @@ module Cardano.Wallet.Primitive.MigrationSpec
 --
 import Prelude
 
-import Cardano.Wallet.Primitive.Migration
+import Cardano.Wallet.Primitive.Migration.Selection
     ( Selection (..)
     , SelectionError (..)
-    , SelectionInvariantStatus (..)
-    , SelectionParameters (..)
+    , outputOrdering
+    )
+import Cardano.Wallet.Primitive.Migration.SelectionParameters
+    ( SelectionParameters (..)
     , TokenQuantityAssessment (..)
     , TokenQuantityAssessor (..)
-    , checkSelectionInvariant
-    , currentSizeOfSelection
-    , emptySelection
     , feeForOutputCoin
-    , guardSize
     , minimumAdaQuantityForOutputCoin
-    , selectionOutputOrdering
     )
 import Cardano.Wallet.Primitive.Types.Coin
     ( Coin (..), subtractCoin )
 import Cardano.Wallet.Primitive.Types.TokenBundle
     ( TokenBundle (..) )
-import Cardano.Wallet.Primitive.Types.TokenBundle.Gen
-    ( genTokenBundleSmallRangePositive )
 import Cardano.Wallet.Primitive.Types.TokenMap
     ( AssetId, TokenMap )
 import Cardano.Wallet.Primitive.Types.TokenQuantity
@@ -46,13 +41,11 @@ import Cardano.Wallet.Primitive.Types.Tx
 import Control.Monad
     ( replicateM )
 import Data.ByteArray.Encoding
-    ( Base (Base16), convertFromBase, convertToBase )
+    ( Base (Base16), convertToBase )
 import Data.ByteString
     ( ByteString )
 import Data.Function
     ( (&) )
-import Data.Functor
-    ( (<&>) )
 import Data.Generics.Internal.VL.Lens
     ( view )
 import Data.Generics.Labels
@@ -78,24 +71,17 @@ import Test.Hspec.Extra
 import Test.QuickCheck
     ( Arbitrary (..)
     , Gen
-    , Property
-    , checkCoverage
     , choose
-    , conjoin
-    , counterexample
-    , cover
     , frequency
     , genericShrink
     , oneof
     , property
     , vector
-    , (===)
     )
 
 import qualified Cardano.Wallet.Primitive.Types.TokenBundle as TokenBundle
 import qualified Cardano.Wallet.Primitive.Types.TokenMap as TokenMap
 import qualified Data.ByteString as BS
-import qualified Data.Foldable as F
 import qualified Data.List as L
 import qualified Data.List.NonEmpty as NE
 import qualified Data.Set as Set
@@ -103,7 +89,7 @@ import qualified Data.Text as T
 import qualified Data.Text.Encoding as T
 
 spec :: Spec
-spec = describe "Cardano.Wallet.Primitive.MigrationSpec" $
+spec = describe "Cardano.Wallet.Primitive.Migration.SelectionSpec" $
 
     modifyMaxSuccess (const 1000) $ do
 
@@ -190,7 +176,7 @@ prop_addCoin_invariant (MockAddCoinData mockParams coins) =
 
     selections :: NonEmpty MockSelection
     selections =
-        NE.scanl (\s i -> fromRight $ addCoin params s i) emptySelection inputs
+        NE.scanl (\s i -> fromRight $ addCoin params s i) empty inputs
 
     transitions :: [(Coin, (MockSelection, MockSelection))]
     transitions = NE.toList coins `zip` consecutivePairs (NE.toList selections)
@@ -200,9 +186,9 @@ prop_addCoin_invariant (MockAddCoinData mockParams coins) =
         -> Property
     transitionPreservesInvariant (coin, (initialSelection, finalSelection)) =
         counterexample counterexampleText $ conjoin
-          [ checkSelectionInvariant params initialSelection
+          [ checkInvariant params initialSelection
               === SelectionInvariantHolds
-          , checkSelectionInvariant params finalSelection
+          , checkInvariant params finalSelection
               === SelectionInvariantHolds
           ]
       where
@@ -230,7 +216,7 @@ genMockSelection mockParams =
         ]
 
 genMockSelectionSmall :: MockSelectionParameters -> Gen MockSelection
-genMockSelectionSmall mockParams = do
+genMockSelectionSmall _mockParams = do
     -- lots of possibilities here
     undefined
 
@@ -268,12 +254,12 @@ genMockSelectionNearlyFull mockParams =
 -- Some MA bundles with a larger ada amount
 
 genInputTokenBundle :: MockSelectionParameters -> Gen TokenBundle
-genInputTokenBundle params = do
+genInputTokenBundle _params = do
     assetCount <- oneof
         [ pure 0
         , oneof [pure 1, choose (2, 10)]
         ]
-    assets <- replicateM assetCount genAssetQuantity
+    _assets <- replicateM assetCount genAssetQuantity
     undefined
   where
     genAssetQuantity :: Gen (AssetId, TokenQuantity)
@@ -297,7 +283,7 @@ joinMockSelections mockParams s1 s2
             = inputs s1 <> inputs s2
         , outputs
             = outputs s2 <> outputs s2
-            & L.sortBy (selectionOutputOrdering params)
+            & L.sortBy (outputOrdering params)
         , feeExcess
             = feeExcess s1 <> feeExcess s2
         , size

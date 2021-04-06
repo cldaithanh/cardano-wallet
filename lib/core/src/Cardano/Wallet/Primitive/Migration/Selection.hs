@@ -579,8 +579,14 @@ initialize _params _entries = undefined
 -- Finalizing a selection
 --------------------------------------------------------------------------------
 
-finalize :: SelectionParameters s -> Selection i s -> Selection i s
-finalize _params _selection = undefined
+finalize :: Selection i s -> Selection i s
+finalize selection =
+    selection
+        { feeExcess = Coin 0
+        , outputs = increaseOutputAdaQuantities
+            (feeExcess selection)
+            (outputs selection)
+        }
 
 --------------------------------------------------------------------------------
 -- Extending a selection
@@ -833,6 +839,16 @@ reduceOutputAdaQuantities params reductionRequired bundles =
             Coin.distance coin reduction
         reducedBundle =
             TokenBundle.adjustCoin bundle (flip Coin.distance reduction)
+
+increaseOutputAdaQuantities
+    :: Coin
+    -> NonEmpty TokenBundle
+    -> NonEmpty TokenBundle
+increaseOutputAdaQuantities incrementRequired bundles =
+    NE.zipWith (<>) bundleIncrements bundles
+  where
+    bundleIncrements = TokenBundle.fromCoin <$>
+        Coin.equipartition incrementRequired bundles
 
 addInput
     :: (i, TokenBundle)

@@ -12,8 +12,8 @@ module Cardano.Wallet.Primitive.Migration
 
 import Prelude
 
-import Cardano.Wallet.Primitive.Migration.SelectionParameters
-    ( SelectionParameters (..), tokenBundleIsValid )
+import Cardano.Wallet.Primitive.Migration.Selection
+    ( SelectionParameters (..), outputIsValid )
 import Cardano.Wallet.Primitive.Types.Coin
     ( Coin (..) )
 import Cardano.Wallet.Primitive.Types.TokenBundle
@@ -54,7 +54,7 @@ data ClassifiedUTxO i = ClassifiedUTxO
     }
     deriving (Eq, Show)
 
-classifyUTxO :: SelectionParameters s -> UTxO -> ClassifiedUTxO TxIn
+classifyUTxO :: Ord s => SelectionParameters s -> UTxO -> ClassifiedUTxO TxIn
 classifyUTxO params (UTxO u) = ClassifiedUTxO
     { initiators = entriesMatching Initiator
     , supporters = entriesMatching Supporter
@@ -92,7 +92,8 @@ data TokenBundleClassification
     deriving (Eq, Show)
 
 classifyTokenBundle
-    :: SelectionParameters s
+    :: Ord s
+    => SelectionParameters s
     -> TokenBundle
     -> TokenBundleClassification
 classifyTokenBundle params b
@@ -113,7 +114,7 @@ classifyTokenBundle params b
     bundleIsInitiator b@(TokenBundle c m) =
         case computeOutputCoin of
             Nothing -> False
-            Just oc -> tokenBundleIsValid params (TokenBundle oc m)
+            Just oc -> outputIsValid params (TokenBundle oc m)
       where
         computeOutputCoin :: Maybe Coin
         computeOutputCoin = coinFromInteger
@@ -126,7 +127,7 @@ classifyTokenBundle params b
     bundleIsSupporter b@(TokenBundle c m) =
         case computeOutputCoin of
             Nothing -> False
-            Just oc -> tokenBundleIsValid params (TokenBundle oc m)
+            Just oc -> outputIsValid params (TokenBundle oc m)
       where
         computeOutputCoin :: Maybe Coin
         computeOutputCoin = coinFromInteger

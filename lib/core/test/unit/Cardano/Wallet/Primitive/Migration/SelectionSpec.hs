@@ -20,11 +20,9 @@ import Cardano.Wallet.Primitive.Migration.Selection
     ( Selection (..)
     , SelectionError (..)
     , outputOrdering
-    )
-import Cardano.Wallet.Primitive.Migration.SelectionParameters
-    ( SelectionParameters (..)
-    , TokenQuantityAssessment (..)
-    , TokenQuantityAssessor (..)
+    , SelectionOutputSizeAssessor (..)
+    , SelectionOutputSizeAssessment (..)
+    , SelectionParameters (..)
     , feeForOutputCoin
     , minimumAdaQuantityForOutputCoin
     )
@@ -36,8 +34,6 @@ import Cardano.Wallet.Primitive.Types.TokenMap
     ( AssetId, TokenMap )
 import Cardano.Wallet.Primitive.Types.TokenQuantity
     ( TokenQuantity (..) )
-import Cardano.Wallet.Primitive.Types.Tx
-    ( TokenBundleSizeAssessment (..), TokenBundleSizeAssessor (..) )
 import Control.Monad
     ( replicateM )
 import Data.ByteArray.Encoding
@@ -324,14 +320,12 @@ data MockSelectionParameters = MockSelectionParameters
         :: MockSizeOfInput
     , mockSizeOfOutput
         :: MockSizeOfOutput
+    , mockMaximumSizeOfOutput
+        :: MockMaximumSizeOfOutput
     , mockMaximumSizeOfSelection
         :: MockMaximumSizeOfSelection
     , mockMinimumAdaQuantityForOutput
         :: MockMinimumAdaQuantityForOutput
-    , mockTokenBundleSizeAssessor
-        :: MockTokenBundleSizeAssessor
-    , mockTokenQuantityAssessor
-        :: MockTokenQuantityAssessor
     }
     deriving (Eq, Generic, Show)
 
@@ -356,18 +350,15 @@ unMockSelectionParameters m = SelectionParameters
     , sizeOfOutput =
         unMockSizeOfOutput
             $ view #mockSizeOfOutput m
+    , maximumSizeOfOutput =
+        unMockMaximumSizeOfOutput
+            $ view #mockMaximumSizeOfOutput m
     , maximumSizeOfSelection =
         unMockMaximumSizeOfSelection
             $ view #mockMaximumSizeOfSelection m
     , minimumAdaQuantityForOutput =
         unMockMinimumAdaQuantityForOutput
             $ view #mockMinimumAdaQuantityForOutput m
-    , tokenBundleSizeAssessor =
-        unMockTokenBundleSizeAssessor
-            $ view #mockTokenBundleSizeAssessor m
-    , tokenQuantityAssessor =
-        unMockTokenQuantityAssessor
-            $ view #mockTokenQuantityAssessor m
     }
 
 genMockSelectionParameters :: Gen MockSelectionParameters
@@ -378,10 +369,9 @@ genMockSelectionParameters = MockSelectionParameters
     <*> genMockSizeOfEmptySelection
     <*> genMockSizeOfInput
     <*> genMockSizeOfOutput
+    <*> genMockMaximumSizeOfOutput
     <*> genMockMaximumSizeOfSelection
     <*> genMockMinimumAdaQuantityForOutput
-    <*> genMockTokenBundleSizeAssessor
-    <*> genMockTokenQuantityAssessor
 
 instance Arbitrary MockSelectionParameters where
     arbitrary = genMockSelectionParameters
@@ -511,6 +501,32 @@ genMockSizeOfOutput = MockSizeOfOutput
     <*> genMockSizeRange 0 10
 
 --------------------------------------------------------------------------------
+-- Mock maximum sizes of outputs
+--------------------------------------------------------------------------------
+
+data MockMaximumSizeOfOutput = MockMaximumSizeOfOutput
+    { mockMaximumOutputSize
+        :: Maybe MockSize
+    , mockMaximumOutputTokenQuantity
+        :: Maybe TokenQuantity
+    }
+    deriving (Eq, Show)
+
+noMaximumOutputSize :: MockMaximumSizeOfOutput
+noMaximumOutputSize = MockMaximumSizeOfOutput Nothing Nothing
+
+unMockMaximumSizeOfOutput
+    :: MockMaximumSizeOfOutput -> SelectionOutputSizeAssessor
+unMockMaximumSizeOfOutput _ = SelectionOutputSizeAssessor assess
+  where
+    -- TODO
+    assess = const SelectionOutputSizeWithinLimit
+
+genMockMaximumSizeOfOutput :: Gen MockMaximumSizeOfOutput
+genMockMaximumSizeOfOutput = pure noMaximumOutputSize
+    -- TODO
+
+--------------------------------------------------------------------------------
 -- Mock maximum sizes of selections
 --------------------------------------------------------------------------------
 
@@ -544,61 +560,6 @@ genMockMinimumAdaQuantityForOutput :: Gen MockMinimumAdaQuantityForOutput
 genMockMinimumAdaQuantityForOutput = MockMinimumAdaQuantityForOutput
     <$> genCoinRange (Coin 0) (Coin 10)
     <*> genCoinRange (Coin 0) (Coin 10)
-
---------------------------------------------------------------------------------
--- Mock token bundle size assessors
---------------------------------------------------------------------------------
-
-data MockTokenBundleSizeAssessor
-    = NoBundleSizeLimit
-      -- ^ Indicates that there is no limit on a token bundle's size.
-    | BundleAssetCountUpperLimit Int
-      -- ^ Indicates an inclusive upper bound on the number of assets in a
-      -- token bundle.
-    deriving (Eq, Show)
-
-unMockTokenBundleSizeAssessor
-    :: MockTokenBundleSizeAssessor -> TokenBundleSizeAssessor
-unMockTokenBundleSizeAssessor m = TokenBundleSizeAssessor $ case m of
-    NoBundleSizeLimit ->
-        const TokenBundleSizeWithinLimit
-    BundleAssetCountUpperLimit upperLimit ->
-        \bundle ->
-            let assetCount = Set.size $ TokenBundle.getAssets bundle in
-            case assetCount `compare` upperLimit of
-                LT -> TokenBundleSizeWithinLimit
-                EQ -> TokenBundleSizeWithinLimit
-                GT -> OutputTokenBundleSizeExceedsLimit
-
-genMockTokenBundleSizeAssessor :: Gen MockTokenBundleSizeAssessor
-genMockTokenBundleSizeAssessor = pure NoBundleSizeLimit
-    -- TODO
-
---------------------------------------------------------------------------------
--- Mock token quantity assessors
---------------------------------------------------------------------------------
-
-data MockTokenQuantityAssessor
-    = NoTokenQuantityLimit
-      -- ^ Indicates that there is no limit on a token quantity.
-    | TokenQuantityUpperLimit TokenQuantity
-      -- ^ Indicates an inclusive upper bound on a token quantity.
-    deriving (Eq, Show)
-
-unMockTokenQuantityAssessor
-    :: MockTokenQuantityAssessor -> TokenQuantityAssessor
-unMockTokenQuantityAssessor m = TokenQuantityAssessor $ case m of
-    NoTokenQuantityLimit ->
-        const TokenQuantityWithinLimit
-    TokenQuantityUpperLimit upperLimit ->
-        \q -> case q `compare` upperLimit of
-            LT -> TokenQuantityWithinLimit
-            EQ -> TokenQuantityWithinLimit
-            GT -> TokenQuantityExceedsLimit
-
-genMockTokenQuantityAssessor :: Gen MockTokenQuantityAssessor
-genMockTokenQuantityAssessor = pure NoTokenQuantityLimit
-    -- TODO
 
 --------------------------------------------------------------------------------
 -- Reusable generators and shrinkers
@@ -644,14 +605,12 @@ nullSelectionParameters = SelectionParameters
         MockSize 0
     , sizeOfOutput =
         const (MockSize 0)
+    , maximumSizeOfOutput =
+        SelectionOutputSizeAssessor (const SelectionOutputSizeWithinLimit)
     , maximumSizeOfSelection =
         MockSize 0
     , minimumAdaQuantityForOutput =
         const (Coin 0)
-    , tokenBundleSizeAssessor =
-        TokenBundleSizeAssessor (const TokenBundleSizeWithinLimit)
-    , tokenQuantityAssessor =
-        TokenQuantityAssessor (const TokenQuantityWithinLimit)
     }
 
 --------------------------------------------------------------------------------

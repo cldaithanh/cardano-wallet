@@ -24,8 +24,10 @@ module Cardano.Wallet.Primitive.Migration.Selection
 
     -- * Initializing a selection
     , initialize
+
     -- * Finalizing a selection
     , finalize
+
     -- * Extending a selection
     , addEntry
     , addRewardWithdrawal
@@ -63,8 +65,6 @@ import Cardano.Wallet.Primitive.Types.TokenBundle
     ( TokenBundle (..) )
 import Cardano.Wallet.Primitive.Types.TokenMap
     ( TokenMap )
--- import Control.Monad
---    ( foldM )
 import Data.Either.Extra
     ( eitherToMaybe, maybeToEither )
 import Data.Function
@@ -558,36 +558,52 @@ data SelectionFullError s = SelectionFullError
 --------------------------------------------------------------------------------
 
 initialize
-    :: Foldable f
-    => (Monoid s, Ord s)
+    :: forall i s. (Monoid s, Ord s)
     => SelectionParameters s
-    -> f (i, TokenBundle)
+    -> Coin
+    -> NonEmpty (i, TokenBundle)
     -> Either (SelectionError s) (Selection i s)
-initialize _params _entries = undefined
-{-
-    selection <- addEntries paramsAdjusted empty entries
-    reducedOutputBundles <- maybeToEither SelectionAdaInsufficient $
+initialize params rewardWithdrawal inputs = do
+    let coalescedBundles = NE.sortBy
+            (outputOrdering params)
+            (coalesceTokenBundles params $ snd <$> inputs)
+    let selection = Selection
+            { inputs
+            , outputs = coalescedBundles
+            , feeExcess = Coin 0
+            , size = mempty
+            , rewardWithdrawal
+            }
+    outputs <- maybeToEither SelectionAdaInsufficient $
         reduceOutputAdaQuantities
-            params (feeForEmptySelection params) (outputs selection)
-    pure selection {outputs = reducedOutputBundles}
-  where
-    paramsAdjusted = params {feeForEmptySelection = Coin 0}
+            (params)
+            (minimumFee params selection)
+            (coalescedBundles)
+    size <- guardSize params $ currentSize params selection {outputs}
+    -- We have already reduced the output ada quantities in order to pay for
+    -- the fee. But this might in turn have reduced the required minimum fee.
+    -- So we need to recalculate the fee excess here, as it might be greater
+    -- than zero:
+    feeExcess <- do
+        let mf = minimumFee params selection {outputs, size}
+        case currentFee selection {outputs, size} of
+            Right cf | cf >= mf ->
+                pure (Coin.distance cf mf)
+            _ ->
+                Left SelectionAdaInsufficient
+    pure selection {outputs, size, feeExcess}
 
-    empty :: Monoid s => Selection i s
-    empty = Selection
-        { inputs = []
-        , outputs = []
-        , feeExcess = Coin 0
-        , size = mempty
-        , rewardWithdrawal = Coin 0
-        }
--}
 --------------------------------------------------------------------------------
 -- Finalizing a selection
 --------------------------------------------------------------------------------
 
 finalize :: Selection i s -> Selection i s
 finalize selection = selection
+    -- TODO: Increasing ada quantities of outputs might increase the minimum
+    -- required fee, and it might increase the size of the selection beyond the
+    -- maximum size, which would render this calculation invalid. We should
+    -- probably use an algorithm that increases the quantities incrementally,
+    -- until the fee excess can be reduced no further.
     { feeExcess = Coin 0
     , outputs = increaseOutputAdaQuantities
         (feeExcess selection)
@@ -603,16 +619,7 @@ type AddEntry s i v =
         -> Selection i s
         -> (i, v)
         -> Either (SelectionError s) (Selection i s)
-{-
-addEntries
-    :: (Foldable f, Monoid s, Ord s)
-    => SelectionParameters s
-    -> Selection i s
-    -> f (i, TokenBundle)
-    -> Either (SelectionError s) (Selection i s)
-addEntries params =
-    foldM $ \selection entry -> addEntry params selection entry
--}
+
 addEntry :: (Monoid s, Ord s) => AddEntry s i TokenBundle
 addEntry params selection (inputId, inputBundle)
     | Just inputCoin <- TokenBundle.toCoin inputBundle =
@@ -622,8 +629,13 @@ addEntry params selection (inputId, inputBundle)
   where
     addCoin :: (Monoid s, Ord s) => AddEntry s i Coin
     addCoin = addEntryWithFirstSuccessfulStrategy
-        [ addCoinToFeeExcess
-        , addCoinAsNewOutput
+        [ addCoinAsNewOutput
+        -- Consider adding this to an existing output instead. This is because
+        -- raising the fee excess is risky. If we accumulate a fee excess that
+        -- is too large, when we come to finalize the selection, we might not
+        -- be able to redistribute the fee excess back to the outputs without
+        -- causing the selection to exceed the maximum size.
+        , addCoinToFeeExcess
         ]
 
     addBundle :: (Monoid s, Ord s) => AddEntry s i TokenBundle
@@ -855,6 +867,19 @@ increaseOutputAdaQuantities incrementRequired bundles =
   where
     bundleIncrements = TokenBundle.fromCoin <$>
         Coin.equipartition incrementRequired bundles
+
+coalesceTokenBundles
+    :: SelectionParameters i
+    -> NonEmpty TokenBundle
+    -> NonEmpty TokenBundle
+coalesceTokenBundles params bundles = go bundles
+  where
+    go (b :| []) =
+        b :| []
+    go (b1 :| (b2 : bs)) | outputSizeWithinLimit params (b1 <> b2) =
+        go ((b1 <> b2) :| bs)
+    go (b1 :| (b2 : bs)) =
+        (b1 :| []) <> go (b2 :| bs)
 
 addInput
     :: (i, TokenBundle)

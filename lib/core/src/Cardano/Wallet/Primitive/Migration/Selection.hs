@@ -21,6 +21,7 @@ module Cardano.Wallet.Primitive.Migration.Selection
     -- * Selections
     , Selection (..)
     , SelectionError (..)
+    , SelectionFullError (..)
 
     -- * Initializing a selection
     , initialize
@@ -872,14 +873,14 @@ coalesceTokenBundles
     :: SelectionParameters i
     -> NonEmpty TokenBundle
     -> NonEmpty TokenBundle
-coalesceTokenBundles params bundles = go bundles
+coalesceTokenBundles params bundles = coalesce bundles
   where
-    go (b :| []) =
+    coalesce (b :| []) =
         b :| []
-    go (b1 :| (b2 : bs)) | outputSizeWithinLimit params (b1 <> b2) =
-        go ((b1 <> b2) :| bs)
-    go (b1 :| (b2 : bs)) =
-        (b1 :| []) <> go (b2 :| bs)
+    coalesce (b1 :| (b2 : bs)) | outputSizeWithinLimit params (b1 <> b2) =
+        coalesce ((b1 <> b2) :| bs)
+    coalesce (b1 :| (b2 : bs)) =
+        b1 `NE.cons` coalesce (b2 :| bs)
 
 addInput
     :: (i, TokenBundle)

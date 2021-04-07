@@ -19,12 +19,16 @@ import Prelude
 import Cardano.Wallet.Primitive.Migration.Selection
     ( Selection (..)
     , SelectionError (..)
-    , outputOrdering
-    , SelectionOutputSizeAssessor (..)
+    , SelectionFullError (..)
+    , SelectionInvariantStatus (..)
     , SelectionOutputSizeAssessment (..)
+    , SelectionOutputSizeAssessor (..)
     , SelectionParameters (..)
+    , checkInvariant
     , feeForOutputCoin
+    , initialize
     , minimumAdaQuantityForOutputCoin
+    , outputOrdering
     )
 import Cardano.Wallet.Primitive.Types.Coin
     ( Coin (..), subtractCoin )
@@ -32,6 +36,8 @@ import Cardano.Wallet.Primitive.Types.TokenBundle
     ( TokenBundle (..) )
 import Cardano.Wallet.Primitive.Types.TokenMap
     ( AssetId, TokenMap )
+import Cardano.Wallet.Primitive.Types.TokenMap.Gen
+    ( genAssetIdLargeRange )
 import Cardano.Wallet.Primitive.Types.TokenQuantity
     ( TokenQuantity (..) )
 import Control.Monad
@@ -40,6 +46,8 @@ import Data.ByteArray.Encoding
     ( Base (Base16), convertToBase )
 import Data.ByteString
     ( ByteString )
+import Data.Either
+    ( isRight )
 import Data.Function
     ( (&) )
 import Data.Generics.Internal.VL.Lens
@@ -67,18 +75,23 @@ import Test.Hspec.Extra
 import Test.QuickCheck
     ( Arbitrary (..)
     , Gen
+    , Property
+    , checkCoverage
     , choose
+    , cover
     , frequency
     , genericShrink
     , oneof
     , property
     , vector
+    , (===)
     )
 
 -- import qualified Cardano.Wallet.Primitive.Types.Coin as Coin
 import qualified Cardano.Wallet.Primitive.Types.TokenBundle as TokenBundle
 import qualified Cardano.Wallet.Primitive.Types.TokenMap as TokenMap
 import qualified Data.ByteString as BS
+import qualified Data.Foldable as F
 import qualified Data.List as L
 import qualified Data.List.NonEmpty as NE
 import qualified Data.Set as Set
@@ -90,10 +103,10 @@ spec = describe "Cardano.Wallet.Primitive.Migration.SelectionSpec" $
 
     modifyMaxSuccess (const 1000) $ do
 
-    parallel $ describe "Adding a pure ada entry" $ do
+    parallel $ describe "Initializing a selection" $ do
 
-        it "prop_addCoin_invariant" $
-            property $ True --prop_addCoin_invariant
+        it "prop_initialize" $
+            property prop_initialize
 
 --------------------------------------------------------------------------------
 -- Properties
@@ -198,6 +211,101 @@ prop_addCoin_invariant (MockAddCoinData mockParams coins) =
             , show coin
             ]
 -}
+
+--------------------------------------------------------------------------------
+-- Initializing a selection
+--------------------------------------------------------------------------------
+
+data MockInitializeArguments = MockInitializeArguments
+    { mockSelectionParameters :: MockSelectionParameters
+    , mockInputs :: NonEmpty (MockInputId, TokenBundle)
+    , mockRewardWithdrawal :: Coin
+    } deriving (Eq, Show)
+
+instance Arbitrary MockInitializeArguments where
+    arbitrary = do
+        mockSelectionParameters <- genMockSelectionParameters
+        inputCount <- choose (1, 20)
+        mockInputs <- (:|)
+            <$> genMockInput mockSelectionParameters
+            <*> replicateM
+                (inputCount - 1)
+                (genMockInput mockSelectionParameters)
+        mockRewardWithdrawal <- genCoinRange (Coin 1) (Coin 100)
+        pure MockInitializeArguments
+            { mockSelectionParameters
+            , mockInputs
+            , mockRewardWithdrawal
+            }
+      where
+        genMockInput
+            :: MockSelectionParameters -> Gen (MockInputId, TokenBundle)
+        genMockInput mockParams = (,)
+            <$> genMockInputId
+            <*> genTokenBundle mockParams
+
+prop_initialize :: MockInitializeArguments -> Property
+prop_initialize args =
+    checkCoverage $
+    cover 30 (isRight result)
+        "Initialization succeeded" $
+    cover 10 (selectionHasMoreInputsThanOutputs)
+        "Initialization succeeded with more inputs than outputs" $
+    -- TODO: Raise this coverage threshold above 0:
+    cover 0 (selectionHasMoreThanOneOutput)
+        "Initialization succeeded with more than one output" $
+    cover 10 (selectionHasNonZeroFeeExcess)
+        "Initialization succeeded with positive fee excess" $
+    -- TODO: Raise this coverage threshold above 0:
+    cover 0 (selectionHasZeroFeeExcess)
+        "Initialization succeeded with zero fee excess" $
+    cover 10 (selectionAdaInsufficient)
+        "Initialization failed due to insufficient ada" $
+    cover 10 (selectionFull)
+        "Initialization failed due to the selection being full" $
+    case result of
+        Left SelectionAdaInsufficient ->
+            -- TODO: Check that the ada amount really is insufficient.
+            property True
+        Left (SelectionFull e) ->
+            property (selectionSizeMaximum e < selectionSizeRequired e)
+        Right selection ->
+            checkInvariant params selection === SelectionInvariantHolds
+  where
+    MockInitializeArguments
+        { mockSelectionParameters
+        , mockInputs
+        , mockRewardWithdrawal
+        } = args
+    params = unMockSelectionParameters mockSelectionParameters
+    result = initialize params mockRewardWithdrawal mockInputs
+
+    selectionHasMoreInputsThanOutputs :: Bool
+    selectionHasMoreInputsThanOutputs = matchRight result $ \selection ->
+        F.length (inputs selection) > F.length (outputs selection)
+
+    selectionHasMoreThanOneOutput :: Bool
+    selectionHasMoreThanOneOutput = matchRight result $ \selection ->
+        F.length (outputs selection) > 1
+
+    selectionHasNonZeroFeeExcess :: Bool
+    selectionHasNonZeroFeeExcess = matchRight result $ \selection ->
+        feeExcess selection > Coin 0
+
+    selectionHasZeroFeeExcess :: Bool
+    selectionHasZeroFeeExcess = matchRight result $ \selection ->
+        feeExcess selection == Coin 0
+
+    selectionAdaInsufficient :: Bool
+    selectionAdaInsufficient = case result of
+        Left SelectionAdaInsufficient -> True
+        _ -> False
+
+    selectionFull :: Bool
+    selectionFull = case result of
+        Left (SelectionFull _) -> True
+        _ -> False
+
 --------------------------------------------------------------------------------
 -- Mock selections
 --------------------------------------------------------------------------------
@@ -285,17 +393,29 @@ genMockSelectionNearlyFull mockParams =
 -- Some MA bundles with the minimum ada amount
 -- Some MA bundles with a larger ada amount
 
-genInputTokenBundle :: MockSelectionParameters -> Gen TokenBundle
-genInputTokenBundle _params = do
+genTokenBundle :: MockSelectionParameters -> Gen TokenBundle
+genTokenBundle params = do
     assetCount <- oneof
         [ pure 0
-        , oneof [pure 1, choose (2, 10)]
+        , pure 1
+        , choose (2, 16)
         ]
-    _assets <- replicateM assetCount genAssetQuantity
-    undefined
+    tokens <- TokenMap.fromFlatList <$> replicateM assetCount genAssetQuantity
+    coin <- genCoinRange (Coin 1) (Coin 100)
+    pure TokenBundle {coin, tokens}
   where
     genAssetQuantity :: Gen (AssetId, TokenQuantity)
-    genAssetQuantity = undefined
+    genAssetQuantity = (,)
+        <$> genAssetIdLargeRange
+        <*> genTokenQuantity
+
+    genTokenQuantity :: Gen TokenQuantity
+    genTokenQuantity = TokenQuantity . fromIntegral @Integer <$>
+        choose (1, fromIntegral (unTokenQuantity maximumTokenQuantity))
+      where
+        maximumTokenQuantity = fromMaybe (TokenQuantity 10)
+            $ mockMaximumOutputTokenQuantity
+            $ mockMaximumSizeOfOutput params
 
 type MockSelectionError = SelectionError MockSize
 
@@ -594,14 +714,18 @@ noMaximumOutputSize = MockMaximumSizeOfOutput Nothing Nothing
 
 unMockMaximumSizeOfOutput
     :: MockMaximumSizeOfOutput -> SelectionOutputSizeAssessor
-unMockMaximumSizeOfOutput _ = SelectionOutputSizeAssessor assess
+unMockMaximumSizeOfOutput _mock = SelectionOutputSizeAssessor assess
   where
-    -- TODO
     assess = const SelectionOutputSizeWithinLimit
 
 genMockMaximumSizeOfOutput :: Gen MockMaximumSizeOfOutput
-genMockMaximumSizeOfOutput = pure noMaximumOutputSize
-    -- TODO
+genMockMaximumSizeOfOutput = MockMaximumSizeOfOutput
+    <$> (Just <$> genMockSizeRange 1 100)
+    <*> (Just <$> genTokenQuantityRange 1 10)
+  where
+    genTokenQuantityRange :: Natural -> Natural -> Gen TokenQuantity
+    genTokenQuantityRange a b = TokenQuantity . fromIntegral @Integer <$>
+        choose (fromIntegral a, fromIntegral b)
 
 --------------------------------------------------------------------------------
 -- Mock maximum sizes of selections
@@ -710,6 +834,11 @@ fromJust Nothing = error "fromJust"
 fromRight :: Either e a -> a
 fromRight (Right a) = a
 fromRight (Left _) = error "fromRight"
+
+matchRight :: Either e a -> (a -> Bool) -> Bool
+matchRight result f = case result of
+    Right x -> f x
+    Left _ -> False
 
 safeCoinPred :: Coin -> Coin
 safeCoinPred c = fromMaybe (Coin 0) (c `subtractCoin` Coin 1)

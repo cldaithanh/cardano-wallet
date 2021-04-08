@@ -30,7 +30,7 @@ import Cardano.Wallet.Primitive.Migration.Selection
     , SelectionOutputSizeAssessor (..)
     , SelectionParameters (..)
     --, addBundleAsNewOutput
-    --, addBundleAsNewOutputWithoutReclaimingAda
+    , addBundleAsNewOutputWithoutReclaimingAda
     , addBundleToExistingOutput
     , checkInvariant
     , initialize
@@ -53,7 +53,7 @@ import Data.ByteArray.Encoding
 import Data.ByteString
     ( ByteString )
 import Data.Either
-    ( isLeft, isRight )
+    ( isRight )
 import Data.Generics.Internal.VL.Lens
     ( view )
 import Data.Generics.Labels
@@ -81,6 +81,7 @@ import Test.QuickCheck
     , checkCoverage
     , choose
     , conjoin
+    , counterexample
     , cover
     , genericShrink
     , oneof
@@ -113,7 +114,11 @@ spec = describe "Cardano.Wallet.Primitive.Migration.SelectionSpec" $
     parallel $ describe "Extending a selection" $ do
 
         it "prop_addBundleToExistingOutput" $
-            withMaxSuccess 1000 $ property prop_addBundleToExistingOutput
+            withMaxSuccess 1000 $ property
+                prop_addBundleToExistingOutput
+        it "prop_addBundleAsNewOutputWithoutReclaimingAda" $
+            withMaxSuccess 1000 $ property
+                prop_addBundleAsNewOutputWithoutReclaimingAda
 
 --------------------------------------------------------------------------------
 -- Initializing a selection
@@ -162,7 +167,7 @@ prop_initialize args =
     cover 10 (resultHasInsufficientAda result)
         "Failed due to insufficient ada" $
     cover 10 (resultIsFull result)
-        "Failed due to the selection being full" $
+        "Failed due to oversized selection" $
     case result of
         Left SelectionAdaInsufficient ->
             -- TODO: Check that the ada amount really is insufficient.
@@ -224,22 +229,39 @@ prop_addBundleToExistingOutput :: MockAddEntryArguments -> Property
 prop_addBundleToExistingOutput mockArgs =
     prop_addEntry mockArgs addBundleToExistingOutput
 
+prop_addBundleAsNewOutputWithoutReclaimingAda
+    :: MockAddEntryArguments -> Property
+prop_addBundleAsNewOutputWithoutReclaimingAda mockArgs =
+    prop_addEntry mockArgs addBundleAsNewOutputWithoutReclaimingAda
+
+-- TODO: think of a way to extract out the specific properties we need for
+-- specific functions.
+
 prop_addEntry :: MockAddEntryArguments -> MockAddEntry TokenBundle -> Property
 prop_addEntry mockArgs addEntry =
     checkCoverage $
-    cover 80 (isRight result)
-        "Adding entry succeeded" $
+    cover 30 (resultIsSelection result)
+        "Succeeded" $
+    cover 0.5 (resultHasInsufficientAda result)
+        "Failed due to insufficient ada" $
+    cover 0.5 (resultIsFull result)
+        "Failed due to oversized selection" $
     case result of
-        Left _ ->
-            -- Check that initialize would also have failed for the same set
-            -- of inputs.
-            property $ isLeft $ initialize params
-                (rewardWithdrawal mockSelection)
-                (mockEntry `NE.cons` inputs mockSelection)
+        Left (SelectionFull e) ->
+            counterexample "Failed due to oversized selection" $
+            conjoin
+                [ property (selectionSizeMaximum e < selectionSizeRequired e)
+                --, property (isLeft initializeResult)
+                ]
+        Left SelectionAdaInsufficient ->
+            counterexample "Failed due to insufficient ada" $
+            property True -- property (isLeft initializeResult)
         Right selection ->
-            -- TODO: Check that we've increased the number of inputs by one.
-            -- and that it's the right input.
-            checkInvariant params selection === SelectionInvariantHolds
+            counterexample "Succeeded" $
+            conjoin
+                [ checkInvariant params selection === SelectionInvariantHolds
+                , inputs selection === mockEntry `NE.cons` inputs mockSelection
+                ]
   where
     MockAddEntryArguments
         { mockSelectionParameters
@@ -248,6 +270,10 @@ prop_addEntry mockArgs addEntry =
         } = mockArgs
     params = unMockSelectionParameters mockSelectionParameters
     result = addEntry params mockSelection mockEntry
+
+    --initializeResult = initialize params
+      --  (rewardWithdrawal mockSelection)
+       -- (mockEntry `NE.cons` inputs mockSelection)
 
 --------------------------------------------------------------------------------
 -- Mock results

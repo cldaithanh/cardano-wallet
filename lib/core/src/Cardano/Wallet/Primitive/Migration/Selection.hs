@@ -560,6 +560,13 @@ data SelectionFullError s = SelectionFullError
 -- Initializing a selection
 --------------------------------------------------------------------------------
 
+-- Things to try:
+-- Repeatedly running initialize with a very large set of inputs.
+-- We want to see how bad it really is to repeatedly call initialize with an
+-- incrementally increasing set.
+-- Try to write the algorithm as if you only had initialize.
+-- Try to test finalize.
+
 initialize
     :: forall i s. Size s
     => SelectionParameters s

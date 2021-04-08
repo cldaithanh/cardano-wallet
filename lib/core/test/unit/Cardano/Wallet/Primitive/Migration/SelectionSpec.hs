@@ -53,7 +53,7 @@ import Data.ByteArray.Encoding
 import Data.ByteString
     ( ByteString )
 import Data.Either
-    ( isRight )
+    ( isLeft, isRight )
 import Data.Generics.Internal.VL.Lens
     ( view )
 import Data.Generics.Labels
@@ -69,7 +69,7 @@ import GHC.Generics
 import Numeric.Natural
     ( Natural )
 import Test.Hspec
-    ( Spec, describe, it )
+    ( Spec, describe, it)
 import Test.Hspec.Core.QuickCheck
     ( modifyMaxSuccess )
 import Test.Hspec.Extra
@@ -80,6 +80,7 @@ import Test.QuickCheck
     , Property
     , checkCoverage
     , choose
+    , conjoin
     , cover
     , genericShrink
     , oneof
@@ -94,6 +95,7 @@ import Test.QuickCheck
 import qualified Cardano.Wallet.Primitive.Types.TokenMap as TokenMap
 import qualified Data.ByteString as BS
 import qualified Data.Foldable as F
+import qualified Data.List.NonEmpty as NE
 import qualified Data.Set as Set
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as T
@@ -146,21 +148,21 @@ prop_initialize :: MockInitializeArguments -> Property
 prop_initialize args =
     checkCoverage $
     cover 30 (resultIsSelection result)
-        "Initialization succeeded" $
+        "Succeeded" $
     cover 10 (resultHasMoreInputsThanOutputs result)
-        "Initialization succeeded with more inputs than outputs" $
+        "Succeeded with more inputs than outputs" $
     -- TODO: Raise this coverage threshold above 0:
     cover 0 (resultHasMoreThanOneOutput result)
-        "Initialization succeeded with more than one output" $
+        "Succeeded with more than one output" $
     cover 10 (resultHasNonZeroFeeExcess result)
-        "Initialization succeeded with positive fee excess" $
+        "Succeeded with positive fee excess" $
     -- TODO: Raise this coverage threshold above 0:
     cover 0 (resultHasZeroFeeExcess result)
-        "Initialization succeeded with zero fee excess" $
+        "Succeeded with zero fee excess" $
     cover 10 (resultHasInsufficientAda result)
-        "Initialization failed due to insufficient ada" $
+        "Failed due to insufficient ada" $
     cover 10 (resultIsFull result)
-        "Initialization failed due to the selection being full" $
+        "Failed due to the selection being full" $
     case result of
         Left SelectionAdaInsufficient ->
             -- TODO: Check that the ada amount really is insufficient.
@@ -168,7 +170,10 @@ prop_initialize args =
         Left (SelectionFull e) ->
             property (selectionSizeMaximum e < selectionSizeRequired e)
         Right selection ->
-            checkInvariant params selection === SelectionInvariantHolds
+            conjoin
+                [ checkInvariant params selection === SelectionInvariantHolds
+                , inputs selection === mockInputs
+                ]
   where
     MockInitializeArguments
         { mockSelectionParameters
@@ -225,9 +230,12 @@ prop_addEntry mockArgs addEntry =
     cover 80 (isRight result)
         "Adding entry succeeded" $
     case result of
-        Left _ -> property True
-            -- TODO: check that calling initialize would also fail with the
-            -- same error.
+        Left _ ->
+            -- Check that initialize would also have failed for the same set
+            -- of inputs.
+            property $ isLeft $ initialize params
+                (rewardWithdrawal mockSelection)
+                (mockEntry `NE.cons` inputs mockSelection)
         Right selection ->
             -- TODO: Check that we've increased the number of inputs by one.
             -- and that it's the right input.

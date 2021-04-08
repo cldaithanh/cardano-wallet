@@ -731,8 +731,8 @@ class (Ord a, Monoid a) => Size a where
 addBundleToExistingOutput :: forall s i. Size s => AddEntry s i TokenBundle
 addBundleToExistingOutput params selection (inputId, inputBundle) = do
     (bundleIndex, originalBundle, mergedBundle) <- findFirstValidMergedBundle
-    newFeeExcess <- computeNewFeeExcess originalBundle mergedBundle
     newSize <- computeNewSize originalBundle mergedBundle
+    newFeeExcess <- computeNewFeeExcess originalBundle mergedBundle
     let (prefix, suffix) = drop 1 <$> NE.splitAt bundleIndex (outputs selection)
     let remainingOutputs = prefix <> suffix
     case remainingOutputs of

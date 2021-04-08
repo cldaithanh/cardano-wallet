@@ -30,6 +30,7 @@ module Cardano.Wallet.Primitive.Migration.Selection
     , finalize
 
     -- * Extending a selection
+    , AddEntry
     , addEntry
     , addRewardWithdrawal
 
@@ -55,6 +56,9 @@ module Cardano.Wallet.Primitive.Migration.Selection
     , currentSize
     , minimumFee
     , outputOrdering
+
+    -- * Adding entries to selections
+    , addCoinToFeeExcess
 
     ) where
 
@@ -103,16 +107,16 @@ data SelectionParameters s = SelectionParameters
       -- ^ The constant fee for a selection input.
     , feeForOutput :: TokenBundle -> Coin
       -- ^ The variable fee for a selection output.
-    , feeForRewardWithdrawal :: Coin
-      -- ^ The constant fee for a reward withdrawal.
+    , feeForRewardWithdrawal :: Coin -> Coin
+      -- ^ The variable fee for a reward withdrawal.
     , sizeOfEmptySelection :: s
       -- ^ The constant size of an empty selection.
     , sizeOfInput :: s
       -- ^ The constant size of a selection input.
     , sizeOfOutput :: TokenBundle -> s
       -- ^ The variable size of a selection output.
-    , sizeOfRewardWithdrawal :: s
-      -- ^ The constant size of a reward withdrawal.
+    , sizeOfRewardWithdrawal :: Coin -> s
+      -- ^ The variable size of a reward withdrawal.
     , maximumSizeOfOutput :: SelectionOutputSizeAssessor
       -- ^ The maximum size of a selection output.
     , maximumSizeOfSelection :: s
@@ -506,28 +510,18 @@ currentSize params selection = mconcat
     [ sizeOfEmptySelection params
     , F.foldMap (const $ sizeOfInput params) (inputs selection)
     , F.foldMap (sizeOfOutput params) (outputs selection)
-    , if (rewardWithdrawal selection > Coin 0)
-        then sizeOfRewardWithdrawal params
-        else mempty
+    , sizeOfRewardWithdrawal params (rewardWithdrawal selection)
     ]
 
 -- | Calculates the minimum permissible fee for a selection.
 --
 minimumFee :: SelectionParameters s -> Selection i s -> Coin
 minimumFee params selection = mconcat
-    [ feeForEmptySelection
-    , F.foldMap (const feeForInput) (inputs selection)
-    , F.foldMap feeForOutput (outputs selection)
-    , if (rewardWithdrawal selection > Coin 0)
-        then feeForRewardWithdrawal params
-        else Coin 0
+    [ feeForEmptySelection params
+    , F.foldMap (const $ feeForInput params) (inputs selection)
+    , F.foldMap (feeForOutput params) (outputs selection)
+    , feeForRewardWithdrawal params (rewardWithdrawal selection)
     ]
-  where
-    SelectionParameters
-        { feeForEmptySelection
-        , feeForInput
-        , feeForOutput
-        } = params
 
 -- | Defines the correct ordering of outputs in a selection.
 --
@@ -920,7 +914,7 @@ newtype NegativeCoin = NegativeCoin
     deriving (Eq, Show)
 
 guardE :: Bool -> e -> Either e ()
-guardE = undefined
+guardE condition e = if condition then Right () else Left e
 
 guardSize :: Ord s => SelectionParameters s -> s -> Either (SelectionError s) s
 guardSize params selectionSizeRequired

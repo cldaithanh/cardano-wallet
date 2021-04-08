@@ -1,5 +1,8 @@
 {-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE DerivingStrategies #-}
+{-# LANGUAGE DerivingVia #-}
 {-# LANGUAGE DuplicateRecordFields #-}
+{-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE NumericUnderscores #-}
@@ -17,18 +20,19 @@ module Cardano.Wallet.Primitive.Migration.SelectionSpec
 import Prelude
 
 import Cardano.Wallet.Primitive.Migration.Selection
-    ( Selection (..)
+    ( AddEntry
+    , Selection (..)
     , SelectionError (..)
     , SelectionFullError (..)
     , SelectionInvariantStatus (..)
     , SelectionOutputSizeAssessment (..)
     , SelectionOutputSizeAssessor (..)
     , SelectionParameters (..)
+    , addCoinToFeeExcess
     , checkInvariant
-    , feeForOutputCoin
     , initialize
-    , minimumAdaQuantityForOutputCoin
     , outputOrdering
+    , outputSizeWithinLimit
     )
 import Cardano.Wallet.Primitive.Types.Coin
     ( Coin (..), subtractCoin )
@@ -56,10 +60,12 @@ import Data.Generics.Labels
     ()
 import Data.List.NonEmpty
     ( NonEmpty (..) )
+import Data.Either.Extra
+    ( eitherToMaybe )
 import Data.Maybe
     ( fromMaybe )
 import Data.Semigroup
-    ( mtimesDefault, stimes )
+    ( mtimesDefault )
 import GHC.Generics
     ( Generic )
 import Numeric.Natural
@@ -79,20 +85,18 @@ import Test.QuickCheck
     , checkCoverage
     , choose
     , cover
-    , frequency
     , genericShrink
     , oneof
     , property
+    , suchThat
+    , suchThatMap
     , vector
     , (===)
     )
 
--- import qualified Cardano.Wallet.Primitive.Types.Coin as Coin
-import qualified Cardano.Wallet.Primitive.Types.TokenBundle as TokenBundle
 import qualified Cardano.Wallet.Primitive.Types.TokenMap as TokenMap
 import qualified Data.ByteString as BS
 import qualified Data.Foldable as F
-import qualified Data.List as L
 import qualified Data.List.NonEmpty as NE
 import qualified Data.Set as Set
 import qualified Data.Text as T
@@ -108,109 +112,10 @@ spec = describe "Cardano.Wallet.Primitive.Migration.SelectionSpec" $
         it "prop_initialize" $
             property prop_initialize
 
---------------------------------------------------------------------------------
--- Properties
---------------------------------------------------------------------------------
+    parallel $ describe "Extending a selection" $ do
 
-data MockAddCoinData = MockAddCoinData
-    { mockSelectionParameters
-        :: MockSelectionParameters
-    , mockCoins
-        :: NonEmpty Coin
-    }
-    deriving (Eq, Generic, Show)
-
-genMockAddCoinData :: Gen MockAddCoinData
-genMockAddCoinData = do
-    mockParams <- genMockSelectionParameters
-    let params = unMockSelectionParameters mockParams
-    coinCount <- choose (1, 10)
-    coins <- NE.fromList <$> replicateM coinCount (genMockCoin params)
-    pure $ MockAddCoinData mockParams coins
-  where
-    -- Generates coins that are close to the boundaries of the various
-    -- selection parameters.
-    genMockCoin :: SelectionParameters s -> Gen Coin
-    genMockCoin params = frequency
-        [ (1, oneof [genCoinRange (Coin 1     ) (safeCoinPred a), pure a])
-        , (1, oneof [genCoinRange (Coin 1 <> a) (safeCoinPred b), pure b])
-        , (1, oneof [genCoinRange (Coin 1 <> b) (safeCoinPred c), pure c])
-        , (1, oneof [genCoinRange (Coin 1 <> c) (safeCoinPred d), pure d])
-        , (8, oneof [genCoinRange (Coin 1 <> d) (safeCoinPred e), pure e])
-        ]
-      where
-        -- Selection parameters, sorted into ascending order:
-        [a, b, c] = L.sort $ fmap (params &)
-            [ feeForInput
-              -- FIXME
-            , flip feeForOutputCoin undefined
-            , minimumAdaQuantityForOutputCoin
-            ]
-        -- The sum of all selection parameters, which is guaranteed to be
-        -- at least as large as any of the individual selection parameters:
-        d = mconcat [a, b, c]
-        -- A value that is much higher than any of the selection parameters:
-        e = stimes (1000 :: Int) d
-
-instance Arbitrary MockAddCoinData where
-    arbitrary = genMockAddCoinData
-{-
-prop_addCoin_invariant :: MockAddCoinData -> Property
-prop_addCoin_invariant (MockAddCoinData mockParams coins) =
-    checkCoverage $
-    cover 10 (finalInputCount >= 4 && finalInputCount == length coins)
-        "every coin was included as an input" $
-    cover 10 (finalInputCount >= 4 && finalInputCount < length coins)
-        "at least one coin was not included as an input" $
-    cover 10 (finalInputCount >= 4 && finalInputCount == finalOutputCount)
-        "final input and output counts are identical" $
-    cover 10 (finalInputCount >= 4 && finalInputCount > finalOutputCount)
-        "final input and output counts are different" $
-    conjoin
-        [ conjoin (transitionPreservesInvariant <$> transitions)
-        , property $ finalInputCount <= length coins
-        , property $ finalInputCount >= finalOutputCount
-        ]
-  where
-    finalInputCount :: Int
-    finalInputCount = length $ view #inputs $ NE.last selections
-
-    finalOutputCount :: Int
-    finalOutputCount = length $ view #outputs $ NE.last selections
-
-    inputs :: NonEmpty (MockInputId, Coin)
-    inputs = mockInputIds `NE.zip` coins
-
-    params :: SelectionParameters MockSize
-    params = unMockSelectionParameters mockParams
-
-    selections :: NonEmpty MockSelection
-    selections =
-        NE.scanl (\s i -> fromRight $ addCoin params s i) empty inputs
-
-    transitions :: [(Coin, (MockSelection, MockSelection))]
-    transitions = NE.toList coins `zip` consecutivePairs (NE.toList selections)
-
-    transitionPreservesInvariant
-        :: (Coin, (MockSelection, MockSelection))
-        -> Property
-    transitionPreservesInvariant (coin, (initialSelection, finalSelection)) =
-        counterexample counterexampleText $ conjoin
-          [ checkInvariant params initialSelection
-              === SelectionInvariantHolds
-          , checkInvariant params finalSelection
-              === SelectionInvariantHolds
-          ]
-      where
-        counterexampleText = unlines
-            [ "Initial selection:"
-            , show initialSelection
-            , "Final selection:"
-            , show finalSelection
-            , "Coin added:"
-            , show coin
-            ]
--}
+        it "prop_addCoinToFeeExcess" $
+            property prop_addCoinToFeeExcess
 
 --------------------------------------------------------------------------------
 -- Initializing a selection
@@ -222,46 +127,43 @@ data MockInitializeArguments = MockInitializeArguments
     , mockRewardWithdrawal :: Coin
     } deriving (Eq, Show)
 
+genMockInitializeArguments :: Gen MockInitializeArguments
+genMockInitializeArguments = do
+    mockSelectionParameters <- genMockSelectionParameters
+    mockRewardWithdrawal <- genCoin
+    inputCount <- choose (1, 10)
+    mockInputs <- (:|)
+        <$> genMockInput mockSelectionParameters
+        <*> replicateM
+            (inputCount - 1)
+            (genMockInput mockSelectionParameters)
+    pure MockInitializeArguments
+        { mockSelectionParameters
+        , mockInputs
+        , mockRewardWithdrawal
+        }
+
 instance Arbitrary MockInitializeArguments where
-    arbitrary = do
-        mockSelectionParameters <- genMockSelectionParameters
-        inputCount <- choose (1, 20)
-        mockInputs <- (:|)
-            <$> genMockInput mockSelectionParameters
-            <*> replicateM
-                (inputCount - 1)
-                (genMockInput mockSelectionParameters)
-        mockRewardWithdrawal <- genCoinRange (Coin 1) (Coin 100)
-        pure MockInitializeArguments
-            { mockSelectionParameters
-            , mockInputs
-            , mockRewardWithdrawal
-            }
-      where
-        genMockInput
-            :: MockSelectionParameters -> Gen (MockInputId, TokenBundle)
-        genMockInput mockParams = (,)
-            <$> genMockInputId
-            <*> genTokenBundle mockParams
+    arbitrary = genMockInitializeArguments
 
 prop_initialize :: MockInitializeArguments -> Property
 prop_initialize args =
     checkCoverage $
-    cover 30 (isRight result)
+    cover 30 (resultIsSelection result)
         "Initialization succeeded" $
-    cover 10 (selectionHasMoreInputsThanOutputs)
+    cover 10 (resultHasMoreInputsThanOutputs result)
         "Initialization succeeded with more inputs than outputs" $
     -- TODO: Raise this coverage threshold above 0:
-    cover 0 (selectionHasMoreThanOneOutput)
+    cover 0 (resultHasMoreThanOneOutput result)
         "Initialization succeeded with more than one output" $
-    cover 10 (selectionHasNonZeroFeeExcess)
+    cover 10 (resultHasNonZeroFeeExcess result)
         "Initialization succeeded with positive fee excess" $
     -- TODO: Raise this coverage threshold above 0:
-    cover 0 (selectionHasZeroFeeExcess)
+    cover 0 (resultHasZeroFeeExcess result)
         "Initialization succeeded with zero fee excess" $
-    cover 10 (selectionAdaInsufficient)
+    cover 10 (resultHasInsufficientAda result)
         "Initialization failed due to insufficient ada" $
-    cover 10 (selectionFull)
+    cover 10 (resultIsFull result)
         "Initialization failed due to the selection being full" $
     case result of
         Left SelectionAdaInsufficient ->
@@ -280,179 +182,127 @@ prop_initialize args =
     params = unMockSelectionParameters mockSelectionParameters
     result = initialize params mockRewardWithdrawal mockInputs
 
-    selectionHasMoreInputsThanOutputs :: Bool
-    selectionHasMoreInputsThanOutputs = matchRight result $ \selection ->
-        F.length (inputs selection) > F.length (outputs selection)
+--------------------------------------------------------------------------------
+-- Extending a selection
+--------------------------------------------------------------------------------
 
-    selectionHasMoreThanOneOutput :: Bool
-    selectionHasMoreThanOneOutput = matchRight result $ \selection ->
-        F.length (outputs selection) > 1
+data MockAddEntryArguments v = MockAddEntryArguments
+    { mockSelectionParameters :: MockSelectionParameters
+    , mockSelection :: MockSelection
+    , mockEntry :: (MockInputId, v)
+    }
+    deriving (Eq, Show)
 
-    selectionHasNonZeroFeeExcess :: Bool
-    selectionHasNonZeroFeeExcess = matchRight result $ \selection ->
-        feeExcess selection > Coin 0
+genMockAddEntryArguments
+    :: forall v. (MockSelectionParameters -> Gen v)
+    -> Gen (MockAddEntryArguments v)
+genMockAddEntryArguments genValue =
+    genInner `suchThatMap` eitherToMaybe
+  where
+    genInner :: Gen (Either MockSelectionError (MockAddEntryArguments v))
+    genInner = do
+        MockInitializeArguments
+            { mockSelectionParameters
+            , mockInputs
+            , mockRewardWithdrawal
+            } <- genMockInitializeArguments
+        let params = unMockSelectionParameters mockSelectionParameters
+        let result = initialize params mockRewardWithdrawal mockInputs
+        case result of
+            Left e ->
+                pure $ Left e
+            Right mockSelection -> do
+                mockEntry <- (,)
+                    <$> genMockInputId
+                    <*> genValue mockSelectionParameters
+                pure $ Right MockAddEntryArguments
+                    { mockSelectionParameters
+                    , mockSelection
+                    , mockEntry
+                    }
 
-    selectionHasZeroFeeExcess :: Bool
-    selectionHasZeroFeeExcess = matchRight result $ \selection ->
-        feeExcess selection == Coin 0
+instance Arbitrary (MockAddEntryArguments Coin) where
+    arbitrary = genMockAddEntryArguments (const genCoin)
 
-    selectionAdaInsufficient :: Bool
-    selectionAdaInsufficient = case result of
-        Left SelectionAdaInsufficient -> True
-        _ -> False
+instance Arbitrary (MockAddEntryArguments TokenBundle) where
+    arbitrary = genMockAddEntryArguments genTokenBundle
 
-    selectionFull :: Bool
-    selectionFull = case result of
-        Left (SelectionFull _) -> True
-        _ -> False
+type MockAddEntry v = AddEntry MockSize MockInputId v
+
+prop_addCoinToFeeExcess :: MockAddEntryArguments Coin -> Property
+prop_addCoinToFeeExcess mockArgs =
+    prop_addEntry mockArgs addCoinToFeeExcess
+
+prop_addEntry :: MockAddEntryArguments v -> MockAddEntry v -> Property
+prop_addEntry mockArgs addEntry =
+    checkCoverage $
+    cover 50 (isRight result)
+        "Adding entry succeeded" $
+    case result of
+        Left _ -> property True
+        Right selection ->
+            checkInvariant params selection === SelectionInvariantHolds
+  where
+    MockAddEntryArguments
+        { mockSelectionParameters
+        , mockSelection
+        , mockEntry
+        } = mockArgs
+    params = unMockSelectionParameters mockSelectionParameters
+    result = addEntry params mockSelection mockEntry
 
 --------------------------------------------------------------------------------
--- Mock selections
+-- Mock results
 --------------------------------------------------------------------------------
 
 type MockSelection = Selection MockInputId MockSize
-
-genMockSelection :: MockSelectionParameters -> Gen MockSelection
-genMockSelection mockParams =
-    oneof $ (\g -> g mockParams) <$>
-        [ genMockSelectionSmall
-        , genMockSelectionHalfFull
-        , genMockSelectionNearlyFull
-        ]
-
-genMockSelectionSmall :: MockSelectionParameters -> Gen MockSelection
-genMockSelectionSmall _mockParams = undefined
-    {-oneof
-    [ genSingleInputCoinNoOutput
-    , genSingleInputCoinSingleOutput
-    --, genSingleInputBundleSingleOutput
-    --, genMultipleInputBundlesSingleOutput
-    ]
-  where
-    genSingleInputCoinNoOutput :: Gen MockSelection
-    genSingleInputCoinNoOutput = do
-        coin <- genCoin
-        inputId <- genMockInputId
-        pure Selection
-            { inputs = (inputId, TokenBundle.fromCoin coin) :| []
-            , outputs = []
-            , feeExcess = coin `Coin.distance` fee
-            , size = sizeOfInput params <> sizeOfEmptySelection params
-            , rewardWithdrawal = Coin 0
-            }
-      where
-        genCoin :: Gen Coin
-        genCoin = oneof
-            [ pure fee
-            , genCoinRange (fee <> Coin 1) (stimes (1000 :: Int) fee)
-            ]
-        fee :: Coin
-        fee = feeForEmptySelection params <> feeForInput params
-
-    genSingleInputCoinSingleOutput :: Gen MockSelection
-    genSingleInputCoinSingleOutput = undefined
-
-    -- genSingleInputBundleSingleOutput :: Gen MockSelection
-    -- genSingleInputBundleSingleOutput = undefined
-
-    -- genMultipleInputBundlesSingleOutput :: Gen MockSelection
-    -- genMultipleInputBundlesSingleOutput = undefined
-
-    params = unMockSelectionParameters mockParams
--}
-genMockSelectionHalfFull :: MockSelectionParameters -> Gen MockSelection
-genMockSelectionHalfFull mockParams =
-    enlargeUntilHalfFull =<< genMockSelectionSmall mockParams
-  where
-    enlargeUntilHalfFull :: MockSelection -> Gen MockSelection
-    enlargeUntilHalfFull s1
-        | size s1 >= halfMaximumSizeOfSelection =
-            pure s1
-        | otherwise = do
-            s2 <- genMockSelectionSmall mockParams
-            case joinMockSelections mockParams s1 s2 of
-                Nothing -> pure s1
-                Just s3 -> enlargeUntilHalfFull s3
-    params = unMockSelectionParameters mockParams
-    halfMaximumSizeOfSelection =
-        mockSizeHalfSafe (maximumSizeOfSelection params)
-
-genMockSelectionNearlyFull :: MockSelectionParameters -> Gen MockSelection
-genMockSelectionNearlyFull mockParams =
-    enlargeUntilNearlyFull =<< genMockSelectionSmall mockParams
-  where
-    enlargeUntilNearlyFull :: MockSelection -> Gen MockSelection
-    enlargeUntilNearlyFull s1 = do
-        s2 <- genMockSelectionSmall mockParams
-        case joinMockSelections mockParams s1 s2 of
-            Nothing -> pure s1
-            Just s3 -> enlargeUntilNearlyFull s3
-
--- Some large ada coins
--- Some small ada coins
--- Some MA bundles with the minimum ada amount
--- Some MA bundles with a larger ada amount
-
-genTokenBundle :: MockSelectionParameters -> Gen TokenBundle
-genTokenBundle params = do
-    assetCount <- oneof
-        [ pure 0
-        , pure 1
-        , choose (2, 16)
-        ]
-    tokens <- TokenMap.fromFlatList <$> replicateM assetCount genAssetQuantity
-    coin <- genCoinRange (Coin 1) (Coin 100)
-    pure TokenBundle {coin, tokens}
-  where
-    genAssetQuantity :: Gen (AssetId, TokenQuantity)
-    genAssetQuantity = (,)
-        <$> genAssetIdLargeRange
-        <*> genTokenQuantity
-
-    genTokenQuantity :: Gen TokenQuantity
-    genTokenQuantity = TokenQuantity . fromIntegral @Integer <$>
-        choose (1, fromIntegral (unTokenQuantity maximumTokenQuantity))
-      where
-        maximumTokenQuantity = fromMaybe (TokenQuantity 10)
-            $ mockMaximumOutputTokenQuantity
-            $ mockMaximumSizeOfOutput params
-
 type MockSelectionError = SelectionError MockSize
+type MockResult = Either MockSelectionError MockSelection
 
-joinMockSelections
-    :: MockSelectionParameters
-    -> MockSelection
-    -> MockSelection
-    -> Maybe MockSelection
-joinMockSelections mockParams s1 s2
-    | size joinedSelection <= maximumSizeOfSelection params =
-        Just joinedSelection
-    | otherwise =
-        Nothing
-  where
-    joinedSelection = Selection
-        { inputs
-            = inputs s1 <> inputs s2
-        , outputs
-            = outputs s2 <> outputs s2
-            & NE.sortBy (outputOrdering params)
-        , feeExcess
-            = feeExcess s1 <> feeExcess s2
-        , size
-            = size s1 <> size s2
-            & flip mockSizeSubtractSafe (sizeOfEmptySelection params)
-        , rewardWithdrawal
-            = rewardWithdrawal s1 <> rewardWithdrawal s2
-        }
-    params = unMockSelectionParameters mockParams
+resultIsSelection :: MockResult -> Bool
+resultIsSelection = isRight
+
+resultHasMoreInputsThanOutputs :: MockResult -> Bool
+resultHasMoreInputsThanOutputs = matchRight $ \selection ->
+    F.length (inputs selection) > F.length (outputs selection)
+
+resultHasMoreThanOneOutput :: MockResult -> Bool
+resultHasMoreThanOneOutput = matchRight $ \selection ->
+    F.length (outputs selection) > 1
+
+resultHasNonZeroFeeExcess :: MockResult -> Bool
+resultHasNonZeroFeeExcess = matchRight $ \selection ->
+    feeExcess selection > Coin 0
+
+resultHasZeroFeeExcess :: MockResult -> Bool
+resultHasZeroFeeExcess = matchRight $ \selection ->
+    feeExcess selection == Coin 0
+
+resultHasInsufficientAda :: MockResult -> Bool
+resultHasInsufficientAda = matchLeft $ \case
+    SelectionAdaInsufficient -> True
+    _ -> False
+
+resultIsFull :: MockResult -> Bool
+resultIsFull = matchLeft $ \case
+    SelectionFull _ -> True
+    _ -> False
 
 --------------------------------------------------------------------------------
--- Mock input identifiers
+-- Generating inputs
+--------------------------------------------------------------------------------
+
+genMockInput :: MockSelectionParameters -> Gen (MockInputId, TokenBundle)
+genMockInput mockParams = (,)
+    <$> genMockInputId
+    <*> genTokenBundle mockParams
+
+--------------------------------------------------------------------------------
+-- Generating input identifiers
 --------------------------------------------------------------------------------
 
 newtype MockInputId = MockInputId
-    { unMockInputId :: ByteString
-    }
+    { unMockInputId :: ByteString }
     deriving (Eq, Ord)
 
 instance Show MockInputId where
@@ -462,26 +312,89 @@ genMockInputId :: Gen MockInputId
 genMockInputId = MockInputId . BS.pack <$> vector 8
 
 --------------------------------------------------------------------------------
+-- Generating token bundles
+--------------------------------------------------------------------------------
+
+genTokenBundle :: MockSelectionParameters -> Gen TokenBundle
+genTokenBundle mockParams =
+    genInner `suchThat` outputSizeWithinLimit params
+  where
+    params = unMockSelectionParameters mockParams
+
+    genInner = do
+        assetCount <- oneof
+            [ pure 0
+            , pure 1
+            , choose (2, 4)
+            ]
+        tokens <- TokenMap.fromFlatList <$>
+            replicateM assetCount genAssetQuantity
+        coin <- genCoin
+        pure TokenBundle {coin, tokens}
+
+    genAssetQuantity :: Gen (AssetId, TokenQuantity)
+    genAssetQuantity = (,)
+        <$> genAssetIdLargeRange
+        <*> genTokenQuantity
+
+--------------------------------------------------------------------------------
+-- Generating coins
+--------------------------------------------------------------------------------
+
+genCoin :: Gen Coin
+genCoin = genCoinRange (Coin 1) (Coin 1000)
+
+genCoinRange :: Coin -> Coin -> Gen Coin
+genCoinRange (Coin minCoin) (Coin maxCoin) =
+    Coin . fromIntegral <$> choose (minCoin, maxCoin)
+
+--------------------------------------------------------------------------------
+-- Generating token quantities
+--------------------------------------------------------------------------------
+
+genTokenQuantity :: Gen TokenQuantity
+genTokenQuantity = TokenQuantity . fromIntegral @Integer <$>
+    choose (1, 1000)
+
+--------------------------------------------------------------------------------
+-- Generating selections
+--------------------------------------------------------------------------------
+
+--------------------------------------------------------------------------------
 -- Mock selection parameters
 --------------------------------------------------------------------------------
+
+-- What we actually need
+--
+-- feeForEmptySelection
+-- maximumSizeOfSelection
+-- minimumAdaQuantityForOutput
+--
+--
+--
+-- Functions
+--
+-- sizeOfOutput
+-- sizeOfRewardWithdrawal
+
+mockSizeOfOutput :: TokenBundle -> MockSize
+mockSizeOfOutput = MockSize . fromIntegral . length . show
+
+mockSizeOfRewardWithdrawal :: Coin -> MockSize
+mockSizeOfRewardWithdrawal = \case
+    Coin 0 -> MockSize 0
+    Coin c -> MockSize $ fromIntegral $ length $ show $ Coin c
+
+mockSizeToFee :: MockSize -> Coin
+mockSizeToFee = Coin . fromIntegral . unMockSize
 
 data MockSelectionParameters = MockSelectionParameters
     { mockFeeForEmptySelection
         :: MockFeeForEmptySelection
-    , mockFeeForInput
-        :: MockFeeForInput
-    , mockFeeForOutput
-        :: MockFeeForOutput
-    , mockFeeForRewardWithdrawal
-        :: MockFeeForRewardWithdrawal
     , mockSizeOfEmptySelection
         :: MockSizeOfEmptySelection
     , mockSizeOfInput
         :: MockSizeOfInput
-    , mockSizeOfOutput
-        :: MockSizeOfOutput
-    , mockSizeOfRewardWithdrawal
-        :: MockSizeOfRewardWithdrawal
     , mockMaximumSizeOfOutput
         :: MockMaximumSizeOfOutput
     , mockMaximumSizeOfSelection
@@ -498,14 +411,12 @@ unMockSelectionParameters m = SelectionParameters
         unMockFeeForEmptySelection
             $ view #mockFeeForEmptySelection m
     , feeForInput =
-        unMockFeeForInput
-            $ view #mockFeeForInput m
+        mockSizeToFee <$> unMockSizeOfInput
+            $ view #mockSizeOfInput m
     , feeForOutput =
-        unMockFeeForOutput
-            $ view #mockFeeForOutput m
+        mockSizeToFee . mockSizeOfOutput
     , feeForRewardWithdrawal =
-        unMockFeeForRewardWithdrawal
-            $ view #mockFeeForRewardWithdrawal m
+        mockSizeToFee . mockSizeOfRewardWithdrawal
     , sizeOfEmptySelection =
         unMockSizeOfEmptySelection
             $ view #mockSizeOfEmptySelection m
@@ -513,11 +424,9 @@ unMockSelectionParameters m = SelectionParameters
         unMockSizeOfInput
             $ view #mockSizeOfInput m
     , sizeOfOutput =
-        unMockSizeOfOutput
-            $ view #mockSizeOfOutput m
+        mockSizeOfOutput
     , sizeOfRewardWithdrawal =
-        unMockSizeOfRewardWithdrawal
-            $ view #mockSizeOfRewardWithdrawal m
+        mockSizeOfRewardWithdrawal
     , maximumSizeOfOutput =
         unMockMaximumSizeOfOutput
             $ view #mockMaximumSizeOfOutput m
@@ -532,13 +441,8 @@ unMockSelectionParameters m = SelectionParameters
 genMockSelectionParameters :: Gen MockSelectionParameters
 genMockSelectionParameters = MockSelectionParameters
     <$> genMockFeeForEmptySelection
-    <*> genMockFeeForInput
-    <*> genMockFeeForOutput
-    <*> genMockFeeForRewardWithdrawal
     <*> genMockSizeOfEmptySelection
     <*> genMockSizeOfInput
-    <*> genMockSizeOfOutput
-    <*> genMockSizeOfRewardWithdrawal
     <*> genMockMaximumSizeOfOutput
     <*> genMockMaximumSizeOfSelection
     <*> genMockMinimumAdaQuantityForOutput
@@ -552,12 +456,12 @@ instance Arbitrary MockSelectionParameters where
 
 newtype MockFeeForEmptySelection = MockFeeForEmptySelection
     { unMockFeeForEmptySelection :: Coin }
-    deriving (Eq, Show)
+    deriving stock Eq
+    deriving Show via Coin
 
 genMockFeeForEmptySelection :: Gen MockFeeForEmptySelection
 genMockFeeForEmptySelection = MockFeeForEmptySelection
-    -- TODO: Use a value higher than 0.
-    <$> genCoinRange (Coin 0) (Coin 0)
+    <$> genCoinRange (Coin 0) (Coin 100)
 
 --------------------------------------------------------------------------------
 -- Mock fees for inputs
@@ -565,7 +469,8 @@ genMockFeeForEmptySelection = MockFeeForEmptySelection
 
 newtype MockFeeForInput = MockFeeForInput
     { unMockFeeForInput :: Coin }
-    deriving (Eq, Show)
+    deriving stock Eq
+    deriving Show via Coin
 
 genMockFeeForInput :: Gen MockFeeForInput
 genMockFeeForInput = MockFeeForInput
@@ -578,36 +483,36 @@ instance Arbitrary MockFeeForInput where
 -- Mock fees for outputs
 --------------------------------------------------------------------------------
 
-data MockFeeForOutput = MockFeeForOutput
-    { mockMarginalFeePerBundle :: Coin
-    , mockMarginalFeePerAsset :: Coin
-    }
+data MockFeeForOutput
+    = MockFeeForOutputByShowLength
     deriving (Eq, Show)
 
-unMockFeeForOutput
-    :: MockFeeForOutput
-    -> (TokenBundle -> Coin)
-unMockFeeForOutput m = \b ->
-    let assetCount = Set.size $ TokenBundle.getAssets b in
-    mockMarginalFeePerBundle m
-        <> mtimesDefault assetCount (mockMarginalFeePerAsset m)
+unMockFeeForOutput :: MockFeeForOutput -> (TokenBundle -> Coin)
+unMockFeeForOutput = \case
+    MockFeeForOutputByShowLength ->
+        Coin . fromIntegral . length . show
 
 genMockFeeForOutput :: Gen MockFeeForOutput
-genMockFeeForOutput = MockFeeForOutput
-    <$> genCoinRange (Coin 0) (Coin 10)
-    <*> genCoinRange (Coin 0) (Coin 10)
+genMockFeeForOutput = pure MockFeeForOutputByShowLength
 
 --------------------------------------------------------------------------------
 -- Mock fees for reward withdrawal
 --------------------------------------------------------------------------------
 
-newtype MockFeeForRewardWithdrawal = MockFeeForRewardWithdrawal
-    { unMockFeeForRewardWithdrawal :: Coin }
+data MockFeeForRewardWithdrawal
+    = MockFeeForRewardWithdrawalByShowLength
     deriving (Eq, Show)
 
+unMockFeeForRewardWithdrawal
+    :: MockFeeForRewardWithdrawal
+    -> (Coin -> Coin)
+unMockFeeForRewardWithdrawal = \case
+    MockFeeForRewardWithdrawalByShowLength -> \case
+        Coin 0 -> Coin 0
+        coin -> Coin $ fromIntegral $ length $ show coin
+
 genMockFeeForRewardWithdrawal :: Gen MockFeeForRewardWithdrawal
-genMockFeeForRewardWithdrawal = MockFeeForRewardWithdrawal
-    <$> genCoinRange (Coin 0) (Coin 10)
+genMockFeeForRewardWithdrawal = pure MockFeeForRewardWithdrawalByShowLength
 
 instance Arbitrary MockFeeForRewardWithdrawal where
     arbitrary = genMockFeeForRewardWithdrawal
@@ -616,7 +521,7 @@ instance Arbitrary MockFeeForRewardWithdrawal where
 -- Mock sizes
 --------------------------------------------------------------------------------
 
-data MockSize = MockSize { unMockSize :: Natural }
+newtype MockSize = MockSize { unMockSize :: Natural }
     deriving (Eq, Generic, Ord, Show)
 
 instance Semigroup MockSize where
@@ -648,7 +553,7 @@ newtype MockSizeOfEmptySelection = MockSizeOfEmptySelection
 
 genMockSizeOfEmptySelection :: Gen MockSizeOfEmptySelection
 genMockSizeOfEmptySelection =
-    MockSizeOfEmptySelection <$> genMockSizeRange 0 10
+    MockSizeOfEmptySelection <$> genMockSizeRange 0 100
 
 --------------------------------------------------------------------------------
 -- Mock sizes of inputs
@@ -656,46 +561,12 @@ genMockSizeOfEmptySelection =
 
 newtype MockSizeOfInput = MockSizeOfInput
     { unMockSizeOfInput :: MockSize }
-    deriving (Eq, Generic, Ord, Show)
+    deriving stock Eq
+    deriving Show via Natural
 
 genMockSizeOfInput :: Gen MockSizeOfInput
 genMockSizeOfInput =
     MockSizeOfInput <$> genMockSizeRange 0 10
-
---------------------------------------------------------------------------------
--- Mock sizes of outputs
---------------------------------------------------------------------------------
-
-data MockSizeOfOutput = MockSizeOfOutput
-    { mockSizePerOutput :: MockSize
-    , mockSizePerOutputAsset :: MockSize
-    }
-    deriving (Eq, Show)
-
-unMockSizeOfOutput
-    :: MockSizeOfOutput
-    -> (TokenBundle -> MockSize)
-unMockSizeOfOutput mock = \b ->
-    let assetCount = Set.size $ TokenBundle.getAssets b in
-    mockSizePerOutput mock
-        <> mtimesDefault assetCount (mockSizePerOutputAsset mock)
-
-genMockSizeOfOutput :: Gen MockSizeOfOutput
-genMockSizeOfOutput = MockSizeOfOutput
-    <$> genMockSizeRange 0 10
-    <*> genMockSizeRange 0 10
-
---------------------------------------------------------------------------------
--- Mock sizes of reward withdrawals
---------------------------------------------------------------------------------
-
-newtype MockSizeOfRewardWithdrawal = MockSizeOfRewardWithdrawal
-    { unMockSizeOfRewardWithdrawal :: MockSize }
-    deriving (Eq, Generic, Ord, Show)
-
-genMockSizeOfRewardWithdrawal :: Gen MockSizeOfRewardWithdrawal
-genMockSizeOfRewardWithdrawal =
-    MockSizeOfRewardWithdrawal <$> genMockSizeRange 0 10
 
 --------------------------------------------------------------------------------
 -- Mock maximum sizes of outputs
@@ -704,13 +575,11 @@ genMockSizeOfRewardWithdrawal =
 data MockMaximumSizeOfOutput = MockMaximumSizeOfOutput
     { mockMaximumOutputSize
         :: Maybe MockSize
-    , mockMaximumOutputTokenQuantity
-        :: Maybe TokenQuantity
     }
     deriving (Eq, Show)
 
 noMaximumOutputSize :: MockMaximumSizeOfOutput
-noMaximumOutputSize = MockMaximumSizeOfOutput Nothing Nothing
+noMaximumOutputSize = MockMaximumSizeOfOutput Nothing
 
 unMockMaximumSizeOfOutput
     :: MockMaximumSizeOfOutput -> SelectionOutputSizeAssessor
@@ -720,12 +589,7 @@ unMockMaximumSizeOfOutput _mock = SelectionOutputSizeAssessor assess
 
 genMockMaximumSizeOfOutput :: Gen MockMaximumSizeOfOutput
 genMockMaximumSizeOfOutput = MockMaximumSizeOfOutput
-    <$> (Just <$> genMockSizeRange 1 100)
-    <*> (Just <$> genTokenQuantityRange 1 10)
-  where
-    genTokenQuantityRange :: Natural -> Natural -> Gen TokenQuantity
-    genTokenQuantityRange a b = TokenQuantity . fromIntegral @Integer <$>
-        choose (fromIntegral a, fromIntegral b)
+    <$> (Just <$> genMockSizeRange 100 1000)
 
 --------------------------------------------------------------------------------
 -- Mock maximum sizes of selections
@@ -737,7 +601,7 @@ newtype MockMaximumSizeOfSelection = MockMaximumSizeOfSelection
 
 genMockMaximumSizeOfSelection :: Gen MockMaximumSizeOfSelection
 genMockMaximumSizeOfSelection =
-    MockMaximumSizeOfSelection <$> genMockSizeRange 0 1000
+    MockMaximumSizeOfSelection <$> genMockSizeRange 0 10000
 
 --------------------------------------------------------------------------------
 -- Mock minimum ada quantities for outputs
@@ -766,10 +630,6 @@ genMockMinimumAdaQuantityForOutput = MockMinimumAdaQuantityForOutput
 -- Reusable generators and shrinkers
 --------------------------------------------------------------------------------
 
-genCoinRange :: Coin -> Coin -> Gen Coin
-genCoinRange (Coin minCoin) (Coin maxCoin) =
-    Coin . fromIntegral <$> choose (minCoin, maxCoin)
-
 --------------------------------------------------------------------------------
 -- Arbitrary instances
 --------------------------------------------------------------------------------
@@ -789,38 +649,35 @@ instance Arbitrary Coin where
     shrink = filter (> Coin 0) . genericShrink
 
 --------------------------------------------------------------------------------
--- Dummy values
---------------------------------------------------------------------------------
-
-nullSelectionParameters :: SelectionParameters MockSize
-nullSelectionParameters = SelectionParameters
-    { feeForEmptySelection =
-        Coin 0
-    , feeForInput =
-        Coin 0
-    , feeForOutput =
-        const (Coin 0)
-    , feeForRewardWithdrawal =
-        Coin 0
-    , sizeOfEmptySelection =
-        MockSize 0
-    , sizeOfInput =
-        MockSize 0
-    , sizeOfOutput =
-        const (MockSize 0)
-    , sizeOfRewardWithdrawal =
-        MockSize 0
-    , maximumSizeOfOutput =
-        SelectionOutputSizeAssessor (const SelectionOutputSizeWithinLimit)
-    , maximumSizeOfSelection =
-        MockSize 0
-    , minimumAdaQuantityForOutput =
-        const (Coin 0)
-    }
-
---------------------------------------------------------------------------------
 -- Internal types and functions
 --------------------------------------------------------------------------------
+
+joinMockSelections
+    :: MockSelectionParameters
+    -> MockSelection
+    -> MockSelection
+    -> Maybe MockSelection
+joinMockSelections mockParams s1 s2
+    | size joinedSelection <= maximumSizeOfSelection params =
+        Just joinedSelection
+    | otherwise =
+        Nothing
+  where
+    joinedSelection = Selection
+        { inputs
+            = inputs s1 <> inputs s2
+        , outputs
+            = outputs s2 <> outputs s2
+            & NE.sortBy (outputOrdering params)
+        , feeExcess
+            = feeExcess s1 <> feeExcess s2
+        , size
+            = size s1 <> size s2
+            & flip mockSizeSubtractSafe (sizeOfEmptySelection params)
+        , rewardWithdrawal
+            = rewardWithdrawal s1 <> rewardWithdrawal s2
+        }
+    params = unMockSelectionParameters mockParams
 
 consecutivePairs :: [a] -> [(a, a)]
 consecutivePairs xs = case tailMay xs of
@@ -835,8 +692,13 @@ fromRight :: Either e a -> a
 fromRight (Right a) = a
 fromRight (Left _) = error "fromRight"
 
-matchRight :: Either e a -> (a -> Bool) -> Bool
-matchRight result f = case result of
+matchLeft :: (e -> Bool) -> Either e a -> Bool
+matchLeft f result = case result of
+    Right _ -> False
+    Left x -> f x
+
+matchRight :: (a -> Bool) -> Either e a -> Bool
+matchRight f result = case result of
     Right x -> f x
     Left _ -> False
 

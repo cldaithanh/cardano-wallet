@@ -21,6 +21,7 @@ import Prelude
 
 import Cardano.Wallet.Primitive.Migration.Selection
     ( AddEntry
+    , Size (..)
     , Selection (..)
     , SelectionError (..)
     , SelectionFullError (..)
@@ -28,7 +29,9 @@ import Cardano.Wallet.Primitive.Migration.Selection
     , SelectionOutputSizeAssessment (..)
     , SelectionOutputSizeAssessor (..)
     , SelectionParameters (..)
-    , addCoinToFeeExcess
+    --, addBundleAsNewOutput
+    --, addBundleAsNewOutputWithoutReclaimingAda
+    , addBundleToExistingOutput
     , checkInvariant
     , initialize
     , outputSizeWithinLimit
@@ -84,6 +87,7 @@ import Test.QuickCheck
     , suchThat
     , suchThatMap
     , vector
+    , withMaxSuccess
     , (===)
     )
 
@@ -106,8 +110,8 @@ spec = describe "Cardano.Wallet.Primitive.Migration.SelectionSpec" $
 
     parallel $ describe "Extending a selection" $ do
 
-        it "prop_addCoinToFeeExcess" $
-            property prop_addCoinToFeeExcess
+        it "prop_addBundleToExistingOutput" $
+            withMaxSuccess 1000 $ property prop_addBundleToExistingOutput
 
 --------------------------------------------------------------------------------
 -- Initializing a selection
@@ -178,61 +182,55 @@ prop_initialize args =
 -- Extending a selection
 --------------------------------------------------------------------------------
 
-data MockAddEntryArguments v = MockAddEntryArguments
+data MockAddEntryArguments = MockAddEntryArguments
     { mockSelectionParameters :: MockSelectionParameters
     , mockSelection :: MockSelection
-    , mockEntry :: (MockInputId, v)
+    , mockEntry :: (MockInputId, TokenBundle)
     }
     deriving (Eq, Show)
 
-genMockAddEntryArguments
-    :: forall v. (MockSelectionParameters -> Gen v)
-    -> Gen (MockAddEntryArguments v)
-genMockAddEntryArguments genValue =
-    genInner `suchThatMap` eitherToMaybe
-  where
-    genInner :: Gen (Either MockSelectionError (MockAddEntryArguments v))
-    genInner = do
-        MockInitializeArguments
-            { mockSelectionParameters
-            , mockInputs
-            , mockRewardWithdrawal
-            } <- genMockInitializeArguments
-        let params = unMockSelectionParameters mockSelectionParameters
-        let result = initialize params mockRewardWithdrawal mockInputs
-        case result of
-            Left e ->
-                pure $ Left e
-            Right mockSelection -> do
-                mockEntry <- (,)
-                    <$> genMockInputId
-                    <*> genValue mockSelectionParameters
-                pure $ Right MockAddEntryArguments
-                    { mockSelectionParameters
-                    , mockSelection
-                    , mockEntry
-                    }
+genMockAddEntryArguments :: Gen MockAddEntryArguments
+genMockAddEntryArguments = flip suchThatMap eitherToMaybe $ do
+    MockInitializeArguments
+        { mockSelectionParameters
+        , mockInputs
+        , mockRewardWithdrawal
+        } <- genMockInitializeArguments
+    let params = unMockSelectionParameters mockSelectionParameters
+    case initialize params mockRewardWithdrawal mockInputs of
+        Left e ->
+            pure $ Left e
+        Right mockSelection -> do
+            mockEntry <- (,)
+                <$> genMockInputId
+                <*> genTokenBundle mockSelectionParameters
+            pure $ Right MockAddEntryArguments
+                { mockSelectionParameters
+                , mockSelection
+                , mockEntry
+                }
 
-instance Arbitrary (MockAddEntryArguments Coin) where
-    arbitrary = genMockAddEntryArguments (const genCoin)
-
-instance Arbitrary (MockAddEntryArguments TokenBundle) where
-    arbitrary = genMockAddEntryArguments genTokenBundle
+instance Arbitrary MockAddEntryArguments where
+    arbitrary = genMockAddEntryArguments
 
 type MockAddEntry v = AddEntry MockSize MockInputId v
 
-prop_addCoinToFeeExcess :: MockAddEntryArguments Coin -> Property
-prop_addCoinToFeeExcess mockArgs =
-    prop_addEntry mockArgs addCoinToFeeExcess
+prop_addBundleToExistingOutput :: MockAddEntryArguments -> Property
+prop_addBundleToExistingOutput mockArgs =
+    prop_addEntry mockArgs addBundleToExistingOutput
 
-prop_addEntry :: MockAddEntryArguments v -> MockAddEntry v -> Property
+prop_addEntry :: MockAddEntryArguments -> MockAddEntry TokenBundle -> Property
 prop_addEntry mockArgs addEntry =
     checkCoverage $
-    cover 50 (isRight result)
+    cover 80 (isRight result)
         "Adding entry succeeded" $
     case result of
         Left _ -> property True
+            -- TODO: check that calling initialize would also fail with the
+            -- same error.
         Right selection ->
+            -- TODO: Check that we've increased the number of inputs by one.
+            -- and that it's the right input.
             checkInvariant params selection === SelectionInvariantHolds
   where
     MockAddEntryArguments
@@ -447,13 +445,19 @@ genMockFeeForEmptySelection = MockFeeForEmptySelection
 --------------------------------------------------------------------------------
 
 newtype MockSize = MockSize { unMockSize :: Natural }
-    deriving (Eq, Generic, Ord, Show)
+    deriving stock (Eq, Ord)
+    deriving Show via Natural
 
 instance Semigroup MockSize where
     MockSize a <> MockSize b = MockSize (a + b)
 
 instance Monoid MockSize where
     mempty = MockSize 0
+
+instance Size MockSize where
+    MockSize a `sizeDistance` MockSize b
+        | a >= b    = MockSize (a - b)
+        | otherwise = MockSize (b - a)
 
 genMockSizeRange :: Natural -> Natural -> Gen MockSize
 genMockSizeRange minSize maxSize =

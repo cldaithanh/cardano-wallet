@@ -464,60 +464,6 @@ genMockFeeForEmptySelection = MockFeeForEmptySelection
     <$> genCoinRange (Coin 0) (Coin 100)
 
 --------------------------------------------------------------------------------
--- Mock fees for inputs
---------------------------------------------------------------------------------
-
-newtype MockFeeForInput = MockFeeForInput
-    { unMockFeeForInput :: Coin }
-    deriving stock Eq
-    deriving Show via Coin
-
-genMockFeeForInput :: Gen MockFeeForInput
-genMockFeeForInput = MockFeeForInput
-    <$> genCoinRange (Coin 0) (Coin 10)
-
-instance Arbitrary MockFeeForInput where
-    arbitrary = genMockFeeForInput
-
---------------------------------------------------------------------------------
--- Mock fees for outputs
---------------------------------------------------------------------------------
-
-data MockFeeForOutput
-    = MockFeeForOutputByShowLength
-    deriving (Eq, Show)
-
-unMockFeeForOutput :: MockFeeForOutput -> (TokenBundle -> Coin)
-unMockFeeForOutput = \case
-    MockFeeForOutputByShowLength ->
-        Coin . fromIntegral . length . show
-
-genMockFeeForOutput :: Gen MockFeeForOutput
-genMockFeeForOutput = pure MockFeeForOutputByShowLength
-
---------------------------------------------------------------------------------
--- Mock fees for reward withdrawal
---------------------------------------------------------------------------------
-
-data MockFeeForRewardWithdrawal
-    = MockFeeForRewardWithdrawalByShowLength
-    deriving (Eq, Show)
-
-unMockFeeForRewardWithdrawal
-    :: MockFeeForRewardWithdrawal
-    -> (Coin -> Coin)
-unMockFeeForRewardWithdrawal = \case
-    MockFeeForRewardWithdrawalByShowLength -> \case
-        Coin 0 -> Coin 0
-        coin -> Coin $ fromIntegral $ length $ show coin
-
-genMockFeeForRewardWithdrawal :: Gen MockFeeForRewardWithdrawal
-genMockFeeForRewardWithdrawal = pure MockFeeForRewardWithdrawalByShowLength
-
-instance Arbitrary MockFeeForRewardWithdrawal where
-    arbitrary = genMockFeeForRewardWithdrawal
-
---------------------------------------------------------------------------------
 -- Mock sizes
 --------------------------------------------------------------------------------
 
@@ -534,9 +480,6 @@ genMockSizeRange :: Natural -> Natural -> Gen MockSize
 genMockSizeRange minSize maxSize =
     MockSize . fromIntegral @Integer @Natural <$>
         choose (fromIntegral minSize, fromIntegral maxSize)
-
-mockSizeHalfSafe :: MockSize -> MockSize
-mockSizeHalfSafe (MockSize a) = MockSize $ a `div` 2
 
 mockSizeSubtractSafe :: MockSize -> MockSize -> MockSize
 mockSizeSubtractSafe (MockSize a) (MockSize b)

@@ -31,11 +31,10 @@ import Cardano.Wallet.Primitive.Migration.Selection
     , addCoinToFeeExcess
     , checkInvariant
     , initialize
-    , outputOrdering
     , outputSizeWithinLimit
     )
 import Cardano.Wallet.Primitive.Types.Coin
-    ( Coin (..), subtractCoin )
+    ( Coin (..) )
 import Cardano.Wallet.Primitive.Types.TokenBundle
     ( TokenBundle (..) )
 import Cardano.Wallet.Primitive.Types.TokenMap
@@ -52,8 +51,6 @@ import Data.ByteString
     ( ByteString )
 import Data.Either
     ( isRight )
-import Data.Function
-    ( (&) )
 import Data.Generics.Internal.VL.Lens
     ( view )
 import Data.Generics.Labels
@@ -62,16 +59,12 @@ import Data.List.NonEmpty
     ( NonEmpty (..) )
 import Data.Either.Extra
     ( eitherToMaybe )
-import Data.Maybe
-    ( fromMaybe )
 import Data.Semigroup
     ( mtimesDefault )
 import GHC.Generics
     ( Generic )
 import Numeric.Natural
     ( Natural )
-import Safe
-    ( tailMay )
 import Test.Hspec
     ( Spec, describe, it )
 import Test.Hspec.Core.QuickCheck
@@ -97,7 +90,6 @@ import Test.QuickCheck
 import qualified Cardano.Wallet.Primitive.Types.TokenMap as TokenMap
 import qualified Data.ByteString as BS
 import qualified Data.Foldable as F
-import qualified Data.List.NonEmpty as NE
 import qualified Data.Set as Set
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as T
@@ -364,19 +356,6 @@ genTokenQuantity = TokenQuantity . fromIntegral @Integer <$>
 -- Mock selection parameters
 --------------------------------------------------------------------------------
 
--- What we actually need
---
--- feeForEmptySelection
--- maximumSizeOfSelection
--- minimumAdaQuantityForOutput
---
---
---
--- Functions
---
--- sizeOfOutput
--- sizeOfRewardWithdrawal
-
 mockSizeOfOutput :: TokenBundle -> MockSize
 mockSizeOfOutput = MockSize . fromIntegral . length . show
 
@@ -581,59 +560,9 @@ instance Arbitrary a => Arbitrary (NonEmpty a) where
     arbitrary = (:|) <$> arbitrary <*> arbitrary
     shrink = genericShrink
 
-instance Arbitrary Coin where
-    arbitrary = oneof
-        [ genCoinRange (Coin     1) (Coin     9)
-        , genCoinRange (Coin    10) (Coin    99)
-        , genCoinRange (Coin   100) (Coin   999)
-        , genCoinRange (Coin  1000) (Coin  9999)
-        , genCoinRange (Coin 10000) (Coin 99999)
-        ]
-    shrink = filter (> Coin 0) . genericShrink
-
 --------------------------------------------------------------------------------
 -- Internal types and functions
 --------------------------------------------------------------------------------
-
-joinMockSelections
-    :: MockSelectionParameters
-    -> MockSelection
-    -> MockSelection
-    -> Maybe MockSelection
-joinMockSelections mockParams s1 s2
-    | size joinedSelection <= maximumSizeOfSelection params =
-        Just joinedSelection
-    | otherwise =
-        Nothing
-  where
-    joinedSelection = Selection
-        { inputs
-            = inputs s1 <> inputs s2
-        , outputs
-            = outputs s2 <> outputs s2
-            & NE.sortBy (outputOrdering params)
-        , feeExcess
-            = feeExcess s1 <> feeExcess s2
-        , size
-            = size s1 <> size s2
-            & flip mockSizeSubtractSafe (sizeOfEmptySelection params)
-        , rewardWithdrawal
-            = rewardWithdrawal s1 <> rewardWithdrawal s2
-        }
-    params = unMockSelectionParameters mockParams
-
-consecutivePairs :: [a] -> [(a, a)]
-consecutivePairs xs = case tailMay xs of
-    Nothing -> []
-    Just ys -> xs `zip` ys
-
-fromJust :: Maybe a -> a
-fromJust (Just a) = a
-fromJust Nothing = error "fromJust"
-
-fromRight :: Either e a -> a
-fromRight (Right a) = a
-fromRight (Left _) = error "fromRight"
 
 matchLeft :: (e -> Bool) -> Either e a -> Bool
 matchLeft f result = case result of
@@ -644,6 +573,3 @@ matchRight :: (a -> Bool) -> Either e a -> Bool
 matchRight f result = case result of
     Right x -> f x
     Left _ -> False
-
-safeCoinPred :: Coin -> Coin
-safeCoinPred c = fromMaybe (Coin 0) (c `subtractCoin` Coin 1)

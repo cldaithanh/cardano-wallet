@@ -258,7 +258,7 @@ prop_addEntry mockArgs addEntry =
         "Success" $
     cover 0.5 (selectionResultHasInsufficientAda result)
         "Failure due to insufficient ada" $
-    cover 0.5 (selectionResultIsFull result)
+    cover 0.2 (selectionResultIsFull result)
         "Failure due to oversized selection" $
     case result of
         Left (SelectionFull e) ->
@@ -818,8 +818,8 @@ unMockMinimumAdaQuantityForOutput mock = \m ->
 
 genMockMinimumAdaQuantityForOutput :: Gen MockMinimumAdaQuantityForOutput
 genMockMinimumAdaQuantityForOutput = MockMinimumAdaQuantityForOutput
-    <$> genCoinRange (Coin 0) (Coin 1)
-    <*> genCoinRange (Coin 0) (Coin 1)
+    <$> genCoinRange (Coin 0) (Coin 10)
+    <*> genCoinRange (Coin 0) (Coin 10)
 
 --------------------------------------------------------------------------------
 -- Arbitrary instances

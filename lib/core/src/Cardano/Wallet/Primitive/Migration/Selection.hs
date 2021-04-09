@@ -595,20 +595,20 @@ initialize params rewardWithdrawal inputs = do
             }
     ReclaimAdaResult {reducedOutputs} <- maybeToEither SelectionAdaInsufficient
         $ reclaimAda (params) (minimumFee params selection) (coalescedBundles)
-    size <- guardSize params
-        $ currentSize params selection {outputs = reducedOutputs}
+    let reducedSelection = selection {outputs = reducedOutputs}
+    size <- guardSize params $ currentSize params reducedSelection
     -- We have already reclaimed ada from the outputs to pay for the fee. But
     -- we might have reclaimed slightly more than we need, as reducing an ada
     -- quantity can also reduce its cost. Therefore we need to record the fee
     -- excess here, as it might be greater than zero.
     feeExcess <- do
-        let mf = minimumFee params selection {outputs = reducedOutputs, size}
-        case currentFee selection {outputs = reducedOutputs, size} of
+        let mf = minimumFee params reducedSelection {size}
+        case currentFee reducedSelection {size} of
             Right cf | cf >= mf ->
                 pure (Coin.distance cf mf)
             _ ->
                 Left SelectionAdaInsufficient
-    pure selection {outputs = reducedOutputs, size, feeExcess}
+    pure reducedSelection {size, feeExcess}
 
 --------------------------------------------------------------------------------
 -- Finalizing a selection

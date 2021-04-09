@@ -176,8 +176,10 @@ prop_initialize args =
         "Success with more inputs than outputs" $
     cover 10 (selectionResultHasMoreThanOneOutput result)
         "Success with more than one output" $
+    cover 10 (selectionResultHasOneOutput result)
+        "Success with one output" $
     cover 10 (selectionResultHasNonZeroFeeExcess result)
-        "Success with positive fee excess" $
+        "Success with non-zero fee excess" $
     cover 5 (selectionResultHasInsufficientAda result)
         "Failure due to insufficient ada" $
     cover 5 (selectionResultIsFull result)
@@ -522,6 +524,10 @@ selectionResultHasMoreInputsThanOutputs = matchRight $ \selection ->
 selectionResultHasMoreThanOneOutput :: MockSelectionResult -> Bool
 selectionResultHasMoreThanOneOutput = matchRight $ \selection ->
     F.length (outputs selection) > 1
+
+selectionResultHasOneOutput :: MockSelectionResult -> Bool
+selectionResultHasOneOutput = matchRight $ \selection ->
+    F.length (outputs selection) == 1
 
 selectionResultHasNonZeroFeeExcess :: MockSelectionResult -> Bool
 selectionResultHasNonZeroFeeExcess = matchRight $ \selection ->

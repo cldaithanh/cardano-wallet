@@ -307,7 +307,7 @@ genMockReclaimAdaFromOutputsArguments = do
         <*> replicateM
             (mockOutputCount - 1)
             (genTokenBundle mockSelectionParameters)
-    mockAdaToReclaim <- genCoinRange (Coin 0) (Coin 5000)
+    mockAdaToReclaim <- genCoinRange (Coin 0) (Coin 4500)
     pure MockReclaimAdaFromOutputsArguments
         { mockSelectionParameters
         , mockAdaToReclaim
@@ -360,6 +360,8 @@ prop_reclaimAdaFromOutputs mockArgs =
               , show sizeReduction )
             , ( "sizeReductionExpected"
               , show sizeReductionExpected )
+            , ( "reductionInOutputAda"
+              , show reductionInOutputAda )
             , ( "adaReclaimed"
               , show adaReclaimed )
             , ( "adaToReclaim"

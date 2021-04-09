@@ -590,7 +590,6 @@ initialize params rewardWithdrawal inputs = do
             }
     OutputsWithReducedAda
         { reducedOutputs
-        , costReduction
         } <- maybeToEither SelectionAdaInsufficient $ reclaimAdaFromOutputs
                 (params) (minimumFee params selection) (coalescedBundles)
     size <- guardSize params $
@@ -599,14 +598,14 @@ initialize params rewardWithdrawal inputs = do
     -- the fee. But this might in turn have reduced the required minimum fee.
     -- So we need to recalculate the fee excess here, as it might be greater
     -- than zero:
-    {- feeExcess <- do
+    feeExcess <- do
         let mf = minimumFee params selection {outputs = reducedOutputs, size}
         case currentFee selection {outputs = reducedOutputs, size} of
             Right cf | cf >= mf ->
                 pure (Coin.distance cf mf)
             _ ->
-                Left SelectionAdaInsufficient  -}
-    pure selection {outputs = reducedOutputs, size, feeExcess = costReduction}
+                Left SelectionAdaInsufficient
+    pure selection {outputs = reducedOutputs, size, feeExcess}
 
 --------------------------------------------------------------------------------
 -- Finalizing a selection
@@ -917,9 +916,11 @@ reclaimAdaFromOutputs
     -> Coin
     -> NonEmpty TokenBundle
     -> Maybe (OutputsWithReducedAda s)
-reclaimAdaFromOutputs params adaToReclaimTotal bundles =
-    go (NE.toList bundles) adaToReclaimTotal [] (Coin 0) mempty
+reclaimAdaFromOutputs params totalAdaToReclaim bundles =
+    go (NE.toList bundles) totalAdaToReclaim [] (Coin 0) mempty
   where
+    go [] _ _ _ _ =
+        Nothing
     go remaining (Coin 0) reduced 𝛿cost 𝛿size =
         Just OutputsWithReducedAda
             { reducedOutputs = NE.fromList $
@@ -927,34 +928,31 @@ reclaimAdaFromOutputs params adaToReclaimTotal bundles =
             , costReduction = 𝛿cost
             , sizeReduction = 𝛿size
             }
-    go [] _ _ _ _ =
-        Nothing
     go (bundle : remaining) adaToReclaim reduced 𝛿cost 𝛿size
         | adaToReclaim <= 𝛿cost =
             go (bundle : remaining) (Coin 0) reduced 𝛿cost 𝛿size
         | otherwise =
             go remaining adaToReclaim' (bundle' : reduced) 𝛿cost' 𝛿size'
       where
-        reductionPossible =
-            min adaToReclaimMinusCost (excessAdaForOutput params bundle)
-        adaToReclaimMinusCost =
+        adaToReclaimMinusCostReduction =
             Coin.distance adaToReclaim 𝛿cost
+        reductionPossible = min
+            (adaToReclaimMinusCostReduction)
+            (excessAdaForOutput params bundle)
         adaToReclaim' =
-            Coin.distance adaToReclaimMinusCost reductionPossible
+            Coin.distance adaToReclaim reductionPossible
         coin =
             TokenBundle.getCoin bundle
         coin' =
             Coin.distance coin reductionPossible
         bundle' =
             TokenBundle.setCoin bundle coin'
-        𝛿cost' =
-            𝛿cost <> Coin.distance
-                (costOfOutputCoin params coin)
-                (costOfOutputCoin params coin')
-        𝛿size' =
-            𝛿size <> sizeDistance
-                (sizeOfOutputCoin params coin)
-                (sizeOfOutputCoin params coin')
+        𝛿cost' = 𝛿cost <> Coin.distance
+            (costOfOutputCoin params coin)
+            (costOfOutputCoin params coin')
+        𝛿size' = 𝛿size <> sizeDistance
+            (sizeOfOutputCoin params coin)
+            (sizeOfOutputCoin params coin')
 
 increaseOutputAdaQuantities
     :: Coin

@@ -169,22 +169,22 @@ instance Arbitrary MockInitializeArguments where
 prop_initialize :: MockInitializeArguments -> Property
 prop_initialize args =
     checkCoverage $
-    cover 30 (resultIsSelection result)
-        "Succeeded" $
-    cover 10 (resultHasMoreInputsThanOutputs result)
-        "Succeeded with more inputs than outputs" $
+    cover 30 (selectionResultIsSelection result)
+        "Success" $
+    cover 10 (selectionResultHasMoreInputsThanOutputs result)
+        "Success with more inputs than outputs" $
     -- TODO: Raise this coverage threshold above 0:
-    cover 0 (resultHasMoreThanOneOutput result)
-        "Succeeded with more than one output" $
-    cover 10 (resultHasNonZeroFeeExcess result)
-        "Succeeded with positive fee excess" $
+    cover 0 (selectionResultHasMoreThanOneOutput result)
+        "Success with more than one output" $
+    cover 10 (selectionResultHasNonZeroFeeExcess result)
+        "Success with positive fee excess" $
     -- TODO: Raise this coverage threshold above 0:
-    cover 0 (resultHasZeroFeeExcess result)
-        "Succeeded with zero fee excess" $
-    cover 10 (resultHasInsufficientAda result)
-        "Failed due to insufficient ada" $
-    cover 10 (resultIsFull result)
-        "Failed due to oversized selection" $
+    cover 0 (selectionResultHasZeroFeeExcess result)
+        "Success with zero fee excess" $
+    cover 10 (selectionResultHasInsufficientAda result)
+        "Failure due to insufficient ada" $
+    cover 10 (selectionResultIsFull result)
+        "Failure due to oversized selection" $
     case result of
         Left SelectionAdaInsufficient ->
             -- TODO: Check that the ada amount really is insufficient.
@@ -257,21 +257,21 @@ prop_addBundleAsNewOutputWithoutReclaimingAda mockArgs =
 prop_addEntry :: MockAddEntryArguments -> MockAddEntry TokenBundle -> Property
 prop_addEntry mockArgs addEntry =
     checkCoverage $
-    cover 30 (resultIsSelection result)
-        "Succeeded" $
-    cover 0.5 (resultHasInsufficientAda result)
-        "Failed due to insufficient ada" $
-    cover 0.5 (resultIsFull result)
-        "Failed due to oversized selection" $
+    cover 30 (selectionResultIsSelection result)
+        "Success" $
+    cover 0.5 (selectionResultHasInsufficientAda result)
+        "Failure due to insufficient ada" $
+    cover 0.5 (selectionResultIsFull result)
+        "Failure due to oversized selection" $
     case result of
         Left (SelectionFull e) ->
-            counterexample "Failed due to oversized selection" $
+            counterexample "Failure due to oversized selection" $
             conjoin
                 [ property (selectionSizeMaximum e < selectionSizeRequired e)
                 --, property (isLeft initializeResult)
                 ]
         Left SelectionAdaInsufficient ->
-            counterexample "Failed due to insufficient ada" $
+            counterexample "Failure due to insufficient ada" $
             property True -- property (isLeft initializeResult)
         Right selection ->
             counterexample "Succeeded" $
@@ -380,9 +380,9 @@ instance Arbitrary MockReclaimAdaArguments where
 prop_reclaimAda :: Blind MockReclaimAdaArguments -> Property
 prop_reclaimAda mockArgs =
     checkCoverage $
-    cover 30 (isJust result)
+    cover 30 (resultIsSuccess result)
         "Success" $
-    cover 30 (isNothing result)
+    cover 30 (resultIsFailure result)
         "Failure" $
     case result of
         Nothing ->
@@ -459,40 +459,44 @@ prop_reclaimAda mockArgs =
 
     result = reclaimAda params mockAdaToReclaim mockOutputs
 
+    resultIsSuccess = isJust
+
+    resultIsFailure = isNothing
+
 --------------------------------------------------------------------------------
 -- Mock results
 --------------------------------------------------------------------------------
 
 type MockSelection = Selection MockInputId MockSize
 type MockSelectionError = SelectionError MockSize
-type MockResult = Either MockSelectionError MockSelection
+type MockSelectionResult = Either MockSelectionError MockSelection
 
-resultIsSelection :: MockResult -> Bool
-resultIsSelection = isRight
+selectionResultIsSelection :: MockSelectionResult -> Bool
+selectionResultIsSelection = isRight
 
-resultHasMoreInputsThanOutputs :: MockResult -> Bool
-resultHasMoreInputsThanOutputs = matchRight $ \selection ->
+selectionResultHasMoreInputsThanOutputs :: MockSelectionResult -> Bool
+selectionResultHasMoreInputsThanOutputs = matchRight $ \selection ->
     F.length (inputs selection) > F.length (outputs selection)
 
-resultHasMoreThanOneOutput :: MockResult -> Bool
-resultHasMoreThanOneOutput = matchRight $ \selection ->
+selectionResultHasMoreThanOneOutput :: MockSelectionResult -> Bool
+selectionResultHasMoreThanOneOutput = matchRight $ \selection ->
     F.length (outputs selection) > 1
 
-resultHasNonZeroFeeExcess :: MockResult -> Bool
-resultHasNonZeroFeeExcess = matchRight $ \selection ->
+selectionResultHasNonZeroFeeExcess :: MockSelectionResult -> Bool
+selectionResultHasNonZeroFeeExcess = matchRight $ \selection ->
     feeExcess selection > Coin 0
 
-resultHasZeroFeeExcess :: MockResult -> Bool
-resultHasZeroFeeExcess = matchRight $ \selection ->
+selectionResultHasZeroFeeExcess :: MockSelectionResult -> Bool
+selectionResultHasZeroFeeExcess = matchRight $ \selection ->
     feeExcess selection == Coin 0
 
-resultHasInsufficientAda :: MockResult -> Bool
-resultHasInsufficientAda = matchLeft $ \case
+selectionResultHasInsufficientAda :: MockSelectionResult -> Bool
+selectionResultHasInsufficientAda = matchLeft $ \case
     SelectionAdaInsufficient -> True
     _ -> False
 
-resultIsFull :: MockResult -> Bool
-resultIsFull = matchLeft $ \case
+selectionResultIsFull :: MockSelectionResult -> Bool
+selectionResultIsFull = matchLeft $ \case
     SelectionFull _ -> True
     _ -> False
 

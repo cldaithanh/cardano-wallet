@@ -68,7 +68,10 @@ module Cardano.Wallet.Primitive.Migration.Selection
     , addBundleAsNewOutput
     , addBundleAsNewOutputWithoutReclaimingAda
 
-    -- * Reducing ada quantities of outputs
+    -- * Coalescing token bundles
+    , coalesceOutputs
+
+    -- * Reclaiming ada from outputs
     , ReclaimAdaResult (..)
     , reclaimAda
 
@@ -580,7 +583,7 @@ initialize
 initialize params rewardWithdrawal inputs = do
     let coalescedBundles = NE.sortBy
             (outputOrdering params)
-            (coalesceTokenBundles params $ snd <$> inputs)
+            (coalesceOutputs params $ snd <$> inputs)
     let selection = Selection
             { inputs
             , outputs = coalescedBundles
@@ -901,14 +904,14 @@ addBundleAsNewOutputWithoutReclaimingAda
         ]
 
 --------------------------------------------------------------------------------
--- Coalescing token bundles
+-- Coalescing outputs
 --------------------------------------------------------------------------------
 
-coalesceTokenBundles
+coalesceOutputs
     :: SelectionParameters i
     -> NonEmpty TokenBundle
     -> NonEmpty TokenBundle
-coalesceTokenBundles params bundles = coalesce bundles
+coalesceOutputs params bundles = coalesce bundles
   where
     coalesce (b :| []) =
         b :| []

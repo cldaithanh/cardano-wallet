@@ -37,6 +37,7 @@ import Cardano.Wallet.Primitive.Migration.Selection
     , addBundleAsNewOutputWithoutReclaimingAda
     , addBundleToExistingOutput
     , checkInvariant
+    , coalesceOutputs
     , initialize
     , outputSizeWithinLimit
     , outputOrdering
@@ -126,7 +127,12 @@ spec = describe "Cardano.Wallet.Primitive.Migration.SelectionSpec" $
         it "prop_addBundleAsNewOutputWithoutReclaimingAda" $
             property prop_addBundleAsNewOutputWithoutReclaimingAda
 
-    parallel $ describe "Reducing ada quantities of outputs" $ do
+    parallel $ describe "Coalescing token bundles" $ do
+
+        it "prop_coalesceOutputs" $
+            property prop_coalesceOutputs
+
+    parallel $ describe "Reclaiming ada from outputs" $ do
 
         it "prop_reclaimAda" $
             property prop_reclaimAda
@@ -290,7 +296,54 @@ prop_addEntry mockArgs addEntry =
 -- Coalescing token bundles
 --------------------------------------------------------------------------------
 
--- TODO!
+data MockCoalesceOutputsArguments = MockCoalesceOutputsArguments
+    { mockSelectionParameters :: MockSelectionParameters
+    , mockOutputs :: NonEmpty TokenBundle
+    }
+    deriving (Eq, Show)
+
+genMockCoalesceOutputsArguments :: Gen MockCoalesceOutputsArguments
+genMockCoalesceOutputsArguments = do
+    mockSelectionParameters <- genMockSelectionParameters
+    mockOutputCount <- choose (1, 10)
+    mockOutputs <- (:|)
+        <$> genTokenBundle mockSelectionParameters
+        <*> replicateM
+            (mockOutputCount - 1)
+            (genTokenBundle mockSelectionParameters)
+    pure MockCoalesceOutputsArguments
+        { mockSelectionParameters
+        , mockOutputs
+        }
+
+instance Arbitrary MockCoalesceOutputsArguments where
+    arbitrary = genMockCoalesceOutputsArguments
+
+prop_coalesceOutputs :: Blind MockCoalesceOutputsArguments -> Property
+prop_coalesceOutputs mockArgs =
+    checkCoverage $
+    cover 50 (length result < length mockOutputs)
+        "length result < length mockOutputs" $
+    cover 10 (length result == 1)
+        "length result == 1" $
+    cover 10 (length result == 2)
+        "length result == 2" $
+    cover 10 (length result == 3)
+        "length result == 3" $
+    cover 10 (length result >= 4)
+        "length result >= 4" $
+    conjoin
+        [ property $ length result <= length mockOutputs
+        , property $ all (outputSizeWithinLimit params) result
+        , F.fold result === F.fold mockOutputs
+        ]
+  where
+    Blind MockCoalesceOutputsArguments
+        { mockSelectionParameters
+        , mockOutputs
+        } = mockArgs
+    result = coalesceOutputs params mockOutputs
+    params = unMockSelectionParameters mockSelectionParameters
 
 --------------------------------------------------------------------------------
 -- Reclaiming ada from outputs
@@ -303,8 +356,7 @@ data MockReclaimAdaArguments = MockReclaimAdaArguments
     }
     deriving (Eq, Show)
 
-genMockReclaimAdaArguments
-    :: Gen MockReclaimAdaArguments
+genMockReclaimAdaArguments :: Gen MockReclaimAdaArguments
 genMockReclaimAdaArguments = do
     mockSelectionParameters <- genMockSelectionParameters
     mockOutputCount <- choose (1, 10)
@@ -325,8 +377,7 @@ genMockReclaimAdaArguments = do
 instance Arbitrary MockReclaimAdaArguments where
     arbitrary = genMockReclaimAdaArguments
 
-prop_reclaimAda
-    :: Blind MockReclaimAdaArguments -> Property
+prop_reclaimAda :: Blind MockReclaimAdaArguments -> Property
 prop_reclaimAda mockArgs =
     checkCoverage $
     cover 30 (isJust result)
@@ -474,7 +525,7 @@ genMockInputId = MockInputId . BS.pack <$> vector 8
 
 genTokenBundle :: MockSelectionParameters -> Gen TokenBundle
 genTokenBundle mockParams =
-    genInner `suchThat` outputSizeWithinLimit params
+    genInner  `suchThat` outputSizeWithinLimit params
   where
     params = unMockSelectionParameters mockParams
 
@@ -510,8 +561,7 @@ genCoinRange (Coin minCoin) (Coin maxCoin) =
 --------------------------------------------------------------------------------
 
 genTokenQuantity :: Gen TokenQuantity
-genTokenQuantity = TokenQuantity . fromIntegral @Integer <$>
-    choose (1, 1000)
+genTokenQuantity = TokenQuantity . fromIntegral @Integer <$> choose (1, 1000)
 
 --------------------------------------------------------------------------------
 -- Generating selections
@@ -676,13 +726,20 @@ noMaximumOutputSize = MockMaximumSizeOfOutput Nothing
 
 unMockMaximumSizeOfOutput
     :: MockMaximumSizeOfOutput -> SelectionOutputSizeAssessor
-unMockMaximumSizeOfOutput _mock = SelectionOutputSizeAssessor assess
+unMockMaximumSizeOfOutput mock = SelectionOutputSizeAssessor assess
   where
-    assess = const SelectionOutputSizeWithinLimit
+    assess bundle
+        | Just limit <- mockMaximumOutputSize mock
+        , mockSizeOfOutput bundle <= limit =
+            SelectionOutputSizeWithinLimit
+        | otherwise =
+            SelectionOutputSizeExceedsLimit
 
 genMockMaximumSizeOfOutput :: Gen MockMaximumSizeOfOutput
 genMockMaximumSizeOfOutput = MockMaximumSizeOfOutput
-    <$> (Just <$> genMockSizeRange 100 1000)
+    -- Chosen so that the upper limit is just above the unconstrained maximum
+    -- size of token bundles generated by 'genTokenBundle'.
+    <$> (Just <$> genMockSizeRange 100 1500)
 
 --------------------------------------------------------------------------------
 -- Mock maximum sizes of selections

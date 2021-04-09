@@ -19,8 +19,12 @@ module Cardano.Wallet.Primitive.Migration.SelectionSpec
 --
 import Prelude
 
+import Fmt
+    ( pretty )
 import Cardano.Wallet.Primitive.Migration.Selection
     ( AddEntry
+    , OutputsWithReducedAda (..)
+    , reclaimAdaFromOutputs
     , Size (..)
     , Selection (..)
     , SelectionError (..)
@@ -35,13 +39,14 @@ import Cardano.Wallet.Primitive.Migration.Selection
     , checkInvariant
     , initialize
     , outputSizeWithinLimit
+    , outputOrdering
     )
 import Cardano.Wallet.Primitive.Types.Coin
     ( Coin (..) )
 import Cardano.Wallet.Primitive.Types.TokenBundle
     ( TokenBundle (..) )
 import Cardano.Wallet.Primitive.Types.TokenMap
-    ( AssetId, TokenMap )
+    ( AssetId, TokenMap, Flat (..) )
 import Cardano.Wallet.Primitive.Types.TokenMap.Gen
     ( genAssetIdLargeRange )
 import Cardano.Wallet.Primitive.Types.TokenQuantity
@@ -62,6 +67,8 @@ import Data.List.NonEmpty
     ( NonEmpty (..) )
 import Data.Either.Extra
     ( eitherToMaybe )
+import Data.Maybe
+    ( isJust, isNothing )
 import Data.Semigroup
     ( mtimesDefault )
 import GHC.Generics
@@ -76,6 +83,7 @@ import Test.Hspec.Extra
     ( parallel )
 import Test.QuickCheck
     ( Arbitrary (..)
+    , Blind (..)
     , Gen
     , Property
     , checkCoverage
@@ -89,10 +97,10 @@ import Test.QuickCheck
     , suchThat
     , suchThatMap
     , vector
-    , withMaxSuccess
     , (===)
     )
 
+import qualified Cardano.Wallet.Primitive.Types.Coin as Coin
 import qualified Cardano.Wallet.Primitive.Types.TokenMap as TokenMap
 import qualified Data.ByteString as BS
 import qualified Data.Foldable as F
@@ -114,11 +122,14 @@ spec = describe "Cardano.Wallet.Primitive.Migration.SelectionSpec" $
     parallel $ describe "Extending a selection" $ do
 
         it "prop_addBundleToExistingOutput" $
-            withMaxSuccess 1000 $ property
-                prop_addBundleToExistingOutput
+            property prop_addBundleToExistingOutput
         it "prop_addBundleAsNewOutputWithoutReclaimingAda" $
-            withMaxSuccess 1000 $ property
-                prop_addBundleAsNewOutputWithoutReclaimingAda
+            property prop_addBundleAsNewOutputWithoutReclaimingAda
+
+    parallel $ describe "Reducing ada quantities of outputs" $ do
+
+        it "prop_reclaimAdaFromOutputs" $
+            property prop_reclaimAdaFromOutputs
 
 --------------------------------------------------------------------------------
 -- Initializing a selection
@@ -274,6 +285,126 @@ prop_addEntry mockArgs addEntry =
     --initializeResult = initialize params
       --  (rewardWithdrawal mockSelection)
        -- (mockEntry `NE.cons` inputs mockSelection)
+
+--------------------------------------------------------------------------------
+-- Reducing ada quantities of outputs
+--------------------------------------------------------------------------------
+
+data MockReclaimAdaFromOutputsArguments = MockReclaimAdaFromOutputsArguments
+    { mockSelectionParameters :: MockSelectionParameters
+    , mockAdaToReclaim :: Coin
+    , mockOutputs :: NonEmpty TokenBundle
+    }
+    deriving (Eq, Show)
+
+genMockReclaimAdaFromOutputsArguments
+    :: Gen MockReclaimAdaFromOutputsArguments
+genMockReclaimAdaFromOutputsArguments = do
+    mockSelectionParameters <- genMockSelectionParameters
+    mockOutputCount <- choose (1, 10)
+    mockOutputs <- (:|)
+        <$> genTokenBundle mockSelectionParameters
+        <*> replicateM
+            (mockOutputCount - 1)
+            (genTokenBundle mockSelectionParameters)
+    mockAdaToReclaim <- genCoinRange (Coin 0) (Coin 5000)
+    pure MockReclaimAdaFromOutputsArguments
+        { mockSelectionParameters
+        , mockAdaToReclaim
+        , mockOutputs
+        }
+
+instance Arbitrary MockReclaimAdaFromOutputsArguments where
+    arbitrary = genMockReclaimAdaFromOutputsArguments
+
+prop_reclaimAdaFromOutputs
+    :: Blind MockReclaimAdaFromOutputsArguments -> Property
+prop_reclaimAdaFromOutputs mockArgs =
+    checkCoverage $
+    cover 30 (isJust result)
+        "Success" $
+    cover 30 (isNothing result)
+        "Failure" $
+    case result of
+        Nothing ->
+            property True
+        Just successfulResult ->
+            prop_inner successfulResult
+  where
+    prop_inner :: OutputsWithReducedAda MockSize -> Property
+    prop_inner successfulResult = counterexample counterexampleText $ conjoin
+        [ counterexample "costReduction /= costReductionExpected" $
+            costReduction === costReductionExpected
+        , counterexample "sizeReduction /= sizeReductionExpected" $
+            sizeReduction === sizeReductionExpected
+        , counterexample "tokenBalanceAfter /= tokenBalanceBefore" $
+            tokenBalanceAfter === tokenBalanceBefore
+        , counterexample "lengthAfter /= lengthBefore" $
+            lengthAfter === lengthBefore
+        , counterexample "sort (reducedOutputs) /= reducedOutputs" $
+            NE.sortBy (outputOrdering params) reducedOutputs === reducedOutputs
+        , counterexample "adaReclaimed < adaToReclaim" $
+            property $ adaReclaimed >= mockAdaToReclaim
+        ]
+      where
+        counterexampleText = counterexampleMap
+            [ ( "tokenBalanceBefore"
+              , pretty (Flat tokenBalanceBefore) )
+            , ( "tokenBalanceAfter"
+              , pretty (Flat tokenBalanceAfter) )
+            , ( "costReduction"
+              , show costReduction )
+            , ( "costReductionExpected"
+              , show costReductionExpected )
+            , ( "sizeReduction"
+              , show sizeReduction )
+            , ( "sizeReductionExpected"
+              , show sizeReductionExpected )
+            , ( "adaReclaimed"
+              , show adaReclaimed )
+            , ( "adaToReclaim"
+              , show mockAdaToReclaim )
+            ]
+
+        OutputsWithReducedAda
+            { reducedOutputs
+            , costReduction
+            , sizeReduction
+            } = successfulResult
+        costReductionExpected = Coin.distance
+            (F.foldMap (costOfOutput params) mockOutputs)
+            (F.foldMap (costOfOutput params) reducedOutputs)
+        sizeReductionExpected = sizeDistance
+            (F.foldMap (sizeOfOutput params) mockOutputs)
+            (F.foldMap (sizeOfOutput params) reducedOutputs)
+        reductionInOutputAda = Coin.distance
+            (F.foldMap (view #coin) mockOutputs)
+            (F.foldMap (view #coin) reducedOutputs)
+        tokenBalanceAfter =
+             F.foldMap (view #tokens) reducedOutputs
+        tokenBalanceBefore =
+            F.foldMap (view #tokens) mockOutputs
+        lengthAfter =
+            F.length reducedOutputs
+        lengthBefore =
+            F.length mockOutputs
+        adaReclaimed =
+            reductionInOutputAda <> costReduction
+
+    params = unMockSelectionParameters mockSelectionParameters
+
+    Blind MockReclaimAdaFromOutputsArguments
+        { mockSelectionParameters
+        , mockAdaToReclaim
+        , mockOutputs
+        } = mockArgs
+
+    result = reclaimAdaFromOutputs params mockAdaToReclaim mockOutputs
+
+counterexampleMap :: [(String, String)] -> String
+counterexampleMap
+    = mconcat
+    . fmap (\(k, v) -> k <> ":\n" <> v <> "\n\n")
 
 --------------------------------------------------------------------------------
 -- Mock results

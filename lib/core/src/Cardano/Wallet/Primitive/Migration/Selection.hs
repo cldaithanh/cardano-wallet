@@ -68,6 +68,10 @@ module Cardano.Wallet.Primitive.Migration.Selection
     , addBundleAsNewOutput
     , addBundleAsNewOutputWithoutReclaimingAda
 
+    -- * Reducing ada quantities of outputs
+    , OutputsWithReducedAda (..)
+    , reclaimAdaFromOutputs
+
     ) where
 
 import Prelude
@@ -584,24 +588,25 @@ initialize params rewardWithdrawal inputs = do
             , size = mempty
             , rewardWithdrawal
             }
-    outputs <- maybeToEither SelectionAdaInsufficient $
-        reduceOutputAdaQuantities
-            (params)
-            (minimumFee params selection)
-            (coalescedBundles)
-    size <- guardSize params $ currentSize params selection {outputs}
+    OutputsWithReducedAda
+        { reducedOutputs
+        , costReduction
+        } <- maybeToEither SelectionAdaInsufficient $ reclaimAdaFromOutputs
+                (params) (minimumFee params selection) (coalescedBundles)
+    size <- guardSize params $
+        currentSize params selection {outputs = reducedOutputs}
     -- We have already reduced the output ada quantities in order to pay for
     -- the fee. But this might in turn have reduced the required minimum fee.
     -- So we need to recalculate the fee excess here, as it might be greater
     -- than zero:
-    feeExcess <- do
-        let mf = minimumFee params selection {outputs, size}
-        case currentFee selection {outputs, size} of
+    {- feeExcess <- do
+        let mf = minimumFee params selection {outputs = reducedOutputs, size}
+        case currentFee selection {outputs = reducedOutputs, size} of
             Right cf | cf >= mf ->
                 pure (Coin.distance cf mf)
             _ ->
-                Left SelectionAdaInsufficient
-    pure selection {outputs, size, feeExcess}
+                Left SelectionAdaInsufficient  -}
+    pure selection {outputs = reducedOutputs, size, feeExcess = costReduction}
 
 --------------------------------------------------------------------------------
 -- Finalizing a selection
@@ -817,7 +822,7 @@ addBundleToExistingOutput params selection (inputId, inputBundle) = do
                 ]
 
 addBundleAsNewOutput
-    :: forall i s. (Monoid s, Ord s)
+    :: forall i s. Size s
     => AddEntry s i TokenBundle
 addBundleAsNewOutput params selection input@(inputId, inputBundle)
     | adaToReclaim == Coin 0 =
@@ -835,16 +840,17 @@ addBundleAsNewOutput params selection input@(inputId, inputBundle)
         pure updatedSelection
             {inputs = replaceHeadOfList (inputs updatedSelection) input}
     | otherwise = do
-        reducedOutputBundles <- maybeToEither SelectionAdaInsufficient $
-            reduceOutputAdaQuantities
-                (params)
-                (Coin.distance adaToReclaim (feeExcess selection))
-                (outputs selection)
+        OutputsWithReducedAda {reducedOutputs}
+            <- maybeToEither SelectionAdaInsufficient $
+                reclaimAdaFromOutputs
+                    (params)
+                    (Coin.distance adaToReclaim (feeExcess selection))
+                    (outputs selection)
         let inputBundleWithIncreasedAda =
                 TokenBundle.adjustCoin inputBundle (<> adaToReclaim)
         updatedSelection <- addBundleAsNewOutputWithoutReclaimingAda
             (params)
-            (selection {feeExcess = Coin 0, outputs = reducedOutputBundles})
+            (selection {feeExcess = Coin 0, outputs = reducedOutputs})
             (inputId, inputBundleWithIncreasedAda)
         pure updatedSelection
             {inputs = replaceHeadOfList (inputs updatedSelection) input}
@@ -899,34 +905,56 @@ addBundleAsNewOutputWithoutReclaimingAda
 -- Miscellaneous types and functions
 --------------------------------------------------------------------------------
 
-data ReduceOutputAdaQuantitiesResult s = ReduceOutputAdaQuantitiesResult
+data OutputsWithReducedAda s = OutputsWithReducedAda
     { reducedOutputs :: NonEmpty TokenBundle
-    , reductionInSize :: s
-    , reductionInFee :: Coin
+    , costReduction :: Coin
+    , sizeReduction :: s
     }
 
-reduceOutputAdaQuantities
-    :: SelectionParameters s
+reclaimAdaFromOutputs
+    :: Size s
+    => SelectionParameters s
     -> Coin
     -> NonEmpty TokenBundle
-    -> Maybe (NonEmpty TokenBundle) -- (ReduceOutputAdaQuantitiesResult s)
-reduceOutputAdaQuantities params reductionRequired bundles =
-    NE.fromList <$> go reductionRequired [] (NE.toList bundles)
+    -> Maybe (OutputsWithReducedAda s)
+reclaimAdaFromOutputs params adaToReclaimTotal bundles =
+    go (NE.toList bundles) adaToReclaimTotal [] (Coin 0) mempty
   where
-    go (Coin 0) reducedBundles remainingBundles =
-        Just $ insertManyBy (outputOrdering params)
-            reducedBundles remainingBundles
-    go _ _ [] =
+    go remaining (Coin 0) reduced 𝛿cost 𝛿size =
+        Just OutputsWithReducedAda
+            { reducedOutputs = NE.fromList $
+                insertManyBy (outputOrdering params) reduced remaining
+            , costReduction = 𝛿cost
+            , sizeReduction = 𝛿size
+            }
+    go [] _ _ _ _ =
         Nothing
-    go coin reducedBundles (bundle : remainingBundles) =
-        go reducedCoin (reducedBundle : reducedBundles) remainingBundles
+    go (bundle : remaining) adaToReclaim reduced 𝛿cost 𝛿size
+        | adaToReclaim <= 𝛿cost =
+            go (bundle : remaining) (Coin 0) reduced 𝛿cost 𝛿size
+        | otherwise =
+            go remaining adaToReclaim' (bundle' : reduced) 𝛿cost' 𝛿size'
       where
-        reduction =
-            min coin (excessAdaForOutput params bundle)
-        reducedCoin =
-            Coin.distance coin reduction
-        reducedBundle =
-            TokenBundle.adjustCoin bundle (flip Coin.distance reduction)
+        reductionPossible =
+            min adaToReclaimMinusCost (excessAdaForOutput params bundle)
+        adaToReclaimMinusCost =
+            Coin.distance adaToReclaim 𝛿cost
+        adaToReclaim' =
+            Coin.distance adaToReclaimMinusCost reductionPossible
+        coin =
+            TokenBundle.getCoin bundle
+        coin' =
+            Coin.distance coin reductionPossible
+        bundle' =
+            TokenBundle.setCoin bundle coin'
+        𝛿cost' =
+            𝛿cost <> Coin.distance
+                (costOfOutputCoin params coin)
+                (costOfOutputCoin params coin')
+        𝛿size' =
+            𝛿size <> sizeDistance
+                (sizeOfOutputCoin params coin)
+                (sizeOfOutputCoin params coin')
 
 increaseOutputAdaQuantities
     :: Coin
@@ -1016,10 +1044,7 @@ coinToInteger :: Coin -> Integer
 coinToInteger = fromIntegral . unCoin
 
 insertManyBy :: (a -> a -> Ordering) -> [a] -> [a] -> [a]
-insertManyBy order itemsToInsert sortedItems =
-    L.foldl' f sortedItems itemsToInsert
-  where
-    f acc itemToInsert = L.insertBy order itemToInsert acc
+insertManyBy = L.foldl' . flip . L.insertBy
 
 eithersToEither :: NonEmpty (Either e a) -> Either e a
 eithersToEither eithers

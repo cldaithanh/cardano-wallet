@@ -584,6 +584,8 @@ initialize params rewardWithdrawal inputs = do
     let coalescedBundles = NE.sortBy
             (outputOrdering params)
             (coalesceOutputs params $ snd <$> inputs)
+    guardE (all (outputSatisfiesMinimumAdaQuantity params) coalescedBundles)
+        SelectionAdaInsufficient
     let selection = Selection
             { inputs
             , outputs = coalescedBundles
@@ -591,16 +593,14 @@ initialize params rewardWithdrawal inputs = do
             , size = mempty
             , rewardWithdrawal
             }
-    ReclaimAdaResult
-        { reducedOutputs
-        } <- maybeToEither SelectionAdaInsufficient $ reclaimAda
-                (params) (minimumFee params selection) (coalescedBundles)
-    size <- guardSize params $
-        currentSize params selection {outputs = reducedOutputs}
-    -- We have already reduced the output ada quantities in order to pay for
-    -- the fee. But this might in turn have reduced the required minimum fee.
-    -- So we need to recalculate the fee excess here, as it might be greater
-    -- than zero:
+    ReclaimAdaResult {reducedOutputs} <- maybeToEither SelectionAdaInsufficient
+        $ reclaimAda (params) (minimumFee params selection) (coalescedBundles)
+    size <- guardSize params
+        $ currentSize params selection {outputs = reducedOutputs}
+    -- We have already reclaimed ada from the outputs to pay for the fee. But
+    -- we might have reclaimed slightly more than we need, as reducing an ada
+    -- quantity can also reduce its cost. Therefore we need to record the fee
+    -- excess here, as it might be greater than zero.
     feeExcess <- do
         let mf = minimumFee params selection {outputs = reducedOutputs, size}
         case currentFee selection {outputs = reducedOutputs, size} of
@@ -941,8 +941,6 @@ reclaimAda
 reclaimAda params totalAdaToReclaim bundles =
     go (NE.toList bundles) totalAdaToReclaim [] (Coin 0) mempty
   where
-    go [] _ _ _ _ =
-        Nothing
     go remaining (Coin 0) reduced 𝛿cost 𝛿size =
         Just ReclaimAdaResult
             { reducedOutputs = NE.fromList $
@@ -950,31 +948,32 @@ reclaimAda params totalAdaToReclaim bundles =
             , costReduction = 𝛿cost
             , sizeReduction = 𝛿size
             }
-    go (bundle : remaining) adaToReclaim reduced 𝛿cost 𝛿size
-        | adaToReclaim <= 𝛿cost =
-            go (bundle : remaining) (Coin 0) reduced 𝛿cost 𝛿size
-        | otherwise =
-            go remaining adaToReclaim' (bundle' : reduced) 𝛿cost' 𝛿size'
+    go [] _ _ _ _ =
+        Nothing
+    go (bundle : remaining) adaToReclaim reduced 𝛿cost 𝛿size =
+        go remaining adaToReclaim' (bundle' : reduced) 𝛿cost' 𝛿size'
       where
-        adaToReclaimMinusCostReduction =
-            Coin.distance adaToReclaim 𝛿cost
-        reductionPossible = min
-            (adaToReclaimMinusCostReduction)
-            (excessAdaForOutput params bundle)
+        coinReduction =
+            min adaToReclaim (excessAdaForOutput params bundle)
+        adaReclaimed =
+            coinReduction <> costReductionForThisOutput
         adaToReclaim' =
-            Coin.distance adaToReclaim reductionPossible
+            fromMaybe (Coin 0) $ Coin.subtractCoin adaToReclaim adaReclaimed
         coin =
             TokenBundle.getCoin bundle
         coin' =
-            Coin.distance coin reductionPossible
+            fromMaybe (Coin 0) $ Coin.subtractCoin coin coinReduction
         bundle' =
             TokenBundle.setCoin bundle coin'
-        𝛿cost' = 𝛿cost <> Coin.distance
+        costReductionForThisOutput = Coin.distance
             (costOfOutputCoin params coin)
             (costOfOutputCoin params coin')
-        𝛿size' = 𝛿size <> sizeDistance
+        sizeReductionForThisOutput = sizeDistance
             (sizeOfOutputCoin params coin)
             (sizeOfOutputCoin params coin')
+        𝛿cost' = 𝛿cost <> costReductionForThisOutput
+        𝛿size' = 𝛿size <> sizeReductionForThisOutput
+
 
 --------------------------------------------------------------------------------
 -- Miscellaneous types and functions

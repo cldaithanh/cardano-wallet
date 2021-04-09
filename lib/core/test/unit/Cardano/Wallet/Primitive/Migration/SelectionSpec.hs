@@ -24,6 +24,7 @@ import Fmt
 import Cardano.Wallet.Primitive.Migration.Selection
     ( AddEntry
     , ReclaimAdaResult (..)
+    , excessAdaForOutput
     , reclaimAda
     , Size (..)
     , Selection (..)
@@ -169,21 +170,17 @@ instance Arbitrary MockInitializeArguments where
 prop_initialize :: MockInitializeArguments -> Property
 prop_initialize args =
     checkCoverage $
-    cover 30 (selectionResultIsSelection result)
+    cover 50 (selectionResultIsSelection result)
         "Success" $
     cover 10 (selectionResultHasMoreInputsThanOutputs result)
         "Success with more inputs than outputs" $
-    -- TODO: Raise this coverage threshold above 0:
-    cover 0 (selectionResultHasMoreThanOneOutput result)
+    cover 10 (selectionResultHasMoreThanOneOutput result)
         "Success with more than one output" $
     cover 10 (selectionResultHasNonZeroFeeExcess result)
         "Success with positive fee excess" $
-    -- TODO: Raise this coverage threshold above 0:
-    cover 0 (selectionResultHasZeroFeeExcess result)
-        "Success with zero fee excess" $
-    cover 10 (selectionResultHasInsufficientAda result)
+    cover 5 (selectionResultHasInsufficientAda result)
         "Failure due to insufficient ada" $
-    cover 10 (selectionResultIsFull result)
+    cover 5 (selectionResultIsFull result)
         "Failure due to oversized selection" $
     case result of
         Left SelectionAdaInsufficient ->
@@ -367,7 +364,7 @@ genMockReclaimAdaArguments = do
             (genTokenBundle mockSelectionParameters)
     mockAdaToReclaim <-
         -- Specially chosen to give a success rate of approximately 50%:
-        genCoinRange (Coin 0) (Coin 4500)
+        genCoinRange (Coin 0) (Coin 5000)
     pure MockReclaimAdaArguments
         { mockSelectionParameters
         , mockAdaToReclaim
@@ -382,16 +379,46 @@ prop_reclaimAda mockArgs =
     checkCoverage $
     cover 30 (resultIsSuccess result)
         "Success" $
+    cover 5 (resultHasZeroCostReduction result)
+        "Success with zero cost reduction" $
+    cover 5 (resultHasZeroSizeReduction result)
+        "Success with zero size reduction" $
+    cover 20 (resultHasNonZeroCostReduction result)
+        "Success with non-zero cost reduction" $
+    cover 20 (resultHasNonZeroSizeReduction result)
+        "Success with non-zero size reduction" $
     cover 30 (resultIsFailure result)
-        "Failure" $
+        "Failure to reclaim ada" $
     case result of
         Nothing ->
-            property True
+            propFailure
         Just successfulResult ->
-            prop_inner successfulResult
+            propSuccess successfulResult
   where
-    prop_inner :: ReclaimAdaResult MockSize -> Property
-    prop_inner successfulResult = counterexample counterexampleText $ conjoin
+    propFailure :: Property
+    propFailure
+        = counterexample counterexampleText
+        $ counterexample "Failure to reclaim ada"
+        $ property $ excessAda < mockAdaToReclaim
+      where
+        counterexampleText = counterexampleMap
+            [ ( "outputs"
+              , unlines (pretty . Flat <$> NE.toList mockOutputs) )
+            , ( "ada amounts"
+              , unlines (show <$> NE.toList adaAmounts) )
+            , ( "excess ada amounts"
+              , unlines (show <$> NE.toList excessAdaAmounts) )
+            , ( "adaToReclaim"
+              , show mockAdaToReclaim )
+            , ( "excessAda"
+              , show excessAda )
+            ]
+        excessAda = F.fold excessAdaAmounts
+        excessAdaAmounts = excessAdaForOutput params <$> mockOutputs
+        adaAmounts = view #coin <$> mockOutputs
+
+    propSuccess :: ReclaimAdaResult MockSize -> Property
+    propSuccess successfulResult = counterexample counterexampleText $ conjoin
         [ counterexample "costReduction /= costReductionExpected" $
             costReduction === costReductionExpected
         , counterexample "sizeReduction /= sizeReductionExpected" $
@@ -404,6 +431,8 @@ prop_reclaimAda mockArgs =
             NE.sortBy (outputOrdering params) reducedOutputs === reducedOutputs
         , counterexample "adaReclaimed < adaToReclaim" $
             property $ adaReclaimed >= mockAdaToReclaim
+        , counterexample "zeroness of cost and size reduction disagree" $
+            (sizeReduction == mempty) === (costReduction == mempty)
         ]
       where
         counterexampleText = counterexampleMap
@@ -460,6 +489,18 @@ prop_reclaimAda mockArgs =
     result = reclaimAda params mockAdaToReclaim mockOutputs
 
     resultIsSuccess = isJust
+
+    resultHasZeroCostReduction = matchJust $ \r ->
+        costReduction r == mempty
+
+    resultHasZeroSizeReduction = matchJust $ \r ->
+        sizeReduction r == mempty
+
+    resultHasNonZeroCostReduction = matchJust $ \r ->
+        costReduction r > mempty
+
+    resultHasNonZeroSizeReduction = matchJust $ \r ->
+        sizeReduction r > mempty
 
     resultIsFailure = isNothing
 
@@ -777,8 +818,8 @@ unMockMinimumAdaQuantityForOutput mock = \m ->
 
 genMockMinimumAdaQuantityForOutput :: Gen MockMinimumAdaQuantityForOutput
 genMockMinimumAdaQuantityForOutput = MockMinimumAdaQuantityForOutput
-    <$> genCoinRange (Coin 0) (Coin 10)
-    <*> genCoinRange (Coin 0) (Coin 10)
+    <$> genCoinRange (Coin 0) (Coin 1)
+    <*> genCoinRange (Coin 0) (Coin 1)
 
 --------------------------------------------------------------------------------
 -- Arbitrary instances
@@ -796,6 +837,11 @@ counterexampleMap :: [(String, String)] -> String
 counterexampleMap
     = mconcat
     . fmap (\(k, v) -> k <> ":\n" <> v <> "\n\n")
+
+matchJust :: (a -> Bool) -> Maybe a -> Bool
+matchJust f result = case result of
+    Nothing -> False
+    Just x -> f x
 
 matchLeft :: (e -> Bool) -> Either e a -> Bool
 matchLeft f result = case result of

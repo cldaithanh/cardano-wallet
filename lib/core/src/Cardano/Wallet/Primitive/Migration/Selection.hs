@@ -974,7 +974,6 @@ reclaimAda params totalAdaToReclaim bundles =
         𝛿cost' = 𝛿cost <> costReductionForThisOutput
         𝛿size' = 𝛿size <> sizeReductionForThisOutput
 
-
 --------------------------------------------------------------------------------
 -- Miscellaneous types and functions
 --------------------------------------------------------------------------------

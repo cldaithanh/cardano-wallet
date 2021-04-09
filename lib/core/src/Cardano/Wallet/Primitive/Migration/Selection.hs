@@ -44,13 +44,13 @@ module Cardano.Wallet.Primitive.Migration.Selection
     ----------------------------------------------------------------------------
 
     -- * Selection parameter functions
+    , costOfOutputCoin
     , excessAdaForOutput
-    , feeForOutputCoin
     , minimumAdaQuantityForOutputCoin
-    , sizeOfOutputCoin
     , outputIsValid
     , outputSatisfiesMinimumAdaQuantity
     , outputSizeWithinLimit
+    , sizeOfOutputCoin
 
     -- * Selection invariants
     , SelectionInvariantStatus (..)
@@ -109,14 +109,14 @@ import qualified Data.List.NonEmpty as NE
 --------------------------------------------------------------------------------
 
 data SelectionParameters s = SelectionParameters
-    { feeForEmptySelection :: Coin
-      -- ^ The constant fee for an empty selection.
-    , feeForInput :: Coin
-      -- ^ The constant fee for a selection input.
-    , feeForOutput :: TokenBundle -> Coin
-      -- ^ The variable fee for a selection output.
-    , feeForRewardWithdrawal :: Coin -> Coin
-      -- ^ The variable fee for a reward withdrawal.
+    { costOfEmptySelection :: Coin
+      -- ^ The constant cost of an empty selection.
+    , costOfInput :: Coin
+      -- ^ The constant cost of a selection input.
+    , costOfOutput :: TokenBundle -> Coin
+      -- ^ The variable cost of a selection output.
+    , costOfRewardWithdrawal :: Coin -> Coin
+      -- ^ The variable cost of a reward withdrawal.
     , sizeOfEmptySelection :: s
       -- ^ The constant size of an empty selection.
     , sizeOfInput :: s
@@ -145,6 +145,9 @@ data SelectionOutputSizeAssessment
 -- Selection parameter functions
 --------------------------------------------------------------------------------
 
+costOfOutputCoin :: SelectionParameters s -> Coin -> Coin
+costOfOutputCoin params = costOfOutput params . TokenBundle.fromCoin
+
 excessAdaForOutput :: SelectionParameters s -> TokenBundle -> Coin
 excessAdaForOutput params bundle =
     fromMaybe (Coin 0) result
@@ -153,15 +156,12 @@ excessAdaForOutput params bundle =
         (view #coin bundle)
         (minimumAdaQuantityForOutput params $ view #tokens bundle)
 
-feeForOutputCoin :: SelectionParameters s -> Coin -> Coin
-feeForOutputCoin params = feeForOutput params . TokenBundle.fromCoin
-
 minimumAdaQuantityForOutputCoin :: SelectionParameters s -> Coin
 minimumAdaQuantityForOutputCoin =
     flip minimumAdaQuantityForOutput TokenMap.empty
 
 sizeOfOutputCoin :: SelectionParameters s -> Coin -> s
-sizeOfOutputCoin = undefined
+sizeOfOutputCoin params = sizeOfOutput params . TokenBundle.fromCoin
 
 outputIsValid :: forall s. Ord s => SelectionParameters s -> TokenBundle -> Bool
 outputIsValid params b = and $ conditions <&> (\f -> f params b)
@@ -525,10 +525,10 @@ currentSize params selection = mconcat
 --
 minimumFee :: SelectionParameters s -> Selection i s -> Coin
 minimumFee params selection = mconcat
-    [ feeForEmptySelection params
-    , F.foldMap (const $ feeForInput params) (inputs selection)
-    , F.foldMap (feeForOutput params) (outputs selection)
-    , feeForRewardWithdrawal params (rewardWithdrawal selection)
+    [ costOfEmptySelection params
+    , F.foldMap (const $ costOfInput params) (inputs selection)
+    , F.foldMap (costOfOutput params) (outputs selection)
+    , costOfRewardWithdrawal params (rewardWithdrawal selection)
     ]
 
 -- | Defines the correct ordering of outputs in a selection.
@@ -690,7 +690,7 @@ addCoinToFeeExcess params selection (inputId, inputCoin) = do
               $ coinFromInteger
               $ coinToInteger (feeExcess selection)
               + coinToInteger inputCoin
-              - coinToInteger (feeForInput params)
+              - coinToInteger (costOfInput params)
         guardE (newFeeExcess >= feeExcess selection)
             SelectionAdaInsufficient
         pure newFeeExcess
@@ -715,8 +715,8 @@ addCoinAsNewOutput params selection (inputId, inputCoin) = do
         outputCoin <- maybeToEither SelectionAdaInsufficient
             $ coinFromInteger
             $ coinToInteger inputCoin
-            - coinToInteger (feeForInput params)
-            - coinToInteger (feeForOutputCoin params inputCoin)
+            - coinToInteger (costOfInput params)
+            - coinToInteger (costOfOutputCoin params inputCoin)
         guardE (outputCoin >= minimumAdaQuantityForOutputCoin params)
             SelectionAdaInsufficient
         pure outputCoin
@@ -767,9 +767,9 @@ addBundleToExistingOutput params selection (inputId, inputBundle) = do
             + coinToInteger (TokenBundle.getCoin inputBundle)
             + coinToInteger (TokenBundle.getCoin originalBundle)
             - coinToInteger (TokenBundle.getCoin mergedBundle)
-            + coinToInteger (feeForOutput params originalBundle)
-            - coinToInteger (feeForOutput params mergedBundle)
-            - coinToInteger (feeForInput params)
+            + coinToInteger (costOfOutput params originalBundle)
+            - coinToInteger (costOfOutput params mergedBundle)
+            - coinToInteger (costOfInput params)
 
     computeNewSize
         :: TokenBundle -> TokenBundle -> Either (SelectionError s) s
@@ -805,9 +805,9 @@ addBundleToExistingOutput params selection (inputId, inputBundle) = do
             computeNewCoinValue :: Maybe Coin
             computeNewCoinValue = coinFromInteger
                 $ coinToInteger (TokenBundle.getCoin mergedUnadjustedBundle)
-                - coinToInteger (feeForInput params)
-                - coinToInteger (feeForOutput params mergedUnadjustedBundle)
-                + coinToInteger (feeForOutput params outputBundle)
+                - coinToInteger (costOfInput params)
+                - coinToInteger (costOfOutput params mergedUnadjustedBundle)
+                + coinToInteger (costOfOutput params outputBundle)
 
             mergedUnadjustedBundle :: TokenBundle
             mergedUnadjustedBundle = mconcat
@@ -852,8 +852,8 @@ addBundleAsNewOutput params selection input@(inputId, inputBundle)
     adaToReclaim :: Coin
     adaToReclaim = fromMaybe (Coin 0)
         $ coinFromInteger
-        $ coinToInteger (feeForInput params)
-        + coinToInteger (feeForOutput params inputBundle)
+        $ coinToInteger (costOfInput params)
+        + coinToInteger (costOfOutput params inputBundle)
         + coinToInteger (minimumAdaQuantityForOutput params inputMap)
         - coinToInteger inputCoin
 
@@ -868,8 +868,8 @@ addBundleAsNewOutputWithoutReclaimingAda
           let outputBundle = TokenBundle outputCoin inputMap
           newSize <- computeNewSize outputBundle
           let newFeeExcess = feeExcess selection <> Coin.distance
-                  (feeForOutput params inputBundle)
-                  (feeForOutput params outputBundle)
+                  (costOfOutput params inputBundle)
+                  (costOfOutput params outputBundle)
           pure
               $ selection {feeExcess = newFeeExcess, size = newSize}
               & addInput (inputId, inputBundle)
@@ -882,8 +882,8 @@ addBundleAsNewOutputWithoutReclaimingAda
         outputCoin <- maybeToEither SelectionAdaInsufficient
             $ coinFromInteger
             $ coinToInteger inputCoin
-            - coinToInteger (feeForInput params)
-            - coinToInteger (feeForOutput params inputBundle)
+            - coinToInteger (costOfInput params)
+            - coinToInteger (costOfOutput params inputBundle)
         guardE (outputCoin >= minimumAdaQuantityForOutput params inputMap)
             SelectionAdaInsufficient
         pure outputCoin
@@ -899,11 +899,17 @@ addBundleAsNewOutputWithoutReclaimingAda
 -- Miscellaneous types and functions
 --------------------------------------------------------------------------------
 
+data ReduceOutputAdaQuantitiesResult s = ReduceOutputAdaQuantitiesResult
+    { reducedOutputs :: NonEmpty TokenBundle
+    , reductionInSize :: s
+    , reductionInFee :: Coin
+    }
+
 reduceOutputAdaQuantities
     :: SelectionParameters s
     -> Coin
     -> NonEmpty TokenBundle
-    -> Maybe (NonEmpty TokenBundle)
+    -> Maybe (NonEmpty TokenBundle) -- (ReduceOutputAdaQuantitiesResult s)
 reduceOutputAdaQuantities params reductionRequired bundles =
     NE.fromList <$> go reductionRequired [] (NE.toList bundles)
   where

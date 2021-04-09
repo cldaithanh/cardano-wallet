@@ -418,15 +418,15 @@ data MockSelectionParameters = MockSelectionParameters
 unMockSelectionParameters
     :: MockSelectionParameters -> SelectionParameters MockSize
 unMockSelectionParameters m = SelectionParameters
-    { feeForEmptySelection =
+    { costOfEmptySelection =
         unMockFeeForEmptySelection
             $ view #mockFeeForEmptySelection m
-    , feeForInput =
+    , costOfInput =
         mockSizeToFee <$> unMockSizeOfInput
             $ view #mockSizeOfInput m
-    , feeForOutput =
+    , costOfOutput =
         mockSizeToFee . mockSizeOfOutput
-    , feeForRewardWithdrawal =
+    , costOfRewardWithdrawal =
         mockSizeToFee . mockSizeOfRewardWithdrawal
     , sizeOfEmptySelection =
         unMockSizeOfEmptySelection

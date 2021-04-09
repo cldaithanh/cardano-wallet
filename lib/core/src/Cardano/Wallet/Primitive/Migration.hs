@@ -119,9 +119,9 @@ classifyTokenBundle params b
         computeOutputCoin :: Maybe Coin
         computeOutputCoin = coinFromInteger
             $ coinToInteger c
-            - coinToInteger (feeForEmptySelection params)
-            - coinToInteger (feeForInput params)
-            - coinToInteger (feeForOutput params b)
+            - coinToInteger (costOfEmptySelection params)
+            - coinToInteger (costOfInput params)
+            - coinToInteger (costOfOutput params b)
 
     bundleIsSupporter :: TokenBundle -> Bool
     bundleIsSupporter b@(TokenBundle c m) =
@@ -132,17 +132,17 @@ classifyTokenBundle params b
         computeOutputCoin :: Maybe Coin
         computeOutputCoin = coinFromInteger
             $ coinToInteger c
-            - coinToInteger (feeForInput params)
-            - coinToInteger (feeForOutput params b)
+            - coinToInteger (costOfInput params)
+            - coinToInteger (costOfOutput params b)
 
     coinIsInitiator :: Coin -> Bool
     coinIsInitiator c = c >= mconcat
-        [ feeForEmptySelection params
-        , feeForInput params
+        [ costOfEmptySelection params
+        , costOfInput params
         ]
 
     coinIsIgnorable :: Coin -> Bool
-    coinIsIgnorable c = c <= feeForInput params
+    coinIsIgnorable c = c <= costOfInput params
 
 --------------------------------------------------------------------------------
 -- Miscellaneous types and functions

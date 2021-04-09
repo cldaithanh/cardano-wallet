@@ -23,8 +23,8 @@ import Fmt
     ( pretty )
 import Cardano.Wallet.Primitive.Migration.Selection
     ( AddEntry
-    , OutputsWithReducedAda (..)
-    , reclaimAdaFromOutputs
+    , ReclaimAdaResult (..)
+    , reclaimAda
     , Size (..)
     , Selection (..)
     , SelectionError (..)
@@ -128,8 +128,8 @@ spec = describe "Cardano.Wallet.Primitive.Migration.SelectionSpec" $
 
     parallel $ describe "Reducing ada quantities of outputs" $ do
 
-        it "prop_reclaimAdaFromOutputs" $
-            property prop_reclaimAdaFromOutputs
+        it "prop_reclaimAda" $
+            property prop_reclaimAda
 
 --------------------------------------------------------------------------------
 -- Initializing a selection
@@ -287,19 +287,25 @@ prop_addEntry mockArgs addEntry =
        -- (mockEntry `NE.cons` inputs mockSelection)
 
 --------------------------------------------------------------------------------
--- Reducing ada quantities of outputs
+-- Coalescing token bundles
 --------------------------------------------------------------------------------
 
-data MockReclaimAdaFromOutputsArguments = MockReclaimAdaFromOutputsArguments
+-- TODO!
+
+--------------------------------------------------------------------------------
+-- Reclaiming ada from outputs
+--------------------------------------------------------------------------------
+
+data MockReclaimAdaArguments = MockReclaimAdaArguments
     { mockSelectionParameters :: MockSelectionParameters
     , mockAdaToReclaim :: Coin
     , mockOutputs :: NonEmpty TokenBundle
     }
     deriving (Eq, Show)
 
-genMockReclaimAdaFromOutputsArguments
-    :: Gen MockReclaimAdaFromOutputsArguments
-genMockReclaimAdaFromOutputsArguments = do
+genMockReclaimAdaArguments
+    :: Gen MockReclaimAdaArguments
+genMockReclaimAdaArguments = do
     mockSelectionParameters <- genMockSelectionParameters
     mockOutputCount <- choose (1, 10)
     mockOutputs <- (:|)
@@ -307,19 +313,21 @@ genMockReclaimAdaFromOutputsArguments = do
         <*> replicateM
             (mockOutputCount - 1)
             (genTokenBundle mockSelectionParameters)
-    mockAdaToReclaim <- genCoinRange (Coin 0) (Coin 4500)
-    pure MockReclaimAdaFromOutputsArguments
+    mockAdaToReclaim <-
+        -- Specially chosen to give a success rate of approximately 50%:
+        genCoinRange (Coin 0) (Coin 4500)
+    pure MockReclaimAdaArguments
         { mockSelectionParameters
         , mockAdaToReclaim
         , mockOutputs
         }
 
-instance Arbitrary MockReclaimAdaFromOutputsArguments where
-    arbitrary = genMockReclaimAdaFromOutputsArguments
+instance Arbitrary MockReclaimAdaArguments where
+    arbitrary = genMockReclaimAdaArguments
 
-prop_reclaimAdaFromOutputs
-    :: Blind MockReclaimAdaFromOutputsArguments -> Property
-prop_reclaimAdaFromOutputs mockArgs =
+prop_reclaimAda
+    :: Blind MockReclaimAdaArguments -> Property
+prop_reclaimAda mockArgs =
     checkCoverage $
     cover 30 (isJust result)
         "Success" $
@@ -331,7 +339,7 @@ prop_reclaimAdaFromOutputs mockArgs =
         Just successfulResult ->
             prop_inner successfulResult
   where
-    prop_inner :: OutputsWithReducedAda MockSize -> Property
+    prop_inner :: ReclaimAdaResult MockSize -> Property
     prop_inner successfulResult = counterexample counterexampleText $ conjoin
         [ counterexample "costReduction /= costReductionExpected" $
             costReduction === costReductionExpected
@@ -368,11 +376,8 @@ prop_reclaimAdaFromOutputs mockArgs =
               , show mockAdaToReclaim )
             ]
 
-        OutputsWithReducedAda
-            { reducedOutputs
-            , costReduction
-            , sizeReduction
-            } = successfulResult
+        ReclaimAdaResult
+            {reducedOutputs, costReduction, sizeReduction} = successfulResult
         costReductionExpected = Coin.distance
             (F.foldMap (costOfOutput params) mockOutputs)
             (F.foldMap (costOfOutput params) reducedOutputs)
@@ -395,18 +400,13 @@ prop_reclaimAdaFromOutputs mockArgs =
 
     params = unMockSelectionParameters mockSelectionParameters
 
-    Blind MockReclaimAdaFromOutputsArguments
+    Blind MockReclaimAdaArguments
         { mockSelectionParameters
         , mockAdaToReclaim
         , mockOutputs
         } = mockArgs
 
-    result = reclaimAdaFromOutputs params mockAdaToReclaim mockOutputs
-
-counterexampleMap :: [(String, String)] -> String
-counterexampleMap
-    = mconcat
-    . fmap (\(k, v) -> k <> ":\n" <> v <> "\n\n")
+    result = reclaimAda params mockAdaToReclaim mockOutputs
 
 --------------------------------------------------------------------------------
 -- Mock results
@@ -720,10 +720,6 @@ genMockMinimumAdaQuantityForOutput = MockMinimumAdaQuantityForOutput
     <*> genCoinRange (Coin 0) (Coin 10)
 
 --------------------------------------------------------------------------------
--- Reusable generators and shrinkers
---------------------------------------------------------------------------------
-
---------------------------------------------------------------------------------
 -- Arbitrary instances
 --------------------------------------------------------------------------------
 
@@ -734,6 +730,11 @@ instance Arbitrary a => Arbitrary (NonEmpty a) where
 --------------------------------------------------------------------------------
 -- Internal types and functions
 --------------------------------------------------------------------------------
+
+counterexampleMap :: [(String, String)] -> String
+counterexampleMap
+    = mconcat
+    . fmap (\(k, v) -> k <> ":\n" <> v <> "\n\n")
 
 matchLeft :: (e -> Bool) -> Either e a -> Bool
 matchLeft f result = case result of

@@ -69,8 +69,8 @@ module Cardano.Wallet.Primitive.Migration.Selection
     , addBundleAsNewOutputWithoutReclaimingAda
 
     -- * Reducing ada quantities of outputs
-    , OutputsWithReducedAda (..)
-    , reclaimAdaFromOutputs
+    , ReclaimAdaResult (..)
+    , reclaimAda
 
     ) where
 
@@ -588,9 +588,9 @@ initialize params rewardWithdrawal inputs = do
             , size = mempty
             , rewardWithdrawal
             }
-    OutputsWithReducedAda
+    ReclaimAdaResult
         { reducedOutputs
-        } <- maybeToEither SelectionAdaInsufficient $ reclaimAdaFromOutputs
+        } <- maybeToEither SelectionAdaInsufficient $ reclaimAda
                 (params) (minimumFee params selection) (coalescedBundles)
     size <- guardSize params $
         currentSize params selection {outputs = reducedOutputs}
@@ -839,9 +839,9 @@ addBundleAsNewOutput params selection input@(inputId, inputBundle)
         pure updatedSelection
             {inputs = replaceHeadOfList (inputs updatedSelection) input}
     | otherwise = do
-        OutputsWithReducedAda {reducedOutputs}
+        ReclaimAdaResult {reducedOutputs}
             <- maybeToEither SelectionAdaInsufficient $
-                reclaimAdaFromOutputs
+                reclaimAda
                     (params)
                     (Coin.distance adaToReclaim (feeExcess selection))
                     (outputs selection)
@@ -901,28 +901,47 @@ addBundleAsNewOutputWithoutReclaimingAda
         ]
 
 --------------------------------------------------------------------------------
--- Miscellaneous types and functions
+-- Coalescing token bundles
 --------------------------------------------------------------------------------
 
-data OutputsWithReducedAda s = OutputsWithReducedAda
+coalesceTokenBundles
+    :: SelectionParameters i
+    -> NonEmpty TokenBundle
+    -> NonEmpty TokenBundle
+coalesceTokenBundles params bundles = coalesce bundles
+  where
+    coalesce (b :| []) =
+        b :| []
+    coalesce (b1 :| (b2 : bs)) | outputSizeWithinLimit params (b1 <> b2) =
+        coalesce ((b1 <> b2) :| bs)
+    coalesce (b1 :| (b2 : bs)) =
+        b1 `NE.cons` coalesce (b2 :| bs)
+
+--------------------------------------------------------------------------------
+-- Reclaiming ada from outputs
+--------------------------------------------------------------------------------
+
+data ReclaimAdaResult s = ReclaimAdaResult
     { reducedOutputs :: NonEmpty TokenBundle
     , costReduction :: Coin
     , sizeReduction :: s
     }
 
-reclaimAdaFromOutputs
+reclaimAda
     :: Size s
     => SelectionParameters s
     -> Coin
+    -- ^ Quantity of ada to reclaim
     -> NonEmpty TokenBundle
-    -> Maybe (OutputsWithReducedAda s)
-reclaimAdaFromOutputs params totalAdaToReclaim bundles =
+    -- ^ Outputs from which to reclaim ada
+    -> Maybe (ReclaimAdaResult s)
+reclaimAda params totalAdaToReclaim bundles =
     go (NE.toList bundles) totalAdaToReclaim [] (Coin 0) mempty
   where
     go [] _ _ _ _ =
         Nothing
     go remaining (Coin 0) reduced 𝛿cost 𝛿size =
-        Just OutputsWithReducedAda
+        Just ReclaimAdaResult
             { reducedOutputs = NE.fromList $
                 insertManyBy (outputOrdering params) reduced remaining
             , costReduction = 𝛿cost
@@ -954,6 +973,10 @@ reclaimAdaFromOutputs params totalAdaToReclaim bundles =
             (sizeOfOutputCoin params coin)
             (sizeOfOutputCoin params coin')
 
+--------------------------------------------------------------------------------
+-- Miscellaneous types and functions
+--------------------------------------------------------------------------------
+
 increaseOutputAdaQuantities
     :: Coin
     -> NonEmpty TokenBundle
@@ -963,19 +986,6 @@ increaseOutputAdaQuantities incrementRequired bundles =
   where
     bundleIncrements = TokenBundle.fromCoin <$>
         Coin.equipartition incrementRequired bundles
-
-coalesceTokenBundles
-    :: SelectionParameters i
-    -> NonEmpty TokenBundle
-    -> NonEmpty TokenBundle
-coalesceTokenBundles params bundles = coalesce bundles
-  where
-    coalesce (b :| []) =
-        b :| []
-    coalesce (b1 :| (b2 : bs)) | outputSizeWithinLimit params (b1 <> b2) =
-        coalesce ((b1 <> b2) :| bs)
-    coalesce (b1 :| (b2 : bs)) =
-        b1 `NE.cons` coalesce (b2 :| bs)
 
 addInput
     :: (i, TokenBundle)

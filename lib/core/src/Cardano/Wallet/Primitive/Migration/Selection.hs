@@ -1020,6 +1020,8 @@ reclaimAda
 reclaimAda params totalAdaToReclaim outputs
     | totalReclaimableAda < totalAdaToReclaim =
         Nothing
+    | any (not . outputSatisfiesMinimumAdaQuantity params) outputs =
+        Nothing
     | otherwise =
         Just ReclaimAdaResult
             { reducedOutputs

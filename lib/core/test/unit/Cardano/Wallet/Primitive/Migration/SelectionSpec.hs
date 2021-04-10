@@ -42,6 +42,7 @@ import Cardano.Wallet.Primitive.Migration.Selection
     , coalesceOutputs
     , costOfOutputCoin
     , initialize
+    , outputSatisfiesMinimumAdaQuantity
     , outputSizeWithinLimit
     , outputOrdering
     )
@@ -365,12 +366,13 @@ data MockReclaimAdaArguments = MockReclaimAdaArguments
 genMockReclaimAdaArguments :: Gen MockReclaimAdaArguments
 genMockReclaimAdaArguments = do
     mockSelectionParameters <- genMockSelectionParameters
+    let params = unMockSelectionParameters mockSelectionParameters
     mockOutputCount <- choose (1, 10)
+    let genOutput = genTokenBundle mockSelectionParameters `suchThat`
+            outputSatisfiesMinimumAdaQuantity params
     mockOutputs <- (:|)
-        <$> genTokenBundle mockSelectionParameters
-        <*> replicateM
-            (mockOutputCount - 1)
-            (genTokenBundle mockSelectionParameters)
+        <$> genOutput
+        <*> replicateM (mockOutputCount - 1) genOutput
     mockAdaToReclaim <-
         -- Specially chosen to give a success rate of approximately 50%:
         genCoinRange (Coin 0) (Coin 5000)
@@ -388,9 +390,9 @@ prop_reclaimAda mockArgs =
     checkCoverage $
     cover 30 (resultIsSuccess result)
         "Success" $
-    cover 5 (resultHasZeroCostReduction result)
+    cover 0.5 (resultHasZeroCostReduction result)
         "Success with zero cost reduction" $
-    cover 5 (resultHasZeroSizeReduction result)
+    cover 0.5 (resultHasZeroSizeReduction result)
         "Success with zero size reduction" $
     cover 20 (resultHasNonZeroCostReduction result)
         "Success with non-zero cost reduction" $

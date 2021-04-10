@@ -438,10 +438,11 @@ prop_reclaimAda mockArgs =
             lengthAfter === lengthBefore
         , counterexample "sort (reducedOutputs) /= reducedOutputs" $
             NE.sortBy (outputOrdering params) reducedOutputs === reducedOutputs
-        , counterexample "adaReclaimed < adaToReclaim" $
-            property $ adaReclaimed >= mockAdaToReclaim
         , counterexample "zeroness of cost and size reduction disagree" $
             (sizeReduction == mempty) === (costReduction == mempty)
+        , counterexample "adaReclaimed < adaToReclaim" $
+            property $ adaReclaimed >= mockAdaToReclaim
+
         ]
       where
         counterexampleText = counterexampleMap
@@ -543,7 +544,13 @@ conjoinMap = conjoin . fmap (\(d, t) -> counterexample d t)
 
 prop_minimizeFeeExcess :: Blind MockMinimizeFeeExcessArguments -> Property
 prop_minimizeFeeExcess mockArgs =
+    checkCoverage $
+    cover 10 (feeExcessAfter == Coin 0)
+        "feeExcessAfter == 0" $
+    cover 0.05 (feeExcessAfter /= Coin 0)
+        "feeExcessAfter /= 0" $
     counterexample counterexampleText $
+    -- TODO: Check that the feeExcessAfter is what is expected.
     conjoinMap
         [ ("feeExcessAfter >  feeExcessBefore"
           , feeExcessAfter <= feeExcessBefore)

@@ -74,9 +74,13 @@ module Cardano.Wallet.Primitive.Migration.Selection
     -- * Reclaiming ada from outputs
     , ReclaimAdaResult (..)
     , reclaimAda
+    , reclaimAda2
 
     -- * Minimizing fee excess
     , minimizeFeeExcess
+
+    -- * Miscellaneous functions
+    , findFixedPoint
 
     ) where
 
@@ -958,7 +962,7 @@ data ReclaimAdaResult s = ReclaimAdaResult
     , sizeReduction :: s
     }
 
-reclaimAda
+reclaimAda2
     :: Size s
     => SelectionParameters s
     -> Coin
@@ -966,7 +970,7 @@ reclaimAda
     -> NonEmpty TokenBundle
     -- ^ Outputs from which to reclaim ada
     -> Maybe (ReclaimAdaResult s)
-reclaimAda params totalAdaToReclaim bundles =
+reclaimAda2 params totalAdaToReclaim bundles =
     go (NE.toList bundles) totalAdaToReclaim [] (Coin 0) mempty
   where
     go remaining (Coin 0) reduced 𝛿cost 𝛿size =
@@ -1001,6 +1005,74 @@ reclaimAda params totalAdaToReclaim bundles =
             (sizeOfOutputCoin params coin')
         𝛿cost' = 𝛿cost <> costReductionForThisOutput
         𝛿size' = 𝛿size <> sizeReductionForThisOutput
+
+-- Pre-condition (needs to be checked): all bundles have at least their
+-- minimum ada quantities (or else return 'Nothing').
+
+reclaimAda
+    :: Size s
+    => SelectionParameters s
+    -> Coin
+    -- ^ Quantity of ada to reclaim
+    -> NonEmpty TokenBundle
+    -- ^ Outputs from which to reclaim ada
+    -> Maybe (ReclaimAdaResult s)
+reclaimAda params totalAdaToReclaim bundles
+    | totalReclaimableAda < totalAdaToReclaim =
+        Nothing
+    | otherwise =
+        Just ReclaimAdaResult
+            { reducedOutputs
+            , costReduction
+            , sizeReduction
+            }
+  where
+    (_feeExcessAtEnd, reducedOutputs) = NE.fromList <$>
+        run feeExcessAtStart (NE.toList bundlesWithMinimumAda) []
+
+    costReduction = Coin.distance
+        (F.foldMap (costOfOutputCoin params . view #coin) bundles)
+        (F.foldMap (costOfOutputCoin params . view #coin) reducedOutputs)
+
+    sizeReduction = sizeDistance
+        (F.foldMap (sizeOfOutputCoin params . view #coin) bundles)
+        (F.foldMap (sizeOfOutputCoin params . view #coin) reducedOutputs)
+
+    run :: Coin -> [TokenBundle] -> [TokenBundle] -> (Coin, [TokenBundle])
+    run (Coin 0) remaining processed =
+        (Coin 0, insertManyBy (outputOrdering params) processed remaining)
+    run feeExcessRemaining [] processed =
+        (feeExcessRemaining, L.reverse processed)
+    run feeExcessRemaining (bundle : remaining) processed =
+        run feeExcessRemaining' remaining (bundle' : processed)
+      where
+        (feeExcessRemaining', bundle') =
+            minimizeFeeExcess params (feeExcessRemaining, bundle)
+
+    feeExcessAtStart :: Coin
+    feeExcessAtStart = Coin.distance totalReclaimableAda totalAdaToReclaim
+
+    totalReclaimableAda :: Coin
+    totalReclaimableAda = totalCostOfExcessAda <> totalExcessAda
+
+    totalExcessAda :: Coin
+    totalExcessAda = F.foldMap (excessAdaForOutput params) bundles
+
+    totalCostOfExcessAda :: Coin
+    totalCostOfExcessAda = F.foldMap costOfExcessAdaForBundle bundles
+
+    bundlesWithMinimumAda :: NonEmpty TokenBundle
+    bundlesWithMinimumAda = minimizeAda <$> bundles
+
+    costOfExcessAdaForBundle :: TokenBundle -> Coin
+    costOfExcessAdaForBundle bundle = Coin.distance
+        (costOfOutputCoin params (view #coin bundle))
+        (costOfOutputCoin params (view #coin (minimizeAda bundle)))
+
+    minimizeAda :: TokenBundle -> TokenBundle
+    minimizeAda bundle
+        = TokenBundle.setCoin bundle
+        $ minimumAdaQuantityForOutput params (view #tokens bundle)
 
 minimizeFeeExcess
     :: SelectionParameters s

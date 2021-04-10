@@ -75,6 +75,9 @@ module Cardano.Wallet.Primitive.Migration.Selection
     , ReclaimAdaResult (..)
     , reclaimAda
 
+    -- * Minimizing fee excess
+    , minimizeFeeExcess
+
     ) where
 
 import Prelude
@@ -608,6 +611,7 @@ initialize params rewardWithdrawal inputs = do
                 pure (Coin.distance cf mf)
             _ ->
                 Left SelectionAdaInsufficient
+    -- TODO: call minimizeFee here
     pure reducedSelection {size, feeExcess}
 
 --------------------------------------------------------------------------------
@@ -626,6 +630,30 @@ finalize selection = selection
         (feeExcess selection)
         (outputs selection)
     }
+
+-- TODO: Call this from reclaimAda
+--minimizeFee :: SelectionParameters s -> Selection i s -> Selection i s
+--minimizeFee params selection = undefined
+
+-- Repeatedly increase the ada quantity of the output with the largest ada
+    -- quantity while the fee excess does not go below zero. We can actually
+    -- move on to the next output if we fail to go to zero with the first
+    -- output.
+
+    -- The post-condition of this function is that the feeExcess really cannot
+    -- be reduced further.
+    --
+    -- Try breaking it up into a function that minimizes for a single output.
+    -- Work through outputs from left to right.
+    --
+    -- For each output, we first try adding the whole excess, then half the
+    -- excess, then 1/4, then 1/8, and so on. Basically, perform binary search
+    -- to find the largest excess that can be added, before giving up.
+    --
+    -- The remainder (what could not be added) should be returned, so it can
+    -- be tried with the next output.
+    --
+    -- We have to be careful not to exceed the maximum size.
 
 --------------------------------------------------------------------------------
 -- Extending a selection
@@ -974,6 +1002,36 @@ reclaimAda params totalAdaToReclaim bundles =
         𝛿cost' = 𝛿cost <> costReductionForThisOutput
         𝛿size' = 𝛿size <> sizeReductionForThisOutput
 
+minimizeFeeExcess
+    :: SelectionParameters s
+    -> (Coin, TokenBundle)
+    -- ^ Fee excess and output bundle.
+    -> (Coin, TokenBundle)
+    -- ^ Fee excess and output bundle after minimization.
+minimizeFeeExcess params =
+    findFixedPoint reduceFeeExcess
+  where
+    reduceFeeExcess :: (Coin, TokenBundle) -> (Coin, TokenBundle)
+    reduceFeeExcess (feeExcess, outputBundle) =
+        (feeExcessFinal, TokenBundle.setCoin outputBundle outputCoinFinal)
+      where
+        outputCoin = view #coin outputBundle
+        outputCoinMaxCostIncrease = Coin.distance
+            (costOfOutputCoin params outputCoin)
+            (costOfOutputCoin params $ outputCoin <> feeExcess)
+        outputCoinFinal = Coin
+            $ unCoin outputCoin
+            + unCoin feeExcess
+            - unCoin outputCoinMaxCostIncrease
+        outputCoinFinalCostIncrease = Coin.distance
+            (costOfOutputCoin params outputCoin)
+            (costOfOutputCoin params outputCoinFinal)
+        outputCoinFinalIncrease = Coin.distance outputCoin outputCoinFinal
+        feeExcessFinal = Coin
+            $ unCoin feeExcess
+            - unCoin outputCoinFinalIncrease
+            - unCoin outputCoinFinalCostIncrease
+
 --------------------------------------------------------------------------------
 -- Miscellaneous types and functions
 --------------------------------------------------------------------------------
@@ -1024,6 +1082,11 @@ newtype NegativeCoin = NegativeCoin
     { unNegativeCoin :: Coin
     }
     deriving (Eq, Show)
+
+findFixedPoint :: Eq a => (a -> a) -> a -> a
+findFixedPoint f = findInner
+  where
+    findInner a = let fa = f a in if a == fa then a else findInner fa
 
 guardE :: Bool -> e -> Either e ()
 guardE condition e = if condition then Right () else Left e

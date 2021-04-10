@@ -26,6 +26,7 @@ import Cardano.Wallet.Primitive.Migration.Selection
     , ReclaimAdaResult (..)
     , excessAdaForOutput
     , reclaimAda
+    , minimizeFeeExcess
     , Size (..)
     , Selection (..)
     , SelectionError (..)
@@ -39,6 +40,7 @@ import Cardano.Wallet.Primitive.Migration.Selection
     , addBundleToExistingOutput
     , checkInvariant
     , coalesceOutputs
+    , costOfOutputCoin
     , initialize
     , outputSizeWithinLimit
     , outputOrdering
@@ -137,6 +139,11 @@ spec = describe "Cardano.Wallet.Primitive.Migration.SelectionSpec" $
 
         it "prop_reclaimAda" $
             property prop_reclaimAda
+
+    parallel $ describe "Minimizing fee excesses" $ do
+
+        it "prop_minimizeFeeExcess" $
+            property prop_minimizeFeeExcess
 
 --------------------------------------------------------------------------------
 -- Initializing a selection
@@ -505,6 +512,104 @@ prop_reclaimAda mockArgs =
         sizeReduction r > mempty
 
     resultIsFailure = isNothing
+
+--------------------------------------------------------------------------------
+-- Minimizing fee excesses
+--------------------------------------------------------------------------------
+
+data MockMinimizeFeeExcessArguments = MockMinimizeFeeExcessArguments
+    { mockSelectionParameters :: MockSelectionParameters
+    , mockFeeExcessToMinimize :: Coin
+    , mockOutput :: TokenBundle
+    }
+    deriving (Eq, Show)
+
+genMockMinimizeFeeExcessArguments :: Gen MockMinimizeFeeExcessArguments
+genMockMinimizeFeeExcessArguments = do
+    mockSelectionParameters <- genMockSelectionParameters
+    mockOutput <- genTokenBundle mockSelectionParameters
+    mockFeeExcessToMinimize <- genCoin
+    pure MockMinimizeFeeExcessArguments
+        { mockSelectionParameters
+        , mockFeeExcessToMinimize
+        , mockOutput
+        }
+
+instance Arbitrary MockMinimizeFeeExcessArguments where
+    arbitrary = genMockMinimizeFeeExcessArguments
+
+conjoinMap :: [(String, Bool)] -> Property
+conjoinMap = conjoin . fmap (\(d, t) -> counterexample d t)
+
+prop_minimizeFeeExcess :: Blind MockMinimizeFeeExcessArguments -> Property
+prop_minimizeFeeExcess mockArgs =
+    counterexample counterexampleText $
+    conjoinMap
+        [ ("feeExcessAfter >  feeExcessBefore"
+          , feeExcessAfter <= feeExcessBefore)
+        , ("outputCoinAfter <  outputCoinBefore"
+          , outputCoinAfter >= outputCoinBefore)
+        , ("outputCoinCostAfter <  outputCoinCostBefore"
+          , outputCoinCostAfter >= outputCoinCostBefore)
+        , ("outputCoinIncrease <> outputCostIncrease <> feeExcessAfter /= feeExcessBefore"
+          , outputCoinIncrease <> outputCostIncrease <> feeExcessAfter == feeExcessBefore)
+        , ("feeExcessAfter > Coin 0 && costOfIncreasingFinalOutputCoinByOne < feeExcessAfter"
+          , if feeExcessAfter > Coin 0
+            then costOfIncreasingFinalOutputCoinByOne >= feeExcessAfter
+            else True)
+        ]
+  where
+    Blind MockMinimizeFeeExcessArguments
+        { mockSelectionParameters
+        , mockFeeExcessToMinimize
+        , mockOutput
+        } = mockArgs
+
+    params = unMockSelectionParameters mockSelectionParameters
+    (feeExcessAfter, outputBundleAfter) =
+        minimizeFeeExcess params (mockFeeExcessToMinimize, mockOutput)
+
+    feeExcessBefore =
+        mockFeeExcessToMinimize
+    outputCoinBefore =
+        view #coin mockOutput
+    outputCoinAfter =
+        view #coin outputBundleAfter
+    outputCoinIncrease =
+        Coin.distance outputCoinBefore outputCoinAfter
+    outputCoinCostBefore =
+        costOfOutputCoin params outputCoinBefore
+    outputCoinCostAfter =
+        costOfOutputCoin params outputCoinAfter
+    outputCostIncrease =
+        Coin.distance outputCoinCostBefore outputCoinCostAfter
+    outputMinimumAdaQuantity =
+        minimumAdaQuantityForOutput params (view #tokens mockOutput)
+    costOfIncreasingFinalOutputCoinByOne =
+        Coin.distance
+            (costOfOutputCoin params outputCoinAfter)
+            (costOfOutputCoin params (outputCoinAfter <> Coin 1))
+
+    counterexampleText = counterexampleMap
+        [ ( "feeExcessBefore"
+          , show feeExcessBefore )
+        , ( "feeExcessAfter"
+          , show feeExcessAfter )
+        , ( "outputMinimumAdaQuantity"
+          , show outputMinimumAdaQuantity )
+        , ( "outputCoinBefore"
+          , show outputCoinBefore )
+        , ( "outputCoinAfter"
+          , show outputCoinAfter )
+        , ( "outputCoinCostBefore"
+          , show outputCoinCostBefore )
+        , ( "outputCoinCostAfter"
+          , show outputCoinCostAfter )
+        , ( "outputCostIncrease"
+          , show outputCostIncrease )
+        , ( "costOfIncreasingFinalOutputCoinByOne"
+          , show costOfIncreasingFinalOutputCoinByOne )
+        ]
 
 --------------------------------------------------------------------------------
 -- Mock results

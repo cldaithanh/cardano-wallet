@@ -22,7 +22,7 @@ import Prelude
 import Fmt
     ( pretty )
 import Cardano.Wallet.Primitive.Migration.Selection
-    ( AddEntry
+    ( SelectionAddInput
     , ReclaimAdaResult (..)
     , excessAdaForOutput
     , reclaimAda
@@ -35,13 +35,13 @@ import Cardano.Wallet.Primitive.Migration.Selection
     , SelectionOutputSizeAssessment (..)
     , SelectionOutputSizeAssessor (..)
     , SelectionParameters (..)
-    --, addBundleAsNewOutput
-    , addBundleAsNewOutputWithoutReclaimingAda
-    , addBundleToExistingOutput
+    --, addInputToNewOutput
+    , addInputToNewOutputWithoutReclaimingAda
+    , addInputToExistingOutput
     , checkInvariant
     , coalesceOutputs
     , costOfOutputCoin
-    , initialize
+    , create
     , outputSatisfiesMinimumAdaQuantity
     , outputSizeWithinLimit
     , outputOrdering
@@ -119,17 +119,17 @@ spec = describe "Cardano.Wallet.Primitive.Migration.SelectionSpec" $
 
     modifyMaxSuccess (const 1000) $ do
 
-    parallel $ describe "Initializing a selection" $ do
+    parallel $ describe "Creating a selection" $ do
 
-        it "prop_initialize" $
-            property prop_initialize
+        it "prop_create" $
+            property prop_create
 
     parallel $ describe "Extending a selection" $ do
 
-        it "prop_addBundleToExistingOutput" $
-            property prop_addBundleToExistingOutput
-        it "prop_addBundleAsNewOutputWithoutReclaimingAda" $
-            property prop_addBundleAsNewOutputWithoutReclaimingAda
+        it "prop_addInputToExistingOutput" $
+            property prop_addInputToExistingOutput
+        it "prop_addInputToNewOutputWithoutReclaimingAda" $
+            property prop_addInputToNewOutputWithoutReclaimingAda
 
     parallel $ describe "Coalescing token bundles" $ do
 
@@ -147,17 +147,17 @@ spec = describe "Cardano.Wallet.Primitive.Migration.SelectionSpec" $
             property prop_minimizeFeeExcess
 
 --------------------------------------------------------------------------------
--- Initializing a selection
+-- Creating a selection
 --------------------------------------------------------------------------------
 
-data MockInitializeArguments = MockInitializeArguments
+data MockCreateArguments = MockCreateArguments
     { mockSelectionParameters :: MockSelectionParameters
     , mockInputs :: NonEmpty (MockInputId, TokenBundle)
     , mockRewardWithdrawal :: Coin
     } deriving (Eq, Show)
 
-genMockInitializeArguments :: Gen MockInitializeArguments
-genMockInitializeArguments = do
+genMockCreateArguments :: Gen MockCreateArguments
+genMockCreateArguments = do
     mockSelectionParameters <- genMockSelectionParameters
     mockRewardWithdrawal <- genCoin
     inputCount <- choose (1, 10)
@@ -166,17 +166,17 @@ genMockInitializeArguments = do
         <*> replicateM
             (inputCount - 1)
             (genMockInput mockSelectionParameters)
-    pure MockInitializeArguments
+    pure MockCreateArguments
         { mockSelectionParameters
         , mockInputs
         , mockRewardWithdrawal
         }
 
-instance Arbitrary MockInitializeArguments where
-    arbitrary = genMockInitializeArguments
+instance Arbitrary MockCreateArguments where
+    arbitrary = genMockCreateArguments
 
-prop_initialize :: MockInitializeArguments -> Property
-prop_initialize args =
+prop_create :: MockCreateArguments -> Property
+prop_create args =
     checkCoverage $
     cover 50 (selectionResultIsSelection result)
         "Success" $
@@ -204,64 +204,65 @@ prop_initialize args =
                 , inputs selection === mockInputs
                 ]
   where
-    MockInitializeArguments
+    MockCreateArguments
         { mockSelectionParameters
         , mockInputs
         , mockRewardWithdrawal
         } = args
     params = unMockSelectionParameters mockSelectionParameters
-    result = initialize params mockRewardWithdrawal mockInputs
+    result = create params mockRewardWithdrawal mockInputs
 
 --------------------------------------------------------------------------------
 -- Extending a selection
 --------------------------------------------------------------------------------
 
-data MockAddEntryArguments = MockAddEntryArguments
+data MockSelectionAddInputArguments = MockSelectionAddInputArguments
     { mockSelectionParameters :: MockSelectionParameters
     , mockSelection :: MockSelection
     , mockEntry :: (MockInputId, TokenBundle)
     }
     deriving (Eq, Show)
 
-genMockAddEntryArguments :: Gen MockAddEntryArguments
-genMockAddEntryArguments = flip suchThatMap eitherToMaybe $ do
-    MockInitializeArguments
+genMockSelectionAddInputArguments :: Gen MockSelectionAddInputArguments
+genMockSelectionAddInputArguments = flip suchThatMap eitherToMaybe $ do
+    MockCreateArguments
         { mockSelectionParameters
         , mockInputs
         , mockRewardWithdrawal
-        } <- genMockInitializeArguments
+        } <- genMockCreateArguments
     let params = unMockSelectionParameters mockSelectionParameters
-    case initialize params mockRewardWithdrawal mockInputs of
+    case create params mockRewardWithdrawal mockInputs of
         Left e ->
             pure $ Left e
         Right mockSelection -> do
             mockEntry <- (,)
                 <$> genMockInputId
                 <*> genTokenBundle mockSelectionParameters
-            pure $ Right MockAddEntryArguments
+            pure $ Right MockSelectionAddInputArguments
                 { mockSelectionParameters
                 , mockSelection
                 , mockEntry
                 }
 
-instance Arbitrary MockAddEntryArguments where
-    arbitrary = genMockAddEntryArguments
+instance Arbitrary MockSelectionAddInputArguments where
+    arbitrary = genMockSelectionAddInputArguments
 
-type MockAddEntry v = AddEntry MockSize MockInputId v
+type MockSelectionAddInput = SelectionAddInput MockSize MockInputId
 
-prop_addBundleToExistingOutput :: MockAddEntryArguments -> Property
-prop_addBundleToExistingOutput mockArgs =
-    prop_addEntry mockArgs addBundleToExistingOutput
+prop_addInputToExistingOutput :: MockSelectionAddInputArguments -> Property
+prop_addInputToExistingOutput mockArgs =
+    prop_addEntry mockArgs addInputToExistingOutput
 
-prop_addBundleAsNewOutputWithoutReclaimingAda
-    :: MockAddEntryArguments -> Property
-prop_addBundleAsNewOutputWithoutReclaimingAda mockArgs =
-    prop_addEntry mockArgs addBundleAsNewOutputWithoutReclaimingAda
+prop_addInputToNewOutputWithoutReclaimingAda
+    :: MockSelectionAddInputArguments -> Property
+prop_addInputToNewOutputWithoutReclaimingAda mockArgs =
+    prop_addEntry mockArgs addInputToNewOutputWithoutReclaimingAda
 
 -- TODO: think of a way to extract out the specific properties we need for
 -- specific functions.
 
-prop_addEntry :: MockAddEntryArguments -> MockAddEntry TokenBundle -> Property
+prop_addEntry
+    :: MockSelectionAddInputArguments -> MockSelectionAddInput -> Property
 prop_addEntry mockArgs addEntry =
     checkCoverage $
     cover 30 (selectionResultIsSelection result)
@@ -275,11 +276,11 @@ prop_addEntry mockArgs addEntry =
             counterexample "Failure due to oversized selection" $
             conjoin
                 [ property (selectionSizeMaximum e < selectionSizeRequired e)
-                --, property (isLeft initializeResult)
+                --, property (isLeft createResult)
                 ]
         Left SelectionAdaInsufficient ->
             counterexample "Failure due to insufficient ada" $
-            property True -- property (isLeft initializeResult)
+            property True -- property (isLeft createResult)
         Right selection ->
             counterexample "Succeeded" $
             conjoin
@@ -287,7 +288,7 @@ prop_addEntry mockArgs addEntry =
                 , inputs selection === mockEntry `NE.cons` inputs mockSelection
                 ]
   where
-    MockAddEntryArguments
+    MockSelectionAddInputArguments
         { mockSelectionParameters
         , mockSelection
         , mockEntry
@@ -295,7 +296,7 @@ prop_addEntry mockArgs addEntry =
     params = unMockSelectionParameters mockSelectionParameters
     result = addEntry params mockSelection mockEntry
 
-    --initializeResult = initialize params
+    --createResult = create params
       --  (rewardWithdrawal mockSelection)
        -- (mockEntry `NE.cons` inputs mockSelection)
 

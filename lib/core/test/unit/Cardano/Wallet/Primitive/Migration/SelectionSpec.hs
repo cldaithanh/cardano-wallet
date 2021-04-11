@@ -102,6 +102,7 @@ import Test.QuickCheck
     , suchThat
     , suchThatMap
     , vector
+    , withMaxSuccess
     , (===)
     )
 
@@ -160,8 +161,8 @@ data MockCreateArguments = MockCreateArguments
 genMockCreateArguments :: Gen MockCreateArguments
 genMockCreateArguments = do
     mockSelectionParameters <- genMockSelectionParameters
-    mockRewardWithdrawal <- genCoin
-    inputCount <- choose (1, 10)
+    mockRewardWithdrawal <- genCoinRange (Coin 0) (Coin 100)
+    inputCount <- choose (1, 100)
     mockInputs <- (:|)
         <$> genMockInput mockSelectionParameters
         <*> replicateM
@@ -179,17 +180,17 @@ instance Arbitrary MockCreateArguments where
 prop_create :: MockCreateArguments -> Property
 prop_create args =
     checkCoverage $
-    cover 50 (selectionResultIsSelection result)
+    cover 80 (selectionResultIsSelection result)
         "Success" $
-    cover 10 (selectionResultHasMoreInputsThanOutputs result)
+    cover 5 (selectionResultHasMoreInputsThanOutputs result)
         "Success with more inputs than outputs" $
-    cover 10 (selectionResultHasMoreThanOneOutput result)
+    cover 0 (selectionResultHasMoreThanOneOutput result)
         "Success with more than one output" $
-    cover 10 (selectionResultHasOneOutput result)
+    cover 0 (selectionResultHasOneOutput result)
         "Success with one output" $
     cover 0 (selectionResultHasNonZeroFeeExcess result)
         "Success with non-zero fee excess" $
-    cover 5 (selectionResultHasInsufficientAda result)
+    cover 0.1 (selectionResultHasInsufficientAda result)
         "Failure due to insufficient ada" $
     cover 5 (selectionResultIsFull result)
         "Failure due to oversized selection" $
@@ -744,12 +745,12 @@ genTokenQuantity = TokenQuantity . fromIntegral @Integer <$> choose (1, 1000)
 --------------------------------------------------------------------------------
 
 mockSizeOfOutput :: TokenBundle -> MockSize
-mockSizeOfOutput = MockSize . fromIntegral . length . show
+mockSizeOfOutput = MockSize . fromIntegral . BS.length . pretty . Flat
 
 mockSizeOfRewardWithdrawal :: Coin -> MockSize
 mockSizeOfRewardWithdrawal = \case
     Coin 0 -> MockSize 0
-    Coin c -> MockSize $ fromIntegral $ length $ show $ Coin c
+    Coin c -> MockSize $ fromIntegral $ BS.length $ pretty $ Coin c
 
 mockSizeToFee :: MockSize -> Coin
 mockSizeToFee = Coin . fromIntegral . unMockSize
@@ -923,7 +924,7 @@ newtype MockMaximumSizeOfSelection = MockMaximumSizeOfSelection
 
 genMockMaximumSizeOfSelection :: Gen MockMaximumSizeOfSelection
 genMockMaximumSizeOfSelection =
-    MockMaximumSizeOfSelection <$> genMockSizeRange 0 10000
+    MockMaximumSizeOfSelection <$> genMockSizeRange 0 100_000
 
 --------------------------------------------------------------------------------
 -- Mock minimum ada quantities for outputs

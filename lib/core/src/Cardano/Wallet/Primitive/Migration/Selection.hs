@@ -832,19 +832,44 @@ unsafeAddOutput params outputBundle selection = selection
 -- Coalescing outputs
 --------------------------------------------------------------------------------
 
+-- TODO: We can do better, by trying to merge each new bundle with each of the
+-- already coalesced bundles.
 coalesceOutputs
     :: SelectionParameters s
     -> NonEmpty TokenBundle
     -> NonEmpty TokenBundle
-coalesceOutputs params bundles = coalesce bundles
+coalesceOutputs params bundles = NE.fromList $ coalesce (NE.toList bundles) []
   where
-    coalesce (b :| []) =
-        b :| []
-    coalesce (b1 :| (b2 : bs)) | Just b3 <- safeCoalesceOutputs params b1 b2 =
-        coalesce (b3 :| bs)
-    coalesce (b1 :| (b2 : bs)) =
-        b1 `NE.cons` coalesce (b2 :| bs)
+    coalesce [] coalesced =
+        coalesced
+    coalesce (b1 : remaining) (b2 : coalesced)
+        | Just b3 <- safeCoalesceOutputs params b1 b2 =
+            coalesce remaining (b3 : coalesced)
+    coalesce (b : remaining) coalesced =
+        coalesce remaining (b : coalesced)
+{-
+coalesceOutputs
+    :: SelectionParameters s
+    -> NonEmpty TokenBundle
+    -> NonEmpty TokenBundle
+coalesceOutputs params (bundle :| bundles) =
+    L.foldl' (\acc b -> insertOutput params b acc) (bundle :| []) bundles
 
+insertOutput
+    :: SelectionParameters s
+    -> TokenBundle
+    -> NonEmpty TokenBundle
+    -> NonEmpty TokenBundle
+insertOutput params bundle bundles = NE.fromList $ run (NE.toList bundles) []
+  where
+    run [] processed =
+        bundle : processed
+    run (b1 : remaining) processed
+        | Just b2 <- safeCoalesceOutputs params bundle b1 =
+            b2 : (remaining <> processed)
+    run (b1 : remaining) processed =
+        run remaining (b1 : processed)
+-}
 safeCoalesceOutputs
     :: SelectionParameters s
     -> TokenBundle

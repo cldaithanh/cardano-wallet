@@ -20,8 +20,6 @@ module Cardano.Wallet.Primitive.Migration.Selection
 
     -- * Selection parameters
     , SelectionParameters (..)
-    , SelectionOutputSizeAssessor (..)
-    , SelectionOutputSizeAssessment (..)
 
     -- * Selections
     , Selection (..)
@@ -90,6 +88,8 @@ import Cardano.Wallet.Primitive.Types.TokenBundle
     ( TokenBundle (..) )
 import Cardano.Wallet.Primitive.Types.TokenMap
     ( TokenMap )
+import Cardano.Wallet.Primitive.Types.TokenQuantity
+    ( TokenQuantity )
 import Data.Either.Extra
     ( eitherToMaybe, maybeToEither )
 import Data.Function
@@ -137,21 +137,15 @@ data SelectionParameters s = SelectionParameters
       -- ^ The variable size of a selection output.
     , sizeOfRewardWithdrawal :: Coin -> s
       -- ^ The variable size of a reward withdrawal.
-    , maximumSizeOfOutput :: SelectionOutputSizeAssessor
+    , maximumSizeOfOutput :: s
       -- ^ The maximum size of a selection output.
     , maximumSizeOfSelection :: s
       -- ^ The maximum size of a selection.
+    , maximumTokenQuantity :: TokenQuantity
+      -- ^ The maximum token quantity of an output.
     , minimumAdaQuantityForOutput :: TokenMap -> Coin
       -- ^ The variable minimum ada quantity for an output.
     }
-
-newtype SelectionOutputSizeAssessor = SelectionOutputSizeAssessor
-    { assessOutputSize :: TokenBundle -> SelectionOutputSizeAssessment }
-
-data SelectionOutputSizeAssessment
-    = SelectionOutputSizeWithinLimit
-    | SelectionOutputSizeExceedsLimit
-    deriving (Eq, Generic, Show)
 
 --------------------------------------------------------------------------------
 -- Selection parameter functions
@@ -175,7 +169,11 @@ minimumAdaQuantityForOutputCoin =
 sizeOfOutputCoin :: SelectionParameters s -> Coin -> s
 sizeOfOutputCoin params = sizeOfOutput params . TokenBundle.fromCoin
 
-outputIsValid :: forall s. Ord s => SelectionParameters s -> TokenBundle -> Bool
+outputIsValid
+    :: forall s. Size s
+    => SelectionParameters s
+    -> TokenBundle
+    -> Bool
 outputIsValid params b = and $ conditions <&> (\f -> f params b)
   where
     conditions :: [SelectionParameters s -> TokenBundle -> Bool]
@@ -189,12 +187,9 @@ outputSatisfiesMinimumAdaQuantity
 outputSatisfiesMinimumAdaQuantity params (TokenBundle c m) =
     c >= minimumAdaQuantityForOutput params m
 
-outputSizeWithinLimit :: SelectionParameters s -> TokenBundle -> Bool
-outputSizeWithinLimit params b = case assess b of
-    SelectionOutputSizeWithinLimit -> True
-    SelectionOutputSizeExceedsLimit -> False
-  where
-    SelectionOutputSizeAssessor assess = maximumSizeOfOutput params
+outputSizeWithinLimit :: Size s => SelectionParameters s -> TokenBundle -> Bool
+outputSizeWithinLimit params b =
+    sizeOfOutput params b <= maximumSizeOfOutput params
 
 --------------------------------------------------------------------------------
 -- Selections
@@ -239,7 +234,7 @@ data SelectionInvariantStatus s
     deriving (Eq, Show)
 
 checkInvariant
-    :: (Monoid s, Ord s)
+    :: Size s
     => SelectionParameters s
     -> Selection i s
     -> SelectionInvariantStatus s
@@ -405,7 +400,7 @@ data SelectionInvariantOutputSizeExceedsLimitError =
     deriving (Eq, Show)
 
 checkOutputSizes
-    :: Ord s
+    :: Size s
     => SelectionParameters s
     -> Selection i s
     -> Maybe SelectionInvariantOutputSizeExceedsLimitError
@@ -829,16 +824,25 @@ unsafeAddOutput params outputBundle selection = selection
     }
 
 --------------------------------------------------------------------------------
--- Coalescing outputs
+-- Coalescing bundles
 --------------------------------------------------------------------------------
+
+coalesceOutputs
+    :: Size s
+    => SelectionParameters s
+    -> NonEmpty TokenBundle
+    -> NonEmpty TokenBundle
+coalesceOutputs params = splitBundleIfLimitsExceeded params . F.fold
 
 -- TODO: We can do better, by trying to merge each new bundle with each of the
 -- already coalesced bundles.
-coalesceOutputs
-    :: SelectionParameters s
+{-
+coalesceOutputs2
+    :: Size s
+    => SelectionParameters s
     -> NonEmpty TokenBundle
     -> NonEmpty TokenBundle
-coalesceOutputs params bundles = NE.fromList $ coalesce (NE.toList bundles) []
+coalesceOutputs2 params bundles = NE.fromList $ coalesce (NE.toList bundles) []
   where
     coalesce [] coalesced =
         coalesced
@@ -847,6 +851,7 @@ coalesceOutputs params bundles = NE.fromList $ coalesce (NE.toList bundles) []
             coalesce remaining (b3 : coalesced)
     coalesce (b : remaining) coalesced =
         coalesce remaining (b : coalesced)
+-}
 {-
 coalesceOutputs
     :: SelectionParameters s
@@ -870,8 +875,10 @@ insertOutput params bundle bundles = NE.fromList $ run (NE.toList bundles) []
     run (b1 : remaining) processed =
         run remaining (b1 : processed)
 -}
+{-
 safeCoalesceOutputs
-    :: SelectionParameters s
+    :: Size s
+    => SelectionParameters s
     -> TokenBundle
     -> TokenBundle
     -> Maybe TokenBundle
@@ -883,7 +890,7 @@ safeCoalesceOutputs params b1 b2
   where
     coalescedOutput = b1 <> b2
     coalescedOutputWithMaxAda = TokenBundle.setCoin coalescedOutput maxBound
-
+-}
 minimizeOutput :: SelectionParameters s -> TokenBundle -> TokenBundle
 minimizeOutput params output
     = TokenBundle.setCoin output
@@ -1027,6 +1034,53 @@ minimizeFeeExcessForOutput params =
             $ unCoin feeExcess
             - unCoin outputCoinFinalIncrease
             - unCoin outputCoinFinalCostIncrease
+
+--------------------------------------------------------------------------------
+-- Splitting bundles
+--------------------------------------------------------------------------------
+
+splitBundleIfLimitsExceeded
+    :: Size s
+    => SelectionParameters s
+    -> TokenBundle
+    -> NonEmpty TokenBundle
+splitBundleIfLimitsExceeded params b
+    = splitBundlesWithExcessiveTokenQuantities params
+    $ splitBundlesWithExcessiveSizes params
+    $ b :| []
+
+splitBundlesWithExcessiveSizes
+    :: Size s
+    => SelectionParameters s
+    -> NonEmpty TokenBundle
+    -> NonEmpty TokenBundle
+splitBundlesWithExcessiveSizes params bs =
+    splitBundleIfSizeExceedsLimit params =<< bs
+
+splitBundlesWithExcessiveTokenQuantities
+    :: SelectionParameters s
+    -> NonEmpty TokenBundle
+    -> NonEmpty TokenBundle
+splitBundlesWithExcessiveTokenQuantities params bs =
+    (`TokenBundle.equipartitionQuantitiesWithUpperBound` maxQuantity) =<< bs
+  where
+    maxQuantity = maximumTokenQuantity params
+
+splitBundleIfSizeExceedsLimit
+    :: Size s
+    => SelectionParameters s
+    -> TokenBundle
+    -> NonEmpty TokenBundle
+splitBundleIfSizeExceedsLimit params bundle
+    | outputSizeWithinLimit params bundleWithMaxAda =
+        pure bundle
+    | otherwise =
+        splitInHalf bundle >>= splitBundleIfSizeExceedsLimit params
+    | otherwise =
+        pure bundle
+  where
+    splitInHalf = flip TokenBundle.equipartitionAssets (() :| [()])
+    bundleWithMaxAda = TokenBundle.setCoin bundle maxBound
 
 --------------------------------------------------------------------------------
 -- Miscellaneous types and functions

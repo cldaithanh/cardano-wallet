@@ -13,7 +13,7 @@ module Cardano.Wallet.Primitive.Migration
 import Prelude
 
 import Cardano.Wallet.Primitive.Migration.Selection
-    ( SelectionParameters (..), outputIsValid )
+    ( SelectionParameters (..), Size (..), outputIsValid )
 import Cardano.Wallet.Primitive.Types.Coin
     ( Coin (..) )
 import Cardano.Wallet.Primitive.Types.TokenBundle
@@ -54,7 +54,7 @@ data ClassifiedUTxO i = ClassifiedUTxO
     }
     deriving (Eq, Show)
 
-classifyUTxO :: Ord s => SelectionParameters s -> UTxO -> ClassifiedUTxO TxIn
+classifyUTxO :: Size s => SelectionParameters s -> UTxO -> ClassifiedUTxO TxIn
 classifyUTxO params (UTxO u) = ClassifiedUTxO
     { initiators = entriesMatching Initiator
     , supporters = entriesMatching Supporter
@@ -92,7 +92,7 @@ data TokenBundleClassification
     deriving (Eq, Show)
 
 classifyTokenBundle
-    :: Ord s
+    :: Size s
     => SelectionParameters s
     -> TokenBundle
     -> TokenBundleClassification

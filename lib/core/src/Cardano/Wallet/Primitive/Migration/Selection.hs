@@ -36,14 +36,14 @@ module Cardano.Wallet.Primitive.Migration.Selection
     , addInput
     , addRewardWithdrawal
 
-    -- * Querying a selection
-    , currentFee
-    , currentSize
-    , minimumFee
-
     ----------------------------------------------------------------------------
     -- Internal interface
     ----------------------------------------------------------------------------
+
+    -- * Computing bulk properties of a selection
+    , computeCurrentFee
+    , computeCurrentSize
+    , computeMinimumFee
 
     -- * Selection parameter functions
     , costOfOutputCoin
@@ -308,7 +308,7 @@ checkFeeExcess
     -> Selection i s
     -> Maybe SelectionInvariantFeeExcessIncorrectError
 checkFeeExcess params selection =
-    check =<< eitherToMaybe (currentFee selection)
+    check =<< eitherToMaybe (computeCurrentFee selection)
   where
     check :: Coin -> Maybe SelectionInvariantFeeExcessIncorrectError
     check currentSelectionFee
@@ -323,7 +323,7 @@ checkFeeExcess params selection =
         selectionFeeExcessActual = feeExcess selection
         selectionFeeExcessExpected = Coin.distance
             (currentSelectionFee)
-            (minimumFee params selection)
+            (computeMinimumFee params selection)
 
 --------------------------------------------------------------------------------
 -- Selection invariant: fee sufficiency
@@ -343,7 +343,7 @@ checkFeeSufficient
     -> Selection i s
     -> Maybe SelectionInvariantFeeInsufficientError
 checkFeeSufficient params selection =
-    case currentFee selection of
+    case computeCurrentFee selection of
         Left nf ->
             Just SelectionInvariantFeeInsufficientError
                 { selectionFeeActual = Left nf
@@ -357,7 +357,7 @@ checkFeeSufficient params selection =
         Right _ ->
             Nothing
   where
-    selectionFeeMinimum = minimumFee params selection
+    selectionFeeMinimum = computeMinimumFee params selection
 
 --------------------------------------------------------------------------------
 -- Selection invariant: minimum ada quantities
@@ -468,7 +468,7 @@ checkSizeCorrectness params selection
         , selectionSizeStored
         }
   where
-    selectionSizeComputed = currentSize params selection
+    selectionSizeComputed = computeCurrentSize params selection
     selectionSizeStored = size selection
 
 --------------------------------------------------------------------------------
@@ -495,7 +495,7 @@ checkSizeWithinLimit params selection
         , selectionSizeMaximum
         }
   where
-    selectionSizeComputed = currentSize params selection
+    selectionSizeComputed = computeCurrentSize params selection
     selectionSizeMaximum = maximumSizeOfSelection params
 
 --------------------------------------------------------------------------------
@@ -504,8 +504,8 @@ checkSizeWithinLimit params selection
 
 -- | Calculates the current fee for a selection.
 --
-currentFee :: Selection i s -> Either NegativeCoin Coin
-currentFee Selection {inputs, outputs, rewardWithdrawal}
+computeCurrentFee :: Selection i s -> Either NegativeCoin Coin
+computeCurrentFee Selection {inputs, outputs, rewardWithdrawal}
     | adaBalanceIn >= adaBalanceOut =
         Right adaDifference
     | otherwise =
@@ -520,12 +520,12 @@ currentFee Selection {inputs, outputs, rewardWithdrawal}
 
 -- | Calculates the current size of a selection.
 --
-currentSize
+computeCurrentSize
     :: Monoid s
     => SelectionParameters s
     -> Selection i s
     -> s
-currentSize params selection = mconcat
+computeCurrentSize params selection = mconcat
     [ sizeOfEmptySelection params
     , F.foldMap (const $ sizeOfInput params) (inputs selection)
     , F.foldMap (sizeOfOutput params) (outputs selection)
@@ -534,8 +534,8 @@ currentSize params selection = mconcat
 
 -- | Calculates the minimum permissible fee for a selection.
 --
-minimumFee :: SelectionParameters s -> Selection i s -> Coin
-minimumFee params selection = mconcat
+computeMinimumFee :: SelectionParameters s -> Selection i s -> Coin
+computeMinimumFee params selection = mconcat
     [ costOfEmptySelection params
     , F.foldMap (const $ costOfInput params) (inputs selection)
     , F.foldMap (costOfOutput params) (outputs selection)
@@ -592,16 +592,19 @@ create params rewardWithdrawal inputs = do
             }
     ReclaimAdaResult {reducedOutputs} <-
         maybeToEither SelectionAdaInsufficient $
-        reclaimAda (params) (minimumFee params selection) (coalescedBundles)
+        reclaimAda
+            (params)
+            (computeMinimumFee params selection)
+            (coalescedBundles)
     let reducedSelection = selection {outputs = reducedOutputs}
-    size <- guardSize params $ currentSize params reducedSelection
+    size <- guardSize params $ computeCurrentSize params reducedSelection
     -- We have already reclaimed ada from the outputs to pay for the fee. But
     -- we might have reclaimed slightly more than we need, as reducing an ada
     -- quantity can also reduce its cost. Therefore we need to record the fee
     -- excess here, as it might be greater than zero.
     feeExcess <- do
-        let mf = minimumFee params reducedSelection {size}
-        case currentFee reducedSelection {size} of
+        let mf = computeMinimumFee params reducedSelection {size}
+        case computeCurrentFee reducedSelection {size} of
             Right cf | cf >= mf ->
                 pure (Coin.distance cf mf)
             _ ->

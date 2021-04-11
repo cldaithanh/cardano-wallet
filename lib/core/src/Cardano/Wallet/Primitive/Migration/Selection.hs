@@ -32,9 +32,9 @@ module Cardano.Wallet.Primitive.Migration.Selection
     , create
 
     -- * Extending a selection
-    , SelectionAddInput
     , addInput
     , addRewardWithdrawal
+    , SelectionAddInput
 
     ----------------------------------------------------------------------------
     -- Internal interface
@@ -104,7 +104,7 @@ import Data.List.NonEmpty
 import Data.Maybe
     ( catMaybes, fromMaybe, mapMaybe, listToMaybe )
 import Data.Ord
-    ( Down (..), comparing )
+    ( comparing )
 import GHC.Generics
     ( Generic )
 
@@ -549,7 +549,8 @@ outputOrdering
     -> TokenBundle
     -> TokenBundle
     -> Ordering
-outputOrdering params = comparing (Down . excessAdaForOutput params)
+outputOrdering params =
+    comparing (minimumAdaQuantityForOutput params . view #tokens)
 
 --------------------------------------------------------------------------------
 -- Selection errors
@@ -590,26 +591,31 @@ create params rewardWithdrawal inputs = do
             , size = mempty
             , rewardWithdrawal
             }
-    ReclaimAdaResult {reducedOutputs} <-
+    let minimumFee = computeMinimumFee params selection
+    let adaToReclaim = fromMaybe (Coin 0) $ Coin.subtractCoin
+            (minimumFee)
+            (rewardWithdrawal)
+    ReclaimAdaResult {reducedOutputs, excessReclaimedAda} <-
         maybeToEither SelectionAdaInsufficient $
-        reclaimAda
-            (params)
-            (computeMinimumFee params selection)
-            (coalescedBundles)
+        reclaimAda params adaToReclaim coalescedBundles
     let reducedSelection = selection {outputs = reducedOutputs}
     size <- guardSize params $ computeCurrentSize params reducedSelection
     -- We have already reclaimed ada from the outputs to pay for the fee. But
     -- we might have reclaimed slightly more than we need, as reducing an ada
     -- quantity can also reduce its cost. Therefore we need to record the fee
     -- excess here, as it might be greater than zero.
-    feeExcess <- do
+    _feeExcess <- do
         let mf = computeMinimumFee params reducedSelection {size}
         case computeCurrentFee reducedSelection {size} of
             Right cf | cf >= mf ->
                 pure (Coin.distance cf mf)
             _ ->
                 Left SelectionAdaInsufficient
-    pure reducedSelection {size, feeExcess}
+    pure reducedSelection
+        { size
+        , feeExcess = excessReclaimedAda <>
+            (fromMaybe (Coin 0) $ Coin.subtractCoin rewardWithdrawal minimumFee)
+        }
 
 --------------------------------------------------------------------------------
 -- Extending a selection
@@ -843,10 +849,24 @@ coalesceOutputs params bundles = coalesce bundles
   where
     coalesce (b :| []) =
         b :| []
-    coalesce (b1 :| (b2 : bs)) | outputSizeWithinLimit params (b1 <> b2) =
-        coalesce ((b1 <> b2) :| bs)
+    coalesce (b1 :| (b2 : bs)) | Just b3 <- safeCoalesceOutputs params b1 b2 =
+        coalesce (b3 :| bs)
     coalesce (b1 :| (b2 : bs)) =
         b1 `NE.cons` coalesce (b2 :| bs)
+
+safeCoalesceOutputs
+    :: SelectionParameters i
+    -> TokenBundle
+    -> TokenBundle
+    -> Maybe TokenBundle
+safeCoalesceOutputs params b1 b2
+    | outputSizeWithinLimit params coalescedOutputWithMaxAda =
+        Just coalescedOutput
+    | otherwise =
+        Nothing
+  where
+    coalescedOutput = b1 <> b2
+    coalescedOutputWithMaxAda = TokenBundle.setCoin coalescedOutput maxBound
 
 --------------------------------------------------------------------------------
 -- Reclaiming ada from outputs
@@ -861,7 +881,10 @@ data ReclaimAdaResult s = ReclaimAdaResult
 
 -- Pre-condition (needs to be checked): all bundles have at least their
 -- minimum ada quantities (or else return 'Nothing').
-
+--
+-- Pre-condition (not checked): outputs are in order of their minimum ada
+-- quantity.
+--
 reclaimAda
     :: Size s
     => SelectionParameters s

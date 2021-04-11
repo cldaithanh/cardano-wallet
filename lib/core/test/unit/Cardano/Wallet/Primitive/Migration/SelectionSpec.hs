@@ -44,7 +44,7 @@ import Cardano.Wallet.Primitive.Migration.Selection
     , create
     , outputSatisfiesMinimumAdaQuantity
     , outputSizeWithinLimit
-    , outputOrdering
+    --, outputOrdering
     )
 import Cardano.Wallet.Primitive.Types.Coin
     ( Coin (..) )
@@ -106,6 +106,7 @@ import Test.QuickCheck
     )
 
 import qualified Cardano.Wallet.Primitive.Types.Coin as Coin
+import qualified Cardano.Wallet.Primitive.Types.TokenBundle as TokenBundle
 import qualified Cardano.Wallet.Primitive.Types.TokenMap as TokenMap
 import qualified Data.ByteString as BS
 import qualified Data.Foldable as F
@@ -430,22 +431,21 @@ prop_reclaimAda mockArgs =
         adaAmounts = view #coin <$> mockOutputs
 
     propSuccess :: ReclaimAdaResult MockSize -> Property
-    propSuccess successfulResult = counterexample counterexampleText $ conjoin
-        [ counterexample "costReduction /= costReductionExpected" $
-            costReduction === costReductionExpected
-        , counterexample "sizeReduction /= sizeReductionExpected" $
-            sizeReduction === sizeReductionExpected
-        , counterexample "tokenBalanceAfter /= tokenBalanceBefore" $
-            tokenBalanceAfter === tokenBalanceBefore
-        , counterexample "lengthAfter /= lengthBefore" $
-            lengthAfter === lengthBefore
-        , counterexample "sort (reducedOutputs) /= reducedOutputs" $
-            NE.sortBy (outputOrdering params) reducedOutputs === reducedOutputs
-        , counterexample "zeroness of cost and size reduction disagree" $
-            (sizeReduction == mempty) === (costReduction == mempty)
-        , counterexample "adaReclaimed < adaToReclaim" $
-            property $ adaReclaimed >= mockAdaToReclaim
-
+    propSuccess successfulResult =
+        counterexample counterexampleText $ conjoinMap
+        [ ( "costReduction /= costReductionExpected"
+          , costReduction == costReductionExpected )
+        , ( "sizeReduction /= sizeReductionExpected"
+          , sizeReduction == sizeReductionExpected )
+        , ( "tokenBalanceAfter /= tokenBalanceBefore"
+          , tokenBalanceAfter == tokenBalanceBefore )
+        , ( "lengthAfter /= lengthBefore"
+          , lengthAfter == lengthBefore )
+        , ( "zeroness of cost and size reduction disagree"
+          , (sizeReduction == mempty) == (costReduction == mempty) )
+        , ( "adaReclaimed < adaToReclaim"
+          , adaReclaimed >= mockAdaToReclaim
+          )
         ]
       where
         counterexampleText = counterexampleMap
@@ -669,7 +669,10 @@ selectionResultIsFull = matchLeft $ \case
 genMockInput :: MockSelectionParameters -> Gen (MockInputId, TokenBundle)
 genMockInput mockParams = (,)
     <$> genMockInputId
-    <*> genTokenBundle mockParams
+    <*> genTokenBundle mockParams `suchThat`
+        (outputSizeWithinLimit params . flip TokenBundle.setCoin maxBound)
+  where
+    params = unMockSelectionParameters mockParams
 
 --------------------------------------------------------------------------------
 -- Generating input identifiers

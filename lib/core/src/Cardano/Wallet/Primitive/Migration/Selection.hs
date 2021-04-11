@@ -590,11 +590,10 @@ create
     -> NonEmpty (i, TokenBundle)
     -> Either (SelectionError s) (Selection i s)
 create params rewardWithdrawal inputs = do
-    let minimizedOutputs = minimizeOutput <$>
-            NE.sortBy
-                (outputOrdering params)
-                (coalesceOutputs params $ snd <$> inputs)
-    let selection = Selection
+    let minimizedOutputs = minimizeOutput params <$> NE.sortBy
+            (outputOrdering params)
+            (coalesceOutputs params $ snd <$> inputs)
+    let unbalancedSelection = Selection
             { inputs
             , outputs = minimizedOutputs
             , feeExcess = Coin 0
@@ -602,17 +601,12 @@ create params rewardWithdrawal inputs = do
             , rewardWithdrawal
             }
     currentFeeExcess <- maybeToEither SelectionAdaInsufficient $
-        computeFeeExcess params selection
+        computeFeeExcess params unbalancedSelection
     let (feeExcess, outputs) =
             minimizeFeeExcess params (currentFeeExcess, minimizedOutputs)
-    let rebalancedSelection = selection {feeExcess, outputs}
-    size <- guardSize params $ computeCurrentSize params rebalancedSelection
-    pure rebalancedSelection {size}
-  where
-    minimizeOutput :: TokenBundle -> TokenBundle
-    minimizeOutput output
-        = TokenBundle.setCoin output
-        $ minimumAdaQuantityForOutput params (view #tokens output)
+    let balancedSelection = unbalancedSelection {feeExcess, outputs}
+    size <- guardSize params $ computeCurrentSize params balancedSelection
+    pure balancedSelection {size}
 
 --------------------------------------------------------------------------------
 -- Extending a selection
@@ -839,7 +833,7 @@ unsafeAddOutput params outputBundle selection = selection
 --------------------------------------------------------------------------------
 
 coalesceOutputs
-    :: SelectionParameters i
+    :: SelectionParameters s
     -> NonEmpty TokenBundle
     -> NonEmpty TokenBundle
 coalesceOutputs params bundles = coalesce bundles
@@ -852,7 +846,7 @@ coalesceOutputs params bundles = coalesce bundles
         b1 `NE.cons` coalesce (b2 :| bs)
 
 safeCoalesceOutputs
-    :: SelectionParameters i
+    :: SelectionParameters s
     -> TokenBundle
     -> TokenBundle
     -> Maybe TokenBundle
@@ -864,6 +858,11 @@ safeCoalesceOutputs params b1 b2
   where
     coalescedOutput = b1 <> b2
     coalescedOutputWithMaxAda = TokenBundle.setCoin coalescedOutput maxBound
+
+minimizeOutput :: SelectionParameters s -> TokenBundle -> TokenBundle
+minimizeOutput params output
+    = TokenBundle.setCoin output
+    $ minimumAdaQuantityForOutput params (view #tokens output)
 
 --------------------------------------------------------------------------------
 -- Reclaiming ada from outputs
@@ -955,10 +954,11 @@ reclaimAda params totalAdaToReclaim outputs
 --------------------------------------------------------------------------------
 
 minimizeFeeExcess
-    :: Size s
-    => SelectionParameters s
+    :: SelectionParameters s
     -> (Coin, NonEmpty TokenBundle)
+    -- ^ Fee excess and output bundles.
     -> (Coin, NonEmpty TokenBundle)
+    -- ^ Fee excess and output bundles after optimization.
 minimizeFeeExcess params (currentFeeExcess, outputs) =
     NE.fromList <$> run currentFeeExcess (NE.toList outputs) []
   where
@@ -972,10 +972,6 @@ minimizeFeeExcess params (currentFeeExcess, outputs) =
       where
         (feeExcessRemaining', output') =
             minimizeFeeExcessForOutput params (feeExcessRemaining, output)
-
---------------------------------------------------------------------------------
--- Minimizing the fee excess for a single output
---------------------------------------------------------------------------------
 
 minimizeFeeExcessForOutput
     :: SelectionParameters s

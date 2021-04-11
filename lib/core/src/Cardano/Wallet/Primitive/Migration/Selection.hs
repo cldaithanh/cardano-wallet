@@ -29,11 +29,6 @@ module Cardano.Wallet.Primitive.Migration.Selection
     -- * Creating a selection
     , create
 
-    -- * Extending a selection
-    , addInput
-    , addRewardWithdrawal
-    , SelectionAddInput
-
     ----------------------------------------------------------------------------
     -- Internal interface
     ----------------------------------------------------------------------------
@@ -59,17 +54,8 @@ module Cardano.Wallet.Primitive.Migration.Selection
     -- * Selection queries
     , outputOrdering
 
-    -- * Adding entries to selections
-    , addInputToExistingOutput
-    , addInputToNewOutput
-    , addInputToNewOutputWithoutReclaimingAda
-
     -- * Coalescing token bundles
     , coalesceOutputs
-
-    -- * Reclaiming ada from outputs
-    , ReclaimAdaResult (..)
-    , reclaimAda
 
     -- * Minimizing fee excess
     , minimizeFeeExcess
@@ -92,8 +78,6 @@ import Cardano.Wallet.Primitive.Types.TokenQuantity
     ( TokenQuantity )
 import Data.Either.Extra
     ( eitherToMaybe, maybeToEither )
-import Data.Function
-    ( (&) )
 import Data.Functor
     ( (<&>) )
 import Data.Generics.Internal.VL.Lens
@@ -103,7 +87,7 @@ import Data.Generics.Labels
 import Data.List.NonEmpty
     ( NonEmpty (..) )
 import Data.Maybe
-    ( catMaybes, fromMaybe, mapMaybe, listToMaybe )
+    ( catMaybes, fromMaybe, listToMaybe )
 import Data.Ord
     ( comparing )
 import GHC.Generics
@@ -604,227 +588,7 @@ create params rewardWithdrawal inputs = do
     pure balancedSelection {size}
 
 --------------------------------------------------------------------------------
--- Extending a selection
---------------------------------------------------------------------------------
-
-type SelectionAddInput s i =
-    SelectionParameters s
-        -> Selection i s
-        -> (i, TokenBundle)
-        -> Either (SelectionError s) (Selection i s)
-
-addInput
-    :: forall s i. Size s
-    => SelectionAddInput s i
-addInput = addInputWithFirstSuccessfulStrategy
-    [ addInputToExistingOutput
-    , addInputToNewOutput
-    ]
-
-addInputWithFirstSuccessfulStrategy
-    :: NonEmpty (SelectionAddInput s i)
-    -> SelectionAddInput s i
-addInputWithFirstSuccessfulStrategy strategies params selection input =
-    eithersToEither $ strategies <&> (\s -> s params selection input)
-
-addRewardWithdrawal
-    :: Selection i s
-    -> Coin
-    -> Selection i s
-addRewardWithdrawal selection withdrawal = selection
-    -- TODO: check that the invariant is not violated.
-    { rewardWithdrawal = rewardWithdrawal selection <> withdrawal
-    , feeExcess = feeExcess selection <> withdrawal
-    }
-
---------------------------------------------------------------------------------
--- Adding bundles to a selection
---------------------------------------------------------------------------------
-
-addInputToExistingOutput
-    :: forall s i. Size s
-    => SelectionAddInput s i
-addInputToExistingOutput params selection (inputId, inputBundle) = do
-    (bundleIndex, originalBundle, mergedBundle) <- findFirstValidMergedBundle
-    newSize <- computeNewSize originalBundle mergedBundle
-    newFeeExcess <- computeNewFeeExcess originalBundle mergedBundle
-    let (prefix, suffix) = drop 1 <$> NE.splitAt bundleIndex (outputs selection)
-    let remainingOutputs = prefix <> suffix
-    case remainingOutputs of
-        [] -> pure
-            $ selection
-                { size = newSize
-                , feeExcess = newFeeExcess
-                , outputs = mergedBundle :| []
-                }
-            & unsafeAddInput (inputId, inputBundle)
-        o : os -> pure
-            $ selection
-                { size = newSize
-                , feeExcess = newFeeExcess
-                , outputs = o :| os
-                }
-            & unsafeAddInput (inputId, inputBundle)
-            & unsafeAddOutput params mergedBundle
-  where
-    computeNewFeeExcess
-        :: TokenBundle -> TokenBundle -> Either (SelectionError s) Coin
-    computeNewFeeExcess originalBundle mergedBundle =
-        maybeToEither SelectionAdaInsufficient $ coinFromInteger
-            $ coinToInteger (feeExcess selection)
-            + coinToInteger (TokenBundle.getCoin inputBundle)
-            + coinToInteger (TokenBundle.getCoin originalBundle)
-            - coinToInteger (TokenBundle.getCoin mergedBundle)
-            + coinToInteger (costOfOutput params originalBundle)
-            - coinToInteger (costOfOutput params mergedBundle)
-            - coinToInteger (costOfInput params)
-
-    computeNewSize
-        :: TokenBundle -> TokenBundle -> Either (SelectionError s) s
-    computeNewSize originalBundle mergedBundle = guardSize params $ mconcat
-        [ size selection
-        , sizeOfInput params
-        , sizeDistance
-            (sizeOfOutput params originalBundle)
-            (sizeOfOutput params mergedBundle)
-        ]
-
-    findFirstValidMergedBundle
-        :: Either (SelectionError s) (Int, TokenBundle, TokenBundle)
-    findFirstValidMergedBundle = maybeToEither SelectionAdaInsufficient
-        $ outputs selection
-        & NE.toList
-        & zip [0 ..]
-        & mapMaybe (\(i, b) -> (i, b, ) <$> mergeBundle b)
-        & listToMaybe
-      where
-        mergeBundle :: TokenBundle -> Maybe TokenBundle
-        mergeBundle outputBundle
-            | Just mergedBundle <- computeMergedBundle
-            , outputIsValid params mergedBundle =
-                Just mergedBundle
-            | otherwise =
-                Nothing
-          where
-            computeMergedBundle :: Maybe TokenBundle
-            computeMergedBundle = TokenBundle.setCoin mergedUnadjustedBundle
-                <$> computeNewCoinValue
-
-            computeNewCoinValue :: Maybe Coin
-            computeNewCoinValue = coinFromInteger
-                $ coinToInteger (TokenBundle.getCoin mergedUnadjustedBundle)
-                - coinToInteger (costOfInput params)
-                - coinToInteger (costOfOutput params mergedUnadjustedBundle)
-                + coinToInteger (costOfOutput params outputBundle)
-
-            mergedUnadjustedBundle :: TokenBundle
-            mergedUnadjustedBundle = mconcat
-                [ inputBundle
-                , outputBundle
-                , TokenBundle.fromCoin (feeExcess selection)
-                ]
-
-addInputToNewOutput
-    :: forall s i. Size s
-    => SelectionAddInput s i
-addInputToNewOutput params selection input@(inputId, inputBundle)
-    | adaToReclaim == Coin 0 =
-        addInputToNewOutputWithoutReclaimingAda
-            params selection (inputId, inputBundle)
-    | adaToReclaim >= Coin 1 && adaToReclaim <= feeExcess selection = do
-        let reducedFeeExcess =
-                Coin.distance (feeExcess selection) adaToReclaim
-        let inputBundleWithIncreasedAda =
-                TokenBundle.adjustCoin inputBundle (<> adaToReclaim)
-        updatedSelection <- addInputToNewOutputWithoutReclaimingAda
-            (params)
-            (selection {feeExcess = reducedFeeExcess})
-            (inputId, inputBundleWithIncreasedAda)
-        pure updatedSelection
-            {inputs = replaceHeadOfList (inputs updatedSelection) input}
-    | otherwise = do
-        ReclaimAdaResult {reducedOutputs}
-            <- maybeToEither SelectionAdaInsufficient $
-                reclaimAda
-                    (params)
-                    (Coin.distance adaToReclaim (feeExcess selection))
-                    (outputs selection)
-        let inputBundleWithIncreasedAda =
-                TokenBundle.adjustCoin inputBundle (<> adaToReclaim)
-        updatedSelection <- addInputToNewOutputWithoutReclaimingAda
-            (params)
-            (selection {feeExcess = Coin 0, outputs = reducedOutputs})
-            (inputId, inputBundleWithIncreasedAda)
-        pure updatedSelection
-            {inputs = replaceHeadOfList (inputs updatedSelection) input}
-  where
-    adaToReclaim :: Coin
-    adaToReclaim = fromMaybe (Coin 0)
-        $ coinFromInteger
-        $ coinToInteger (costOfInput params)
-        + coinToInteger (costOfOutput params inputBundle)
-        + coinToInteger (minimumAdaQuantityForOutput params inputMap)
-        - coinToInteger inputCoin
-
-    TokenBundle inputCoin inputMap = inputBundle
-
-addInputToNewOutputWithoutReclaimingAda
-    :: forall s i. Size s
-    => SelectionAddInput s i
-addInputToNewOutputWithoutReclaimingAda
-    params selection (inputId, inputBundle) = do
-          outputCoin <- computeOutputCoin
-          let outputBundle = TokenBundle outputCoin inputMap
-          newSize <- computeNewSize outputBundle
-          let newFeeExcess = feeExcess selection <> Coin.distance
-                  (costOfOutput params inputBundle)
-                  (costOfOutput params outputBundle)
-          pure
-              $ selection {feeExcess = newFeeExcess, size = newSize}
-              & unsafeAddInput (inputId, inputBundle)
-              & unsafeAddOutput params outputBundle
-  where
-    TokenBundle inputCoin inputMap = inputBundle
-
-    computeOutputCoin :: Either (SelectionError s) Coin
-    computeOutputCoin = do
-        outputCoin <- maybeToEither SelectionAdaInsufficient
-            $ coinFromInteger
-            $ coinToInteger inputCoin
-            - coinToInteger (costOfInput params)
-            - coinToInteger (costOfOutput params inputBundle)
-        guardE (outputCoin >= minimumAdaQuantityForOutput params inputMap)
-            SelectionAdaInsufficient
-        pure outputCoin
-
-    computeNewSize :: TokenBundle -> Either (SelectionError s) s
-    computeNewSize outputBundle = guardSize params $ mconcat
-        [ size selection
-        , sizeOfInput params
-        , sizeOfOutput params outputBundle
-        ]
-
-unsafeAddInput
-    :: (i, TokenBundle)
-    -> Selection i s
-    -> Selection i s
-unsafeAddInput input selection = selection
-    { inputs = NE.cons input (inputs selection) }
-
-unsafeAddOutput
-    :: SelectionParameters s
-    -> TokenBundle
-    -> Selection i s
-    -> Selection i s
-unsafeAddOutput params outputBundle selection = selection
-    { outputs = NE.fromList $ L.insertBy
-        (outputOrdering params)
-        (outputBundle)
-        (NE.toList $ outputs selection)
-    }
-
---------------------------------------------------------------------------------
--- Coalescing bundles
+-- Coalescing outputs
 --------------------------------------------------------------------------------
 
 coalesceOutputs
@@ -834,152 +598,10 @@ coalesceOutputs
     -> NonEmpty TokenBundle
 coalesceOutputs params = splitBundleIfLimitsExceeded params . F.fold
 
--- TODO: We can do better, by trying to merge each new bundle with each of the
--- already coalesced bundles.
-{-
-coalesceOutputs2
-    :: Size s
-    => SelectionParameters s
-    -> NonEmpty TokenBundle
-    -> NonEmpty TokenBundle
-coalesceOutputs2 params bundles = NE.fromList $ coalesce (NE.toList bundles) []
-  where
-    coalesce [] coalesced =
-        coalesced
-    coalesce (b1 : remaining) (b2 : coalesced)
-        | Just b3 <- safeCoalesceOutputs params b1 b2 =
-            coalesce remaining (b3 : coalesced)
-    coalesce (b : remaining) coalesced =
-        coalesce remaining (b : coalesced)
--}
-{-
-coalesceOutputs
-    :: SelectionParameters s
-    -> NonEmpty TokenBundle
-    -> NonEmpty TokenBundle
-coalesceOutputs params (bundle :| bundles) =
-    L.foldl' (\acc b -> insertOutput params b acc) (bundle :| []) bundles
-
-insertOutput
-    :: SelectionParameters s
-    -> TokenBundle
-    -> NonEmpty TokenBundle
-    -> NonEmpty TokenBundle
-insertOutput params bundle bundles = NE.fromList $ run (NE.toList bundles) []
-  where
-    run [] processed =
-        bundle : processed
-    run (b1 : remaining) processed
-        | Just b2 <- safeCoalesceOutputs params bundle b1 =
-            b2 : (remaining <> processed)
-    run (b1 : remaining) processed =
-        run remaining (b1 : processed)
--}
-{-
-safeCoalesceOutputs
-    :: Size s
-    => SelectionParameters s
-    -> TokenBundle
-    -> TokenBundle
-    -> Maybe TokenBundle
-safeCoalesceOutputs params b1 b2
-    | outputSizeWithinLimit params coalescedOutputWithMaxAda =
-        Just coalescedOutput
-    | otherwise =
-        Nothing
-  where
-    coalescedOutput = b1 <> b2
-    coalescedOutputWithMaxAda = TokenBundle.setCoin coalescedOutput maxBound
--}
 minimizeOutput :: SelectionParameters s -> TokenBundle -> TokenBundle
 minimizeOutput params output
     = TokenBundle.setCoin output
     $ minimumAdaQuantityForOutput params (view #tokens output)
-
---------------------------------------------------------------------------------
--- Reclaiming ada from outputs
---------------------------------------------------------------------------------
-
-data ReclaimAdaResult s = ReclaimAdaResult
-    { reducedOutputs :: NonEmpty TokenBundle
-    , costReduction :: Coin
-    , sizeReduction :: s
-    , excessReclaimedAda :: Coin
-    }
-
--- Pre-condition (needs to be checked): all bundles have at least their
--- minimum ada quantities (or else return 'Nothing').
---
--- Pre-condition (not checked): outputs are in order of their minimum ada
--- quantity.
---
-reclaimAda
-    :: Size s
-    => SelectionParameters s
-    -> Coin
-    -- ^ Quantity of ada to reclaim
-    -> NonEmpty TokenBundle
-    -- ^ Outputs from which to reclaim ada
-    -> Maybe (ReclaimAdaResult s)
-reclaimAda params totalAdaToReclaim outputs
-    | totalReclaimableAda < totalAdaToReclaim =
-        Nothing
-    | any (not . outputSatisfiesMinimumAdaQuantity params) outputs =
-        Nothing
-    | otherwise =
-        Just ReclaimAdaResult
-            { reducedOutputs
-            , costReduction
-            , sizeReduction
-            , excessReclaimedAda
-            }
-  where
-    (excessReclaimedAda, reducedOutputs) = NE.fromList <$>
-        run feeExcessAtStart (NE.toList outputsWithMinimumAda) []
-
-    costReduction = Coin.distance
-        (F.foldMap (costOfOutputCoin params . view #coin) outputs)
-        (F.foldMap (costOfOutputCoin params . view #coin) reducedOutputs)
-
-    sizeReduction = sizeDistance
-        (F.foldMap (sizeOfOutputCoin params . view #coin) outputs)
-        (F.foldMap (sizeOfOutputCoin params . view #coin) reducedOutputs)
-
-    run :: Coin -> [TokenBundle] -> [TokenBundle] -> (Coin, [TokenBundle])
-    run (Coin 0) remaining processed =
-        (Coin 0, insertManyBy (outputOrdering params) remaining processed)
-    run feeExcessRemaining [] processed =
-        (feeExcessRemaining, L.sortBy (outputOrdering params) processed)
-    run feeExcessRemaining (output : remaining) processed =
-        run feeExcessRemaining' remaining (output' : processed)
-      where
-        (feeExcessRemaining', output') =
-            minimizeFeeExcessForOutput params (feeExcessRemaining, output)
-
-    feeExcessAtStart :: Coin
-    feeExcessAtStart = Coin.distance totalReclaimableAda totalAdaToReclaim
-
-    totalReclaimableAda :: Coin
-    totalReclaimableAda = totalCostOfExcessAda <> totalExcessAda
-
-    totalExcessAda :: Coin
-    totalExcessAda = F.foldMap (excessAdaForOutput params) outputs
-
-    totalCostOfExcessAda :: Coin
-    totalCostOfExcessAda = F.foldMap costOfExcessAdaForOutput outputs
-
-    outputsWithMinimumAda :: NonEmpty TokenBundle
-    outputsWithMinimumAda = minimizeAda <$> outputs
-
-    costOfExcessAdaForOutput :: TokenBundle -> Coin
-    costOfExcessAdaForOutput output = Coin.distance
-        (costOfOutputCoin params (view #coin output))
-        (costOfOutputCoin params (view #coin (minimizeAda output)))
-
-    minimizeAda :: TokenBundle -> TokenBundle
-    minimizeAda output
-        = TokenBundle.setCoin output
-        $ minimumAdaQuantityForOutput params (view #tokens output)
 
 --------------------------------------------------------------------------------
 -- Minimizing the fee excess
@@ -1099,9 +721,6 @@ findFixedPoint f = findInner
   where
     findInner a = let fa = f a in if a == fa then a else findInner fa
 
-guardE :: Bool -> e -> Either e ()
-guardE condition e = if condition then Right () else Left e
-
 guardSize :: Ord s => SelectionParameters s -> s -> Either (SelectionError s) s
 guardSize params selectionSizeRequired
     | selectionSizeRequired <= selectionSizeMaximum =
@@ -1114,27 +733,8 @@ guardSize params selectionSizeRequired
   where
     selectionSizeMaximum = maximumSizeOfSelection params
 
-replaceHeadOfList :: NonEmpty a -> a -> NonEmpty a
-replaceHeadOfList (_ :| as) a = a :| as
-
-coinFromInteger :: Integer -> Maybe Coin
-coinFromInteger i
-    | i < fromIntegral (unCoin $ minBound @Coin) = Nothing
-    | i > fromIntegral (unCoin $ maxBound @Coin) = Nothing
-    | otherwise = Just $ Coin $ fromIntegral i
-
-coinToInteger :: Coin -> Integer
-coinToInteger = fromIntegral . unCoin
-
 insertManyBy :: (a -> a -> Ordering) -> [a] -> [a] -> [a]
 insertManyBy = L.foldl' . flip . L.insertBy
-
-eithersToEither :: NonEmpty (Either e a) -> Either e a
-eithersToEither eithers
-    | Just success <- maybesToMaybe (eitherToMaybe <$> eithers) =
-        pure success
-    | otherwise =
-        NE.head eithers
 
 maybesToMaybe :: NonEmpty (Maybe a) -> Maybe a
 maybesToMaybe = listToMaybe . catMaybes . NE.toList

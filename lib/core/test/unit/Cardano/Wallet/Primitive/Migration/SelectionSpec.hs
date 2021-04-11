@@ -26,7 +26,7 @@ import Cardano.Wallet.Primitive.Migration.Selection
     , ReclaimAdaResult (..)
     , excessAdaForOutput
     , reclaimAda
-    , minimizeFeeExcess
+    , minimizeFeeExcessForOutput
     , Size (..)
     , Selection (..)
     , SelectionError (..)
@@ -144,8 +144,8 @@ spec = describe "Cardano.Wallet.Primitive.Migration.SelectionSpec" $
 
     parallel $ describe "Minimizing fee excesses" $ do
 
-        it "prop_minimizeFeeExcess" $
-            property prop_minimizeFeeExcess
+        it "prop_minimizeFeeExcessForOutput" $
+            property prop_minimizeFeeExcessForOutput
 
 --------------------------------------------------------------------------------
 -- Creating a selection
@@ -187,7 +187,7 @@ prop_create args =
         "Success with more than one output" $
     cover 10 (selectionResultHasOneOutput result)
         "Success with one output" $
-    cover 10 (selectionResultHasNonZeroFeeExcess result)
+    cover 0 (selectionResultHasNonZeroFeeExcess result)
         "Success with non-zero fee excess" $
     cover 5 (selectionResultHasInsufficientAda result)
         "Failure due to insufficient ada" $
@@ -521,32 +521,35 @@ prop_reclaimAda mockArgs =
 -- Minimizing fee excesses
 --------------------------------------------------------------------------------
 
-data MockMinimizeFeeExcessArguments = MockMinimizeFeeExcessArguments
-    { mockSelectionParameters :: MockSelectionParameters
-    , mockFeeExcessToMinimize :: Coin
-    , mockOutput :: TokenBundle
-    }
+data MockMinimizeFeeExcessForOutputArguments =
+    MockMinimizeFeeExcessForOutputArguments
+        { mockSelectionParameters :: MockSelectionParameters
+        , mockFeeExcessToMinimize :: Coin
+        , mockOutput :: TokenBundle
+        }
     deriving (Eq, Show)
 
-genMockMinimizeFeeExcessArguments :: Gen MockMinimizeFeeExcessArguments
-genMockMinimizeFeeExcessArguments = do
+genMockMinimizeFeeExcessForOutputArguments
+    :: Gen MockMinimizeFeeExcessForOutputArguments
+genMockMinimizeFeeExcessForOutputArguments = do
     mockSelectionParameters <- genMockSelectionParameters
     mockOutput <- genTokenBundle mockSelectionParameters
     mockFeeExcessToMinimize <- genCoin
-    pure MockMinimizeFeeExcessArguments
+    pure MockMinimizeFeeExcessForOutputArguments
         { mockSelectionParameters
         , mockFeeExcessToMinimize
         , mockOutput
         }
 
-instance Arbitrary MockMinimizeFeeExcessArguments where
-    arbitrary = genMockMinimizeFeeExcessArguments
+instance Arbitrary MockMinimizeFeeExcessForOutputArguments where
+    arbitrary = genMockMinimizeFeeExcessForOutputArguments
 
 conjoinMap :: [(String, Bool)] -> Property
 conjoinMap = conjoin . fmap (\(d, t) -> counterexample d t)
 
-prop_minimizeFeeExcess :: Blind MockMinimizeFeeExcessArguments -> Property
-prop_minimizeFeeExcess mockArgs =
+prop_minimizeFeeExcessForOutput
+    :: Blind MockMinimizeFeeExcessForOutputArguments -> Property
+prop_minimizeFeeExcessForOutput mockArgs =
     checkCoverage $
     cover 10 (feeExcessAfter == Coin 0)
         "feeExcessAfter == 0" $
@@ -569,7 +572,7 @@ prop_minimizeFeeExcess mockArgs =
             else True)
         ]
   where
-    Blind MockMinimizeFeeExcessArguments
+    Blind MockMinimizeFeeExcessForOutputArguments
         { mockSelectionParameters
         , mockFeeExcessToMinimize
         , mockOutput
@@ -577,7 +580,7 @@ prop_minimizeFeeExcess mockArgs =
 
     params = unMockSelectionParameters mockSelectionParameters
     (feeExcessAfter, outputBundleAfter) =
-        minimizeFeeExcess params (mockFeeExcessToMinimize, mockOutput)
+        minimizeFeeExcessForOutput params (mockFeeExcessToMinimize, mockOutput)
 
     feeExcessBefore =
         mockFeeExcessToMinimize

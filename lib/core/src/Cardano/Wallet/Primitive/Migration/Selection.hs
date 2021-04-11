@@ -75,6 +75,7 @@ module Cardano.Wallet.Primitive.Migration.Selection
 
     -- * Minimizing fee excess
     , minimizeFeeExcess
+    , minimizeFeeExcessForOutput
 
     -- * Miscellaneous functions
     , findFixedPoint
@@ -518,6 +519,16 @@ computeCurrentFee Selection {inputs, outputs, rewardWithdrawal}
     adaDifference =
         Coin.distance adaBalanceIn adaBalanceOut
 
+computeFeeExcess
+    :: SelectionParameters s -> Selection i s -> Maybe Coin
+computeFeeExcess params selection = case computeCurrentFee selection of
+    Right currentFee | currentFee >= minimumFee ->
+        Just $ Coin.distance currentFee minimumFee
+    _ ->
+        Nothing
+  where
+    minimumFee = computeMinimumFee params selection
+
 -- | Calculates the current size of a selection.
 --
 computeCurrentSize
@@ -579,43 +590,29 @@ create
     -> NonEmpty (i, TokenBundle)
     -> Either (SelectionError s) (Selection i s)
 create params rewardWithdrawal inputs = do
-    let coalescedBundles = NE.sortBy
-            (outputOrdering params)
-            (coalesceOutputs params $ snd <$> inputs)
-    guardE (all (outputSatisfiesMinimumAdaQuantity params) coalescedBundles)
-        SelectionAdaInsufficient
+    let minimizedOutputs = minimizeOutput <$>
+            NE.sortBy
+                (outputOrdering params)
+                (coalesceOutputs params $ snd <$> inputs)
     let selection = Selection
             { inputs
-            , outputs = coalescedBundles
+            , outputs = minimizedOutputs
             , feeExcess = Coin 0
             , size = mempty
             , rewardWithdrawal
             }
-    let minimumFee = computeMinimumFee params selection
-    let adaToReclaim = fromMaybe (Coin 0) $ Coin.subtractCoin
-            (minimumFee)
-            (rewardWithdrawal)
-    ReclaimAdaResult {reducedOutputs, excessReclaimedAda} <-
-        maybeToEither SelectionAdaInsufficient $
-        reclaimAda params adaToReclaim coalescedBundles
-    let reducedSelection = selection {outputs = reducedOutputs}
-    size <- guardSize params $ computeCurrentSize params reducedSelection
-    -- We have already reclaimed ada from the outputs to pay for the fee. But
-    -- we might have reclaimed slightly more than we need, as reducing an ada
-    -- quantity can also reduce its cost. Therefore we need to record the fee
-    -- excess here, as it might be greater than zero.
-    _feeExcess <- do
-        let mf = computeMinimumFee params reducedSelection {size}
-        case computeCurrentFee reducedSelection {size} of
-            Right cf | cf >= mf ->
-                pure (Coin.distance cf mf)
-            _ ->
-                Left SelectionAdaInsufficient
-    pure reducedSelection
-        { size
-        , feeExcess = excessReclaimedAda <>
-            (fromMaybe (Coin 0) $ Coin.subtractCoin rewardWithdrawal minimumFee)
-        }
+    currentFeeExcess <- maybeToEither SelectionAdaInsufficient $
+        computeFeeExcess params selection
+    let (feeExcess, outputs) =
+            minimizeFeeExcess params (currentFeeExcess, minimizedOutputs)
+    let rebalancedSelection = selection {feeExcess, outputs}
+    size <- guardSize params $ computeCurrentSize params rebalancedSelection
+    pure rebalancedSelection {size}
+  where
+    minimizeOutput :: TokenBundle -> TokenBundle
+    minimizeOutput output
+        = TokenBundle.setCoin output
+        $ minimumAdaQuantityForOutput params (view #tokens output)
 
 --------------------------------------------------------------------------------
 -- Extending a selection
@@ -926,7 +923,7 @@ reclaimAda params totalAdaToReclaim outputs
         run feeExcessRemaining' remaining (output' : processed)
       where
         (feeExcessRemaining', output') =
-            minimizeFeeExcess params (feeExcessRemaining, output)
+            minimizeFeeExcessForOutput params (feeExcessRemaining, output)
 
     feeExcessAtStart :: Coin
     feeExcessAtStart = Coin.distance totalReclaimableAda totalAdaToReclaim
@@ -953,13 +950,40 @@ reclaimAda params totalAdaToReclaim outputs
         = TokenBundle.setCoin output
         $ minimumAdaQuantityForOutput params (view #tokens output)
 
+--------------------------------------------------------------------------------
+-- Minimizing the fee excess
+--------------------------------------------------------------------------------
+
 minimizeFeeExcess
+    :: Size s
+    => SelectionParameters s
+    -> (Coin, NonEmpty TokenBundle)
+    -> (Coin, NonEmpty TokenBundle)
+minimizeFeeExcess params (currentFeeExcess, outputs) =
+    NE.fromList <$> run currentFeeExcess (NE.toList outputs) []
+  where
+    run :: Coin -> [TokenBundle] -> [TokenBundle] -> (Coin, [TokenBundle])
+    run (Coin 0) remaining processed =
+        (Coin 0, insertManyBy (outputOrdering params) remaining processed)
+    run feeExcessRemaining [] processed =
+        (feeExcessRemaining, L.sortBy (outputOrdering params) processed)
+    run feeExcessRemaining (output : remaining) processed =
+        run feeExcessRemaining' remaining (output' : processed)
+      where
+        (feeExcessRemaining', output') =
+            minimizeFeeExcessForOutput params (feeExcessRemaining, output)
+
+--------------------------------------------------------------------------------
+-- Minimizing the fee excess for a single output
+--------------------------------------------------------------------------------
+
+minimizeFeeExcessForOutput
     :: SelectionParameters s
     -> (Coin, TokenBundle)
     -- ^ Fee excess and output bundle.
     -> (Coin, TokenBundle)
     -- ^ Fee excess and output bundle after optimization.
-minimizeFeeExcess params =
+minimizeFeeExcessForOutput params =
     findFixedPoint reduceFeeExcess
   where
     reduceFeeExcess :: (Coin, TokenBundle) -> (Coin, TokenBundle)

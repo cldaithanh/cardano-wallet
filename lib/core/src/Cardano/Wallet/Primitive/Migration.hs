@@ -116,7 +116,7 @@ extendSelection
 extendSelection params = extendSelectionWithFreerider
   where
     extendSelectionWithFreerider (utxo, selection) =
-        case extendSelectionWithInput params Freerider (utxo, selection) of
+        case extendSelectionWithEntry params Freerider (utxo, selection) of
             Right (utxo', selection') ->
                 extendSelectionWithFreerider (utxo', selection')
             Left ExtendSelectionAdaInsufficient ->
@@ -127,7 +127,7 @@ extendSelection params = extendSelectionWithFreerider
                 Just (utxo, selection)
 
     extendSelectionWithSupporter (utxo, selection) =
-        case extendSelectionWithInput params Supporter (utxo, selection) of
+        case extendSelectionWithEntry params Supporter (utxo, selection) of
             Right (utxo', selection') ->
                 extendSelectionWithFreerider (utxo', selection')
             Left ExtendSelectionAdaInsufficient ->
@@ -142,13 +142,13 @@ data ExtendSelectionError
     | ExtendSelectionEntriesExhausted
     | ExtendSelectionFull
 
-extendSelectionWithInput
+extendSelectionWithEntry
     :: Size s
     => SelectionParameters s
     -> UTxOEntryClassification
     -> (ClassifiedUTxO i, Selection i s)
     -> Either ExtendSelectionError (ClassifiedUTxO i, Selection i s)
-extendSelectionWithInput params classification (utxo, selection) =
+extendSelectionWithEntry params classification (utxo, selection) =
     case selectWithClassification classification utxo of
         Just (input, utxo') ->
             let inputs' = input `NE.cons` inputs selection in

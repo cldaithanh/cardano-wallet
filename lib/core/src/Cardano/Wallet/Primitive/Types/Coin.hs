@@ -111,7 +111,7 @@ instance Bounded Coin where
     maxBound = Coin 45_000_000_000_000_000
 
 instance Buildable Coin where
-    build (Coin c) = fixedF @Double 6 (fromIntegral c / 1e6)
+    build (Coin c) = build c
 
 -- | Compatibility function to use while 'Quantity' is still used in non-API
 -- parts of the code.

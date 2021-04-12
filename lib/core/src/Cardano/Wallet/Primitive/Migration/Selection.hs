@@ -40,6 +40,7 @@ module Cardano.Wallet.Primitive.Migration.Selection
 
     -- * Selection parameter functions
     , costOfOutputCoin
+    , sizeOfOutputCoin
     , outputIsValid
     , outputSizeWithinLimit
 
@@ -125,6 +126,9 @@ data SelectionParameters s = SelectionParameters
 
 costOfOutputCoin :: SelectionParameters s -> Coin -> Coin
 costOfOutputCoin params = costOfOutput params . TokenBundle.fromCoin
+
+sizeOfOutputCoin :: SelectionParameters s -> Coin -> s
+sizeOfOutputCoin params = sizeOfOutput params . TokenBundle.fromCoin
 
 outputIsValid
     :: forall s. Size s
@@ -607,11 +611,14 @@ minimizeFeeForOutput
     -> (Coin, TokenBundle)
     -- ^ Fee excess and output bundle after optimization.
 minimizeFeeForOutput params =
-    findFixedPoint reduceFeeExcess
+    findFixedPoint reduceFee
   where
-    reduceFeeExcess :: (Coin, TokenBundle) -> (Coin, TokenBundle)
-    reduceFeeExcess (feeExcess, outputBundle) =
-        (feeExcessFinal, TokenBundle.setCoin outputBundle outputCoinFinal)
+    reduceFee :: (Coin, TokenBundle) -> (Coin, TokenBundle)
+    reduceFee (feeExcess, outputBundle)
+        | outputCoinFinalCostIncrease < outputCoinFinalIncrease =
+             (feeExcessFinal, outputBundleFinal)
+        | otherwise =
+            (feeExcess, outputBundle)
       where
         outputCoin = view #coin outputBundle
         outputCoinMaxCostIncrease = Coin.distance
@@ -625,6 +632,7 @@ minimizeFeeForOutput params =
             (costOfOutputCoin params outputCoin)
             (costOfOutputCoin params outputCoinFinal)
         outputCoinFinalIncrease = Coin.distance outputCoin outputCoinFinal
+        outputBundleFinal = TokenBundle.setCoin outputBundle outputCoinFinal
         feeExcessFinal = Coin
             $ unCoin feeExcess
             - unCoin outputCoinFinalIncrease

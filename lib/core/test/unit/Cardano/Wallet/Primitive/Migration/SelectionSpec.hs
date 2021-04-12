@@ -12,8 +12,7 @@
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 
 module Cardano.Wallet.Primitive.Migration.SelectionSpec
-    ( spec
-    ) where
+    where
 
 import Prelude
 
@@ -27,6 +26,7 @@ import Cardano.Wallet.Primitive.Migration.Selection
     , check
     , coalesceOutputs
     , costOfOutputCoin
+    , sizeOfOutputCoin
     , create
     , minimizeFeeForOutput
     , outputSizeWithinLimit
@@ -34,9 +34,9 @@ import Cardano.Wallet.Primitive.Migration.Selection
 import Cardano.Wallet.Primitive.Types.Coin
     ( Coin (..) )
 import Cardano.Wallet.Primitive.Types.TokenBundle
-    ( TokenBundle (..) )
+    ( Flat (..), TokenBundle (..) )
 import Cardano.Wallet.Primitive.Types.TokenMap
-    ( AssetId, Flat (..), TokenMap )
+    ( AssetId, TokenMap )
 import Cardano.Wallet.Primitive.Types.TokenMap.Gen
     ( genAssetIdLargeRange )
 import Cardano.Wallet.Primitive.Types.TokenQuantity
@@ -55,6 +55,8 @@ import Data.Generics.Labels
     ()
 import Data.List.NonEmpty
     ( NonEmpty (..) )
+import Data.Maybe
+    ( fromMaybe )
 import Data.Semigroup
     ( mtimesDefault )
 import Fmt
@@ -87,6 +89,7 @@ import Test.QuickCheck
     )
 
 import qualified Cardano.Wallet.Primitive.Types.Coin as Coin
+import qualified Cardano.Wallet.Primitive.Types.TokenBundle as TokenBundle
 import qualified Cardano.Wallet.Primitive.Types.TokenMap as TokenMap
 import qualified Data.ByteString as BS
 import qualified Data.Foldable as F
@@ -113,6 +116,16 @@ spec = describe "Cardano.Wallet.Primitive.Migration.SelectionSpec" $
 
         it "prop_minimizeFeeForOutput" $
             property prop_minimizeFeeForOutput
+
+    parallel $ describe "Cost calculations" $ do
+
+        it "prop_costOfOutput" $
+            property prop_costOfOutput
+
+    parallel $ describe "Size calculations" $ do
+
+        it "prop_sizeOfOutput" $
+            property prop_sizeOfOutput
 
 --------------------------------------------------------------------------------
 -- Creating a selection
@@ -241,7 +254,8 @@ genMockMinimizeFeeExcessForOutputArguments
 genMockMinimizeFeeExcessForOutputArguments = do
     mockSelectionParameters <- genMockSelectionParameters
     mockOutput <- genTokenBundle
-    mockFeeExcessToMinimize <- genCoin
+    -- Choose a low fee excess that is difficult to minimize:
+    mockFeeExcessToMinimize <- genCoinRange (Coin 0) (Coin 10)
     pure MockMinimizeFeeExcessForOutputArguments
         { mockSelectionParameters
         , mockFeeExcessToMinimize
@@ -255,25 +269,21 @@ prop_minimizeFeeForOutput
     :: Blind MockMinimizeFeeExcessForOutputArguments -> Property
 prop_minimizeFeeForOutput mockArgs =
     checkCoverage $
-    cover 10 (feeExcessAfter == Coin 0)
+    cover 50 (feeExcessAfter == Coin 0)
         "feeExcessAfter == 0" $
-    cover 0 (feeExcessAfter /= Coin 0)
+    cover 0.1 (feeExcessAfter /= Coin 0)
         "feeExcessAfter /= 0" $
-    counterexample counterexampleText $
-    -- TODO: Check that the feeExcessAfter is what is expected.
-    conjoinMap
+    counterexample counterexampleText $ conjoinMap
         [ ( "feeExcessAfter > feeExcessBefore"
           , feeExcessAfter <= feeExcessBefore )
         , ( "outputCoinAfter < outputCoinBefore"
           , outputCoinAfter >= outputCoinBefore )
         , ( "outputCoinCostAfter < outputCoinCostBefore"
           , outputCoinCostAfter >= outputCoinCostBefore )
-        , ( "adaSpent <> feeExcessAfter /= feeExcessBefore"
-          , adaSpent <> feeExcessAfter == feeExcessBefore )
-        , ( "costOfIncreasingFinalOutputCoinByOne < feeExcessAfter"
-          , if feeExcessAfter > Coin 0
-            then costOfIncreasingFinalOutputCoinByOne >= feeExcessAfter
-            else True )
+        , ( "feeExcessReduction <> feeExcessAfter /= feeExcessBefore"
+          , feeExcessReduction <> feeExcessAfter == feeExcessBefore )
+        , ( "costOfEliminatingFeeExcess < gainOfEliminatingFeeExcess"
+          , costOfEliminatingFeeExcess >= gainOfEliminatingFeeExcess )
         ]
   where
     Blind MockMinimizeFeeExcessForOutputArguments
@@ -281,54 +291,137 @@ prop_minimizeFeeForOutput mockArgs =
         , mockFeeExcessToMinimize
         , mockOutput
         } = mockArgs
-
     params = unMockSelectionParameters mockSelectionParameters
-    (feeExcessAfter, outputBundleAfter) =
-        minimizeFeeForOutput params (mockFeeExcessToMinimize, mockOutput)
 
-    adaSpent =
-        outputCoinIncrease <> outputCostIncrease
+    (feeExcessAfter, outputAfter) =
+        minimizeFeeForOutput params (mockFeeExcessToMinimize, mockOutput)
+    costOfEliminatingFeeExcess = Coin.distance
+        (costOfOutputCoin params outputCoinAfter)
+        (costOfOutputCoin params (outputCoinAfter <> feeExcessAfter))
+    gainOfEliminatingFeeExcess = fromMaybe (Coin 0) $ Coin.subtractCoin
+        feeExcessAfter
+        costOfEliminatingFeeExcess
     feeExcessBefore =
         mockFeeExcessToMinimize
+    feeExcessReduction =
+        outputCoinIncrease <> outputCostIncrease
+    outputCoinAfter =
+        view #coin outputAfter
     outputCoinBefore =
         view #coin mockOutput
-    outputCoinAfter =
-        view #coin outputBundleAfter
     outputCoinIncrease =
         Coin.distance outputCoinBefore outputCoinAfter
-    outputCoinCostBefore =
-        costOfOutputCoin params outputCoinBefore
     outputCoinCostAfter =
         costOfOutputCoin params outputCoinAfter
+    outputCoinCostBefore =
+        costOfOutputCoin params outputCoinBefore
     outputCostIncrease =
         Coin.distance outputCoinCostBefore outputCoinCostAfter
-    outputMinimumAdaQuantity =
-        minimumAdaQuantityForOutput params (view #tokens mockOutput)
-    costOfIncreasingFinalOutputCoinByOne =
-        Coin.distance
-            (costOfOutputCoin params outputCoinAfter)
-            (costOfOutputCoin params (outputCoinAfter <> Coin 1))
 
     counterexampleText = counterexampleMap
-        [ ( "feeExcessBefore"
-          , show feeExcessBefore )
+        [ ( "costOfEliminatingFeeExcess"
+          , show costOfEliminatingFeeExcess )
+        , ( "gainOfEliminatingFeeExcess"
+          , show gainOfEliminatingFeeExcess )
         , ( "feeExcessAfter"
           , show feeExcessAfter )
-        , ( "outputMinimumAdaQuantity"
-          , show outputMinimumAdaQuantity )
-        , ( "outputCoinBefore"
-          , show outputCoinBefore )
+        , ( "feeExcessBefore"
+          , show feeExcessBefore )
+        , ( "feeExcessReduction"
+          , show feeExcessReduction )
         , ( "outputCoinAfter"
           , show outputCoinAfter )
-        , ( "outputCoinCostBefore"
-          , show outputCoinCostBefore )
+        , ( "outputCoinBefore"
+          , show outputCoinBefore )
         , ( "outputCoinCostAfter"
           , show outputCoinCostAfter )
+        , ( "outputCoinCostBefore"
+          , show outputCoinCostBefore )
         , ( "outputCostIncrease"
           , show outputCostIncrease )
-        , ( "costOfIncreasingFinalOutputCoinByOne"
-          , show costOfIncreasingFinalOutputCoinByOne )
         ]
+
+--------------------------------------------------------------------------------
+-- Cost calculations
+--------------------------------------------------------------------------------
+
+data MockCostOfOutputArguments = MockCostOfOutputArguments
+    { mockSelectionParameters :: MockSelectionParameters
+    , mockOutput :: TokenBundle
+    } deriving (Eq, Show)
+
+genMockCostOfOutputArguments :: Gen MockCostOfOutputArguments
+genMockCostOfOutputArguments = MockCostOfOutputArguments
+    <$> genMockSelectionParameters
+    <*> genTokenBundle
+
+instance Arbitrary MockCostOfOutputArguments where
+    arbitrary = genMockCostOfOutputArguments
+
+prop_costOfOutput :: MockCostOfOutputArguments -> Property
+prop_costOfOutput mockArgs = conjoin
+    [ costOfOutput params mockOutput < costOfOutput params outputWithLargerCoin
+    , Coin.distance
+        (costOfOutput params mockOutput)
+        (costOfOutput params outputWithLargerCoin)
+      ==
+      Coin.distance
+        (costOfOutputCoin params (view #coin mockOutput))
+        (costOfOutputCoin params (view #coin outputWithLargerCoin))
+    ]
+  where
+    outputWithLargerCoin =
+        TokenBundle.setCoin mockOutput
+            $ multiplyCoinByTen
+            $ TokenBundle.getCoin mockOutput
+    MockCostOfOutputArguments
+        { mockSelectionParameters
+        , mockOutput
+        } = mockArgs
+    params =
+        unMockSelectionParameters mockSelectionParameters
+    multiplyCoinByTen (Coin n) = Coin $ 10 * n
+
+--------------------------------------------------------------------------------
+-- Size calculations
+--------------------------------------------------------------------------------
+
+data MockSizeOfOutputArguments = MockSizeOfOutputArguments
+    { mockSelectionParameters :: MockSelectionParameters
+    , mockOutput :: TokenBundle
+    } deriving (Eq, Show)
+
+genMockSizeOfOutputArguments :: Gen MockSizeOfOutputArguments
+genMockSizeOfOutputArguments = MockSizeOfOutputArguments
+    <$> genMockSelectionParameters
+    <*> genTokenBundle
+
+instance Arbitrary MockSizeOfOutputArguments where
+    arbitrary = genMockSizeOfOutputArguments
+
+prop_sizeOfOutput :: MockSizeOfOutputArguments -> Property
+prop_sizeOfOutput mockArgs = conjoin
+    [ sizeOfOutput params mockOutput < sizeOfOutput params outputWithLargerCoin
+    , sizeDistance
+        (sizeOfOutput params mockOutput)
+        (sizeOfOutput params outputWithLargerCoin)
+      ==
+      sizeDistance
+        (sizeOfOutputCoin params (view #coin mockOutput))
+        (sizeOfOutputCoin params (view #coin outputWithLargerCoin))
+    ]
+  where
+    outputWithLargerCoin =
+        TokenBundle.setCoin mockOutput
+            $ multiplyCoinByTen
+            $ TokenBundle.getCoin mockOutput
+    MockSizeOfOutputArguments
+        { mockSelectionParameters
+        , mockOutput
+        } = mockArgs
+    params =
+        unMockSelectionParameters mockSelectionParameters
+    multiplyCoinByTen (Coin n) = Coin $ 10 * n
 
 --------------------------------------------------------------------------------
 -- Mock results

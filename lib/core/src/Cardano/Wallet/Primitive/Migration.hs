@@ -193,6 +193,10 @@ selectFreerider utxo = case freeriders utxo of
 -- Classification of UTxO entries
 --------------------------------------------------------------------------------
 
+-- giver
+-- taker
+-- dust
+
 data ClassifiedUTxO i = ClassifiedUTxO
     { supporters :: [(i, TokenBundle)]
     , freeriders :: [(i, TokenBundle)]

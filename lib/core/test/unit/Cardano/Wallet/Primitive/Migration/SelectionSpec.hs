@@ -12,11 +12,9 @@
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 
 module Cardano.Wallet.Primitive.Migration.SelectionSpec
-    where
+    ( spec
+    ) where
 
--- TODO:
--- Add Quiet Show instances
---
 import Prelude
 
 import Cardano.Wallet.Primitive.Migration.Selection
@@ -30,7 +28,7 @@ import Cardano.Wallet.Primitive.Migration.Selection
     , coalesceOutputs
     , costOfOutputCoin
     , create
-    , minimizeFeeExcessForOutput
+    , minimizeFeeForOutput
     , outputSizeWithinLimit
     )
 import Cardano.Wallet.Primitive.Types.Coin
@@ -84,13 +82,11 @@ import Test.QuickCheck
     , genericShrink
     , oneof
     , property
-    , suchThat
     , vector
     , (===)
     )
 
 import qualified Cardano.Wallet.Primitive.Types.Coin as Coin
-import qualified Cardano.Wallet.Primitive.Types.TokenBundle as TokenBundle
 import qualified Cardano.Wallet.Primitive.Types.TokenMap as TokenMap
 import qualified Data.ByteString as BS
 import qualified Data.Foldable as F
@@ -103,20 +99,20 @@ spec = describe "Cardano.Wallet.Primitive.Migration.SelectionSpec" $
 
     modifyMaxSuccess (const 1000) $ do
 
-    parallel $ describe "Creating a selection" $ do
+    parallel $ describe "Creating selections" $ do
 
         it "prop_create" $
             property prop_create
 
-    parallel $ describe "Coalescing token bundles" $ do
+    parallel $ describe "Coalescing outputs" $ do
 
         it "prop_coalesceOutputs" $
             property prop_coalesceOutputs
 
-    parallel $ describe "Minimizing fee excesses" $ do
+    parallel $ describe "Minimizing fees" $ do
 
-        it "prop_minimizeFeeExcessForOutput" $
-            property prop_minimizeFeeExcessForOutput
+        it "prop_minimizeFeeForOutput" $
+            property prop_minimizeFeeForOutput
 
 --------------------------------------------------------------------------------
 -- Creating a selection
@@ -132,12 +128,10 @@ genMockCreateArguments :: Gen MockCreateArguments
 genMockCreateArguments = do
     mockSelectionParameters <- genMockSelectionParameters
     mockRewardWithdrawal <- genCoinRange (Coin 0) (Coin 100)
-    inputCount <- choose (1, 100)
+    inputCount <- choose (1, 10)
     mockInputs <- (:|)
-        <$> genMockInput mockSelectionParameters
-        <*> replicateM
-            (inputCount - 1)
-            (genMockInput mockSelectionParameters)
+        <$> genMockInput
+        <*> replicateM (inputCount - 1) genMockInput
     pure MockCreateArguments
         { mockSelectionParameters
         , mockInputs
@@ -152,15 +146,15 @@ prop_create args =
     checkCoverage $
     cover 50 (selectionResultIsSelection result)
         "Success" $
-    cover 5 (selectionResultHasMoreInputsThanOutputs result)
+    cover 10 (selectionResultHasMoreInputsThanOutputs result)
         "Success with more inputs than outputs" $
-    cover 0 (selectionResultHasMoreThanOneOutput result)
+    cover 10 (selectionResultHasMoreThanOneOutput result)
         "Success with more than one output" $
-    cover 1 (selectionResultHasOneOutput result)
+    cover 10 (selectionResultHasOneOutput result)
         "Success with one output" $
-    cover 0 (selectionResultHasNonZeroFeeExcess result)
-        "Success with non-zero fee excess" $
-    cover 0.1 (selectionResultHasInsufficientAda result)
+    cover 10 (selectionResultHasZeroFeeExcess result)
+        "Success with zero fee excess" $
+    cover 5 (selectionResultHasInsufficientAda result)
         "Failure due to insufficient ada" $
     cover 5 (selectionResultIsFull result)
         "Failure due to oversized selection" $
@@ -199,10 +193,8 @@ genMockCoalesceOutputsArguments = do
     mockSelectionParameters <- genMockSelectionParameters
     mockOutputCount <- choose (1, 10)
     mockOutputs <- (:|)
-        <$> genTokenBundle mockSelectionParameters
-        <*> replicateM
-            (mockOutputCount - 1)
-            (genTokenBundle mockSelectionParameters)
+        <$> genTokenBundle
+        <*> replicateM (mockOutputCount - 1) genTokenBundle
     pure MockCoalesceOutputsArguments
         { mockSelectionParameters
         , mockOutputs
@@ -221,9 +213,8 @@ prop_coalesceOutputs mockArgs =
     cover 2 (length result == 2)
         "length result == 2" $
     conjoin
-        [ --property $ length result <= length mockOutputs
-          --property $ all (outputSizeWithinLimit params) result
-          F.fold result === F.fold mockOutputs
+        [ all (outputSizeWithinLimit params) result
+        , F.fold result == F.fold mockOutputs
         ]
   where
     Blind MockCoalesceOutputsArguments
@@ -249,7 +240,7 @@ genMockMinimizeFeeExcessForOutputArguments
     :: Gen MockMinimizeFeeExcessForOutputArguments
 genMockMinimizeFeeExcessForOutputArguments = do
     mockSelectionParameters <- genMockSelectionParameters
-    mockOutput <- genTokenBundle mockSelectionParameters
+    mockOutput <- genTokenBundle
     mockFeeExcessToMinimize <- genCoin
     pure MockMinimizeFeeExcessForOutputArguments
         { mockSelectionParameters
@@ -260,12 +251,9 @@ genMockMinimizeFeeExcessForOutputArguments = do
 instance Arbitrary MockMinimizeFeeExcessForOutputArguments where
     arbitrary = genMockMinimizeFeeExcessForOutputArguments
 
-conjoinMap :: [(String, Bool)] -> Property
-conjoinMap = conjoin . fmap (\(d, t) -> counterexample d t)
-
-prop_minimizeFeeExcessForOutput
+prop_minimizeFeeForOutput
     :: Blind MockMinimizeFeeExcessForOutputArguments -> Property
-prop_minimizeFeeExcessForOutput mockArgs =
+prop_minimizeFeeForOutput mockArgs =
     checkCoverage $
     cover 10 (feeExcessAfter == Coin 0)
         "feeExcessAfter == 0" $
@@ -274,18 +262,18 @@ prop_minimizeFeeExcessForOutput mockArgs =
     counterexample counterexampleText $
     -- TODO: Check that the feeExcessAfter is what is expected.
     conjoinMap
-        [ ("feeExcessAfter >  feeExcessBefore"
-          , feeExcessAfter <= feeExcessBefore)
-        , ("outputCoinAfter <  outputCoinBefore"
-          , outputCoinAfter >= outputCoinBefore)
-        , ("outputCoinCostAfter <  outputCoinCostBefore"
-          , outputCoinCostAfter >= outputCoinCostBefore)
-        , ("outputCoinIncrease <> outputCostIncrease <> feeExcessAfter /= feeExcessBefore"
-          , outputCoinIncrease <> outputCostIncrease <> feeExcessAfter == feeExcessBefore)
-        , ("feeExcessAfter > Coin 0 && costOfIncreasingFinalOutputCoinByOne < feeExcessAfter"
+        [ ( "feeExcessAfter > feeExcessBefore"
+          , feeExcessAfter <= feeExcessBefore )
+        , ( "outputCoinAfter < outputCoinBefore"
+          , outputCoinAfter >= outputCoinBefore )
+        , ( "outputCoinCostAfter < outputCoinCostBefore"
+          , outputCoinCostAfter >= outputCoinCostBefore )
+        , ( "adaSpent <> feeExcessAfter /= feeExcessBefore"
+          , adaSpent <> feeExcessAfter == feeExcessBefore )
+        , ( "costOfIncreasingFinalOutputCoinByOne < feeExcessAfter"
           , if feeExcessAfter > Coin 0
             then costOfIncreasingFinalOutputCoinByOne >= feeExcessAfter
-            else True)
+            else True )
         ]
   where
     Blind MockMinimizeFeeExcessForOutputArguments
@@ -296,8 +284,10 @@ prop_minimizeFeeExcessForOutput mockArgs =
 
     params = unMockSelectionParameters mockSelectionParameters
     (feeExcessAfter, outputBundleAfter) =
-        minimizeFeeExcessForOutput params (mockFeeExcessToMinimize, mockOutput)
+        minimizeFeeForOutput params (mockFeeExcessToMinimize, mockOutput)
 
+    adaSpent =
+        outputCoinIncrease <> outputCostIncrease
     feeExcessBefore =
         mockFeeExcessToMinimize
     outputCoinBefore =
@@ -363,10 +353,6 @@ selectionResultHasOneOutput :: MockSelectionResult -> Bool
 selectionResultHasOneOutput = matchRight $ \selection ->
     F.length (outputs selection) == 1
 
-selectionResultHasNonZeroFeeExcess :: MockSelectionResult -> Bool
-selectionResultHasNonZeroFeeExcess = matchRight $ \selection ->
-    feeExcess selection > Coin 0
-
 selectionResultHasZeroFeeExcess :: MockSelectionResult -> Bool
 selectionResultHasZeroFeeExcess = matchRight $ \selection ->
     feeExcess selection == Coin 0
@@ -385,13 +371,10 @@ selectionResultIsFull = matchLeft $ \case
 -- Generating inputs
 --------------------------------------------------------------------------------
 
-genMockInput :: MockSelectionParameters -> Gen (MockInputId, TokenBundle)
-genMockInput mockParams = (,)
+genMockInput :: Gen (MockInputId, TokenBundle)
+genMockInput = (,)
     <$> genMockInputId
-    <*> genTokenBundle mockParams `suchThat`
-        (outputSizeWithinLimit params . flip TokenBundle.setCoin maxBound)
-  where
-    params = unMockSelectionParameters mockParams
+    <*> genTokenBundle
 
 --------------------------------------------------------------------------------
 -- Generating input identifiers
@@ -411,23 +394,17 @@ genMockInputId = MockInputId . BS.pack <$> vector 8
 -- Generating token bundles
 --------------------------------------------------------------------------------
 
-genTokenBundle :: MockSelectionParameters -> Gen TokenBundle
-genTokenBundle mockParams =
-    genInner  `suchThat` outputSizeWithinLimit params
+genTokenBundle :: Gen TokenBundle
+genTokenBundle = do
+    assetCount <- oneof
+        [ pure 0
+        , pure 1
+        , choose (2, 4)
+        ]
+    tokens <- TokenMap.fromFlatList <$> replicateM assetCount genAssetQuantity
+    coin <- genCoin
+    pure TokenBundle {coin, tokens}
   where
-    params = unMockSelectionParameters mockParams
-
-    genInner = do
-        assetCount <- oneof
-            [ pure 0
-            , pure 1
-            , choose (2, 4)
-            ]
-        tokens <- TokenMap.fromFlatList <$>
-            replicateM assetCount genAssetQuantity
-        coin <- genCoin
-        pure TokenBundle {coin, tokens}
-
     genAssetQuantity :: Gen (AssetId, TokenQuantity)
     genAssetQuantity = (,)
         <$> genAssetIdLargeRange
@@ -455,10 +432,6 @@ genTokenQuantityRange :: TokenQuantity -> TokenQuantity -> Gen TokenQuantity
 genTokenQuantityRange (TokenQuantity a) (TokenQuantity b) =
     TokenQuantity . fromIntegral @Integer
         <$> choose (fromIntegral a, fromIntegral b)
-
---------------------------------------------------------------------------------
--- Generating selections
---------------------------------------------------------------------------------
 
 --------------------------------------------------------------------------------
 -- Mock selection parameters
@@ -580,11 +553,6 @@ genMockSizeRange minSize maxSize =
     MockSize . fromIntegral @Integer @Natural <$>
         choose (fromIntegral minSize, fromIntegral maxSize)
 
-mockSizeSubtractSafe :: MockSize -> MockSize -> MockSize
-mockSizeSubtractSafe (MockSize a) (MockSize b)
-    | a >= b = MockSize (a - b)
-    | otherwise = MockSize 0
-
 --------------------------------------------------------------------------------
 -- Mock sizes of empty selections
 --------------------------------------------------------------------------------
@@ -607,16 +575,14 @@ newtype MockSizeOfInput = MockSizeOfInput
     deriving Show via Natural
 
 genMockSizeOfInput :: Gen MockSizeOfInput
-genMockSizeOfInput =
-    MockSizeOfInput <$> genMockSizeRange 0 10
+genMockSizeOfInput = MockSizeOfInput <$> genMockSizeRange 0 10
 
 --------------------------------------------------------------------------------
 -- Mock maximum sizes of outputs
 --------------------------------------------------------------------------------
 
 data MockMaximumSizeOfOutput = MockMaximumSizeOfOutput
-    { unMockMaximumSizeOfOutput :: MockSize
-    }
+    { unMockMaximumSizeOfOutput :: MockSize }
     deriving (Eq, Show)
 
 genMockMaximumSizeOfOutput :: Gen MockMaximumSizeOfOutput
@@ -635,7 +601,7 @@ newtype MockMaximumSizeOfSelection = MockMaximumSizeOfSelection
 
 genMockMaximumSizeOfSelection :: Gen MockMaximumSizeOfSelection
 genMockMaximumSizeOfSelection =
-    MockMaximumSizeOfSelection <$> genMockSizeRange 0 100_000
+    MockMaximumSizeOfSelection <$> genMockSizeRange 0 10_000
 
 --------------------------------------------------------------------------------
 -- Mock maximum token quantities
@@ -684,15 +650,13 @@ instance Arbitrary a => Arbitrary (NonEmpty a) where
 -- Internal types and functions
 --------------------------------------------------------------------------------
 
+conjoinMap :: [(String, Bool)] -> Property
+conjoinMap = conjoin . fmap (\(d, t) -> counterexample d t)
+
 counterexampleMap :: [(String, String)] -> String
 counterexampleMap
     = mconcat
     . fmap (\(k, v) -> k <> ":\n" <> v <> "\n\n")
-
-matchJust :: (a -> Bool) -> Maybe a -> Bool
-matchJust f result = case result of
-    Nothing -> False
-    Just x -> f x
 
 matchLeft :: (e -> Bool) -> Either e a -> Bool
 matchLeft f result = case result of

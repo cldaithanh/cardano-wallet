@@ -19,13 +19,13 @@ module Cardano.Wallet.Primitive.Migration.Selection
       SelectionParameters (..)
     , Size (..)
 
-    -- * Creating a selection
+    -- * Creating selections
     , create
     , Selection (..)
     , SelectionError (..)
     , SelectionFullError (..)
 
-    -- * Checking a selection for correctness
+    -- * Checking selections for correctness
     , SelectionCorrectness (..)
     , check
 
@@ -33,19 +33,15 @@ module Cardano.Wallet.Primitive.Migration.Selection
     -- Internal interface
     ----------------------------------------------------------------------------
 
-    -- * Computing bulk properties of a selection
+    -- * Computing bulk properties of selections
     , computeCurrentFee
     , computeCurrentSize
     , computeMinimumFee
 
     -- * Selection parameter functions
     , costOfOutputCoin
-    , excessAdaForOutput
-    , minimumAdaQuantityForOutputCoin
     , outputIsValid
-    , outputSatisfiesMinimumAdaQuantity
     , outputSizeWithinLimit
-    , sizeOfOutputCoin
 
     -- * Selection queries
     , outputOrdering
@@ -53,19 +49,16 @@ module Cardano.Wallet.Primitive.Migration.Selection
     -- * Coalescing token bundles
     , coalesceOutputs
 
-    -- * Minimizing fee excess
-    , minimizeFeeExcess
-    , minimizeFeeExcessForOutput
-
-    -- * Miscellaneous functions
-    , findFixedPoint
+    -- * Minimizing fees
+    , minimizeFee
+    , minimizeFeeForOutput
 
     ) where
 
 import Prelude
 
 import Cardano.Wallet.Primitive.Types.Coin
-    ( Coin (..), subtractCoin )
+    ( Coin (..) )
 import Cardano.Wallet.Primitive.Types.TokenBundle
     ( TokenBundle (..) )
 import Cardano.Wallet.Primitive.Types.TokenMap
@@ -83,7 +76,7 @@ import Data.Generics.Labels
 import Data.List.NonEmpty
     ( NonEmpty (..) )
 import Data.Maybe
-    ( catMaybes, fromMaybe, listToMaybe )
+    ( catMaybes, listToMaybe )
 import Data.Ord
     ( comparing )
 import GHC.Generics
@@ -91,7 +84,6 @@ import GHC.Generics
 
 import qualified Cardano.Wallet.Primitive.Types.Coin as Coin
 import qualified Cardano.Wallet.Primitive.Types.TokenBundle as TokenBundle
-import qualified Cardano.Wallet.Primitive.Types.TokenMap as TokenMap
 import qualified Data.Foldable as F
 import qualified Data.List as L
 import qualified Data.List.NonEmpty as NE
@@ -133,21 +125,6 @@ data SelectionParameters s = SelectionParameters
 
 costOfOutputCoin :: SelectionParameters s -> Coin -> Coin
 costOfOutputCoin params = costOfOutput params . TokenBundle.fromCoin
-
-excessAdaForOutput :: SelectionParameters s -> TokenBundle -> Coin
-excessAdaForOutput params bundle =
-    fromMaybe (Coin 0) result
-  where
-    result = subtractCoin
-        (view #coin bundle)
-        (minimumAdaQuantityForOutput params $ view #tokens bundle)
-
-minimumAdaQuantityForOutputCoin :: SelectionParameters s -> Coin
-minimumAdaQuantityForOutputCoin =
-    flip minimumAdaQuantityForOutput TokenMap.empty
-
-sizeOfOutputCoin :: SelectionParameters s -> Coin -> s
-sizeOfOutputCoin params = sizeOfOutput params . TokenBundle.fromCoin
 
 outputIsValid
     :: forall s. Size s
@@ -555,7 +532,7 @@ data SelectionFullError s = SelectionFullError
     deriving (Eq, Show)
 
 --------------------------------------------------------------------------------
--- Creating a selection
+-- Creating selections
 --------------------------------------------------------------------------------
 
 create
@@ -578,7 +555,7 @@ create params rewardWithdrawal inputs = do
     currentFeeExcess <- maybeToEither SelectionAdaInsufficient $
         computeFeeExcess params unbalancedSelection
     let (feeExcess, outputs) =
-            minimizeFeeExcess params (currentFeeExcess, minimizedOutputs)
+            minimizeFee params (currentFeeExcess, minimizedOutputs)
     let balancedSelection = unbalancedSelection {feeExcess, outputs}
     size <- guardSize params $ computeCurrentSize params balancedSelection
     pure balancedSelection {size}
@@ -600,16 +577,16 @@ minimizeOutput params output
     $ minimumAdaQuantityForOutput params (view #tokens output)
 
 --------------------------------------------------------------------------------
--- Minimizing the fee excess
+-- Minimizing fees
 --------------------------------------------------------------------------------
 
-minimizeFeeExcess
+minimizeFee
     :: SelectionParameters s
     -> (Coin, NonEmpty TokenBundle)
     -- ^ Fee excess and output bundles.
     -> (Coin, NonEmpty TokenBundle)
     -- ^ Fee excess and output bundles after optimization.
-minimizeFeeExcess params (currentFeeExcess, outputs) =
+minimizeFee params (currentFeeExcess, outputs) =
     NE.fromList <$> run currentFeeExcess (NE.toList outputs) []
   where
     run :: Coin -> [TokenBundle] -> [TokenBundle] -> (Coin, [TokenBundle])
@@ -621,15 +598,15 @@ minimizeFeeExcess params (currentFeeExcess, outputs) =
         run feeExcessRemaining' remaining (output' : processed)
       where
         (feeExcessRemaining', output') =
-            minimizeFeeExcessForOutput params (feeExcessRemaining, output)
+            minimizeFeeForOutput params (feeExcessRemaining, output)
 
-minimizeFeeExcessForOutput
+minimizeFeeForOutput
     :: SelectionParameters s
     -> (Coin, TokenBundle)
     -- ^ Fee excess and output bundle.
     -> (Coin, TokenBundle)
     -- ^ Fee excess and output bundle after optimization.
-minimizeFeeExcessForOutput params =
+minimizeFeeForOutput params =
     findFixedPoint reduceFeeExcess
   where
     reduceFeeExcess :: (Coin, TokenBundle) -> (Coin, TokenBundle)

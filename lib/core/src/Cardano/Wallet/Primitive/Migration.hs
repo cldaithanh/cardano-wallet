@@ -150,11 +150,11 @@ extendSelectionWithInput
     -> Either ExtendSelectionError (ClassifiedUTxO i, Selection i s)
 extendSelectionWithInput params classification (utxo, selection) =
     case selectWithClassification classification utxo of
-        Just (supporter, utxoMinusSupporter) ->
-            let inputsWithSupporter = supporter `NE.cons` inputs selection in
-            case Selection.create params (Coin 0) inputsWithSupporter of
-                Right selectionWithSupporter ->
-                    Right (utxoMinusSupporter, selectionWithSupporter)
+        Just (input, utxo') ->
+            let inputs' = input `NE.cons` inputs selection in
+            case Selection.create params (Coin 0) inputs' of
+                Right selection' ->
+                    Right (utxo', selection')
                 Left SelectionAdaInsufficient ->
                     Left ExtendSelectionAdaInsufficient
                 Left SelectionFull {} ->

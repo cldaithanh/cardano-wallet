@@ -15,19 +15,19 @@ module Cardano.Wallet.Primitive.Migration.Selection
     -- Public interface
     ----------------------------------------------------------------------------
 
-    -- * Classes
-      Size (..)
-
     -- * Selection parameters
-    , SelectionParameters (..)
+      SelectionParameters (..)
+    , Size (..)
 
-    -- * Selections
+    -- * Creating a selection
+    , create
     , Selection (..)
     , SelectionError (..)
     , SelectionFullError (..)
 
-    -- * Creating a selection
-    , create
+    -- * Checking a selection for correctness
+    , SelectionCorrectness (..)
+    , check
 
     ----------------------------------------------------------------------------
     -- Internal interface
@@ -46,10 +46,6 @@ module Cardano.Wallet.Primitive.Migration.Selection
     , outputSatisfiesMinimumAdaQuantity
     , outputSizeWithinLimit
     , sizeOfOutputCoin
-
-    -- * Selection invariants
-    , SelectionInvariantStatus (..)
-    , checkInvariant
 
     -- * Selection queries
     , outputOrdering
@@ -181,7 +177,7 @@ outputSizeWithinLimit params b =
 
 data Selection i s = Selection
     { inputs :: NonEmpty (i, TokenBundle)
-      -- ^ The selected inputs, in the reverse order to which they were added.
+      -- ^ The selected inputs.
     , outputs :: NonEmpty TokenBundle
       -- ^ The generated outputs, in descending order of excess ada.
     , feeExcess :: !Coin
@@ -194,60 +190,60 @@ data Selection i s = Selection
     deriving (Eq, Generic, Show)
 
 --------------------------------------------------------------------------------
--- Selection invariants
+-- Selection correctness
 --------------------------------------------------------------------------------
 
-data SelectionInvariantStatus s
-    = SelectionInvariantHolds
-    | SelectionInvariantAssetBalanceIncorrect
-      SelectionInvariantAssetBalanceIncorrectError
-    | SelectionInvariantFeeExcessIncorrect
-      SelectionInvariantFeeExcessIncorrectError
-    | SelectionInvariantFeeInsufficient
-      SelectionInvariantFeeInsufficientError
-    | SelectionInvariantOutputBelowMinimumAdaQuantity
-      SelectionInvariantOutputBelowMinimumAdaQuantityError
-    | SelectionInvariantOutputSizeExceedsLimit
-      SelectionInvariantOutputSizeExceedsLimitError
-    | SelectionInvariantOutputOrderIncorrect
-      SelectionInvariantOutputOrderIncorrectError
-    | SelectionInvariantSizeExceedsLimit
-     (SelectionInvariantSizeExceedsLimitError s)
-    | SelectionInvariantSizeIncorrect
-     (SelectionInvariantSizeIncorrectError s)
+data SelectionCorrectness s
+    = SelectionCorrect
+    | SelectionAssetBalanceIncorrect
+      SelectionAssetBalanceIncorrectError
+    | SelectionFeeExcessIncorrect
+      SelectionFeeExcessIncorrectError
+    | SelectionFeeInsufficient
+      SelectionFeeInsufficientError
+    | SelectionOutputBelowMinimumAdaQuantity
+      SelectionOutputBelowMinimumAdaQuantityError
+    | SelectionOutputSizeExceedsLimit
+      SelectionOutputSizeExceedsLimitError
+    | SelectionOutputOrderIncorrect
+      SelectionOutputOrderIncorrectError
+    | SelectionSizeExceedsLimit
+     (SelectionSizeExceedsLimitError s)
+    | SelectionSizeIncorrect
+     (SelectionSizeIncorrectError s)
     deriving (Eq, Show)
 
-checkInvariant
+check
     :: Size s
     => SelectionParameters s
     -> Selection i s
-    -> SelectionInvariantStatus s
-checkInvariant params selection
+    -> SelectionCorrectness s
+check params selection
     | Just e <- checkAssetBalance selection =
-        SelectionInvariantAssetBalanceIncorrect e
+        SelectionAssetBalanceIncorrect e
     | Just e <- checkFeeSufficient params selection =
-        SelectionInvariantFeeInsufficient e
+        SelectionFeeInsufficient e
     | Just e <- checkFeeExcess params selection =
-        SelectionInvariantFeeExcessIncorrect e
+        SelectionFeeExcessIncorrect e
     | Just e <- checkOutputMinimumAdaQuantities params selection =
-        SelectionInvariantOutputBelowMinimumAdaQuantity e
+        SelectionOutputBelowMinimumAdaQuantity e
     | Just e <- checkOutputSizes params selection =
-        SelectionInvariantOutputSizeExceedsLimit e
+        SelectionOutputSizeExceedsLimit e
     | Just e <- checkOutputOrder params selection =
-        SelectionInvariantOutputOrderIncorrect e
+        SelectionOutputOrderIncorrect e
     | Just e <- checkSizeWithinLimit params selection =
-        SelectionInvariantSizeExceedsLimit e
+        SelectionSizeExceedsLimit e
     | Just e <- checkSizeCorrectness params selection =
-        SelectionInvariantSizeIncorrect e
+        SelectionSizeIncorrect e
     | otherwise =
-        SelectionInvariantHolds
+        SelectionCorrect
 
 --------------------------------------------------------------------------------
--- Selection invariant: asset balance correctness
+-- Selection correctness: asset balance correctness
 --------------------------------------------------------------------------------
 
-data SelectionInvariantAssetBalanceIncorrectError =
-    SelectionInvariantAssetBalanceIncorrectError
+data SelectionAssetBalanceIncorrectError =
+    SelectionAssetBalanceIncorrectError
         { assetBalanceInputs
             :: TokenMap
         , assetBalanceOutputs
@@ -257,12 +253,12 @@ data SelectionInvariantAssetBalanceIncorrectError =
 
 checkAssetBalance
     :: Selection i s
-    -> Maybe SelectionInvariantAssetBalanceIncorrectError
+    -> Maybe SelectionAssetBalanceIncorrectError
 checkAssetBalance Selection {inputs, outputs}
     | assetBalanceInputs == assetBalanceOutputs =
         Nothing
     | otherwise =
-        Just SelectionInvariantAssetBalanceIncorrectError
+        Just SelectionAssetBalanceIncorrectError
             { assetBalanceInputs
             , assetBalanceOutputs
             }
@@ -271,11 +267,11 @@ checkAssetBalance Selection {inputs, outputs}
     assetBalanceOutputs = F.foldMap (tokens) outputs
 
 --------------------------------------------------------------------------------
--- Selection invariant: fee excess correctness
+-- Selection correctness: fee excess correctness
 --------------------------------------------------------------------------------
 
-data SelectionInvariantFeeExcessIncorrectError =
-    SelectionInvariantFeeExcessIncorrectError
+data SelectionFeeExcessIncorrectError =
+    SelectionFeeExcessIncorrectError
         { selectionFeeExcessActual
             :: Coin
         , selectionFeeExcessExpected
@@ -286,16 +282,16 @@ data SelectionInvariantFeeExcessIncorrectError =
 checkFeeExcess
     :: SelectionParameters s
     -> Selection i s
-    -> Maybe SelectionInvariantFeeExcessIncorrectError
+    -> Maybe SelectionFeeExcessIncorrectError
 checkFeeExcess params selection =
     check =<< eitherToMaybe (computeCurrentFee selection)
   where
-    check :: Coin -> Maybe SelectionInvariantFeeExcessIncorrectError
+    check :: Coin -> Maybe SelectionFeeExcessIncorrectError
     check currentSelectionFee
         | selectionFeeExcessExpected == selectionFeeExcessActual =
             Nothing
         | otherwise =
-            Just SelectionInvariantFeeExcessIncorrectError
+            Just SelectionFeeExcessIncorrectError
                 { selectionFeeExcessActual
                 , selectionFeeExcessExpected
                 }
@@ -306,11 +302,11 @@ checkFeeExcess params selection =
             (computeMinimumFee params selection)
 
 --------------------------------------------------------------------------------
--- Selection invariant: fee sufficiency
+-- Selection correctness: fee sufficiency
 --------------------------------------------------------------------------------
 
-data SelectionInvariantFeeInsufficientError =
-    SelectionInvariantFeeInsufficientError
+data SelectionFeeInsufficientError =
+    SelectionFeeInsufficientError
         { selectionFeeActual
             :: Either NegativeCoin Coin
         , selectionFeeMinimum
@@ -321,16 +317,16 @@ data SelectionInvariantFeeInsufficientError =
 checkFeeSufficient
     :: SelectionParameters s
     -> Selection i s
-    -> Maybe SelectionInvariantFeeInsufficientError
+    -> Maybe SelectionFeeInsufficientError
 checkFeeSufficient params selection =
     case computeCurrentFee selection of
         Left nf ->
-            Just SelectionInvariantFeeInsufficientError
+            Just SelectionFeeInsufficientError
                 { selectionFeeActual = Left nf
                 , selectionFeeMinimum
                 }
         Right pf | pf < selectionFeeMinimum ->
-            Just SelectionInvariantFeeInsufficientError
+            Just SelectionFeeInsufficientError
                 { selectionFeeActual = Right pf
                 , selectionFeeMinimum
                 }
@@ -340,11 +336,11 @@ checkFeeSufficient params selection =
     selectionFeeMinimum = computeMinimumFee params selection
 
 --------------------------------------------------------------------------------
--- Selection invariant: minimum ada quantities
+-- Selection correctness: minimum ada quantities
 --------------------------------------------------------------------------------
 
-data SelectionInvariantOutputBelowMinimumAdaQuantityError =
-    SelectionInvariantOutputBelowMinimumAdaQuantityError
+data SelectionOutputBelowMinimumAdaQuantityError =
+    SelectionOutputBelowMinimumAdaQuantityError
         { outputBundle :: TokenBundle
           -- ^ The output that is below the expected minimum ada quantity.
         , expectedMinimumAdaQuantity :: Coin
@@ -355,18 +351,18 @@ data SelectionInvariantOutputBelowMinimumAdaQuantityError =
 checkOutputMinimumAdaQuantities
     :: SelectionParameters s
     -> Selection i s
-    -> Maybe SelectionInvariantOutputBelowMinimumAdaQuantityError
+    -> Maybe SelectionOutputBelowMinimumAdaQuantityError
 checkOutputMinimumAdaQuantities params selection =
      maybesToMaybe $ checkOutput <$> outputs selection
   where
     checkOutput
         :: TokenBundle
-        -> Maybe SelectionInvariantOutputBelowMinimumAdaQuantityError
+        -> Maybe SelectionOutputBelowMinimumAdaQuantityError
     checkOutput outputBundle
         | TokenBundle.getCoin outputBundle >= expectedMinimumAdaQuantity =
             Nothing
         | otherwise =
-            Just SelectionInvariantOutputBelowMinimumAdaQuantityError
+            Just SelectionOutputBelowMinimumAdaQuantityError
                 { outputBundle
                 , expectedMinimumAdaQuantity
                 }
@@ -375,11 +371,11 @@ checkOutputMinimumAdaQuantities params selection =
             minimumAdaQuantityForOutput params (view #tokens outputBundle)
 
 --------------------------------------------------------------------------------
--- Selection invariant: output sizes
+-- Selection correctness: output sizes
 --------------------------------------------------------------------------------
 
-data SelectionInvariantOutputSizeExceedsLimitError =
-    SelectionInvariantOutputSizeExceedsLimitError
+data SelectionOutputSizeExceedsLimitError =
+    SelectionOutputSizeExceedsLimitError
         { selectionOutput :: TokenBundle }
     deriving (Eq, Show)
 
@@ -387,37 +383,37 @@ checkOutputSizes
     :: Size s
     => SelectionParameters s
     -> Selection i s
-    -> Maybe SelectionInvariantOutputSizeExceedsLimitError
+    -> Maybe SelectionOutputSizeExceedsLimitError
 checkOutputSizes params selection =
      maybesToMaybe $ checkOutput <$> outputs selection
   where
     checkOutput
         :: TokenBundle
-        -> Maybe SelectionInvariantOutputSizeExceedsLimitError
+        -> Maybe SelectionOutputSizeExceedsLimitError
     checkOutput selectionOutput
         | outputSizeWithinLimit params selectionOutput =
             Nothing
         | otherwise =
-            Just SelectionInvariantOutputSizeExceedsLimitError
+            Just SelectionOutputSizeExceedsLimitError
                 { selectionOutput }
 
 --------------------------------------------------------------------------------
--- Selection invariant: output ordering
+-- Selection correctness: output ordering
 --------------------------------------------------------------------------------
 
-data SelectionInvariantOutputOrderIncorrectError =
-    SelectionInvariantOutputOrderIncorrectError
+data SelectionOutputOrderIncorrectError =
+    SelectionOutputOrderIncorrectError
     deriving (Eq, Show)
 
 checkOutputOrder
     :: SelectionParameters s
     -> Selection i s
-    -> Maybe SelectionInvariantOutputOrderIncorrectError
+    -> Maybe SelectionOutputOrderIncorrectError
 checkOutputOrder params selection
     | orderActual == orderExpected =
         Nothing
     | otherwise =
-        Just SelectionInvariantOutputOrderIncorrectError
+        Just SelectionOutputOrderIncorrectError
   where
     orderActual =
         outputs selection
@@ -425,11 +421,11 @@ checkOutputOrder params selection
         NE.sortBy (outputOrdering params) (outputs selection)
 
 --------------------------------------------------------------------------------
--- Selection invariant: selection size (in comparison to the stored value)
+-- Selection correctness: selection size (in comparison to the stored value)
 --------------------------------------------------------------------------------
 
-data SelectionInvariantSizeIncorrectError s =
-    SelectionInvariantSizeIncorrectError
+data SelectionSizeIncorrectError s =
+    SelectionSizeIncorrectError
         { selectionSizeComputed :: s
         , selectionSizeStored :: s
         }
@@ -439,11 +435,11 @@ checkSizeCorrectness
     :: (Eq s, Monoid s)
     => SelectionParameters s
     -> Selection i s
-    -> Maybe (SelectionInvariantSizeIncorrectError s)
+    -> Maybe (SelectionSizeIncorrectError s)
 checkSizeCorrectness params selection
     | selectionSizeComputed == selectionSizeStored =
         Nothing
-    | otherwise = pure SelectionInvariantSizeIncorrectError
+    | otherwise = pure SelectionSizeIncorrectError
         { selectionSizeComputed
         , selectionSizeStored
         }
@@ -452,11 +448,11 @@ checkSizeCorrectness params selection
     selectionSizeStored = size selection
 
 --------------------------------------------------------------------------------
--- Selection invariant: selection size (in comparison to the limit)
+-- Selection correctness: selection size (in comparison to the limit)
 --------------------------------------------------------------------------------
 
-data SelectionInvariantSizeExceedsLimitError s =
-    SelectionInvariantSizeExceedsLimitError
+data SelectionSizeExceedsLimitError s =
+    SelectionSizeExceedsLimitError
         { selectionSizeComputed :: s
         , selectionSizeMaximum :: s
         }
@@ -466,11 +462,11 @@ checkSizeWithinLimit
     :: (Monoid s, Ord s)
     => SelectionParameters s
     -> Selection i s
-    -> Maybe (SelectionInvariantSizeExceedsLimitError s)
+    -> Maybe (SelectionSizeExceedsLimitError s)
 checkSizeWithinLimit params selection
     | selectionSizeComputed <= selectionSizeMaximum =
         Nothing
-    | otherwise = pure SelectionInvariantSizeExceedsLimitError
+    | otherwise = pure SelectionSizeExceedsLimitError
         { selectionSizeComputed
         , selectionSizeMaximum
         }

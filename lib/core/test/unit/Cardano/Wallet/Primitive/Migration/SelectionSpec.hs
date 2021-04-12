@@ -21,12 +21,12 @@ import Prelude
 
 import Cardano.Wallet.Primitive.Migration.Selection
     ( Selection (..)
+    , SelectionCorrectness (..)
     , SelectionError (..)
     , SelectionFullError (..)
-    , SelectionInvariantStatus (..)
     , SelectionParameters (..)
     , Size (..)
-    , checkInvariant
+    , check
     , coalesceOutputs
     , costOfOutputCoin
     , create
@@ -172,7 +172,7 @@ prop_create args =
             property (selectionSizeMaximum e < selectionSizeRequired e)
         Right selection ->
             conjoin
-                [ checkInvariant params selection === SelectionInvariantHolds
+                [ check params selection === SelectionCorrect
                 , inputs selection === mockInputs
                 ]
   where

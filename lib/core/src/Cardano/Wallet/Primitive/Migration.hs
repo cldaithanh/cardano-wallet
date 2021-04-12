@@ -1,54 +1,200 @@
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE DuplicateRecordFields #-}
+{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE OverloadedLabels #-}
-{-# LANGUAGE OverloadedLists #-}
-{-# LANGUAGE RankNTypes #-}
-{-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
 
 module Cardano.Wallet.Primitive.Migration
-    where
+    (
+      -- * UTxO entry classification
+      classifyUTxO
+    , ClassifiedUTxO (..)
+
+      -- * Migration plans
+    , createPlan
+    , MigrationPlan (..)
+
+      -- * Selection parameters
+    , SelectionParameters (..)
+    , Size (..)
+
+    ) where
 
 import Prelude
 
 import Cardano.Wallet.Primitive.Migration.Selection
-    ( SelectionParameters (..), Size (..), outputIsValid )
+    ( Selection (..)
+    , SelectionError (..)
+    , SelectionParameters (..)
+    , Size (..)
+    , outputIsValid
+    )
 import Cardano.Wallet.Primitive.Types.Coin
     ( Coin (..) )
 import Cardano.Wallet.Primitive.Types.TokenBundle
     ( TokenBundle (..) )
-import Cardano.Wallet.Primitive.Types.TokenQuantity
-    ( TokenQuantity )
 import Cardano.Wallet.Primitive.Types.Tx
     ( TxIn )
 import Cardano.Wallet.Primitive.Types.UTxO
     ( UTxO (..) )
-import Data.Either.Extra
-    ( eitherToMaybe )
 import Data.Generics.Internal.VL.Lens
     ( view )
 import Data.Generics.Labels
     ()
 import Data.List.NonEmpty
     ( NonEmpty (..) )
-import Data.Maybe
-    ( catMaybes, listToMaybe )
-import GHC.Generics
-    ( Generic )
 
+import qualified Cardano.Wallet.Primitive.Migration.Selection as Selection
 import qualified Cardano.Wallet.Primitive.Types.TokenBundle as TokenBundle
 import qualified Data.List as L
 import qualified Data.List.NonEmpty as NE
 import qualified Data.Map.Strict as Map
 
 --------------------------------------------------------------------------------
--- Classification of coins and token bundles
+-- Migration
+--------------------------------------------------------------------------------
+
+data MigrationPlan i s = MigrationPlan
+    { selections :: [Selection i s]
+    , unselected :: ClassifiedUTxO i
+    }
+    deriving (Eq, Show)
+
+createPlan
+    :: Size s
+    => SelectionParameters s
+    -> ClassifiedUTxO i
+    -> MigrationPlan i s
+createPlan params =
+    run []
+  where
+    run selections utxo = case createSelection params utxo of
+        Just (utxo', selection) ->
+            run (selection : selections) utxo'
+        Nothing -> MigrationPlan
+            { selections
+            , unselected = utxo
+            }
+
+createSelection
+    :: Size s
+    => SelectionParameters s
+    -> ClassifiedUTxO i
+    -> Maybe (ClassifiedUTxO i, Selection i s)
+createSelection params utxo =
+    extendSelection params =<< initializeSelection params utxo
+
+initializeSelection
+    :: Size s
+    => SelectionParameters s
+    -> ClassifiedUTxO i
+    -> Maybe (ClassifiedUTxO i, Selection i s)
+initializeSelection params utxoAtStart
+    | Just (supporter, utxo) <- selectSupporter utxoAtStart =
+        run utxo (supporter :| [])
+    | otherwise =
+        Nothing
+  where
+    run utxo inputs = case Selection.create params (Coin 0) inputs of
+        Right selection ->
+            Just (utxo, selection)
+        Left SelectionAdaInsufficient ->
+            case selectSupporter utxo of
+                Just (input, utxo') ->
+                    run utxo' (input `NE.cons` inputs)
+                Nothing ->
+                    Nothing
+        Left (SelectionFull _) ->
+            Nothing
+
+extendSelection
+    :: Size s
+    => SelectionParameters s
+    -> (ClassifiedUTxO i, Selection i s)
+    -> Maybe (ClassifiedUTxO i, Selection i s)
+extendSelection params = extendSelectionWithFreerider
+  where
+    extendSelectionWithFreerider (utxo, selection) =
+        case extendSelectionStep params Freerider (utxo, selection) of
+            Right (utxo', selection') ->
+                extendSelectionWithFreerider (utxo', selection')
+            Left ExtendSelectionAdaInsufficient ->
+                extendSelectionWithSupporter (utxo, selection)
+            Left ExtendSelectionEntriesExhausted ->
+                extendSelectionWithSupporter (utxo, selection)
+            Left ExtendSelectionFull ->
+                Just (utxo, selection)
+
+    extendSelectionWithSupporter (utxo, selection) =
+        case extendSelectionStep params Supporter (utxo, selection) of
+            Right (utxo', selection') ->
+                extendSelectionWithFreerider (utxo', selection')
+            Left ExtendSelectionAdaInsufficient ->
+                extendSelectionWithSupporter (utxo, selection)
+            Left ExtendSelectionEntriesExhausted ->
+                Just (utxo, selection)
+            Left ExtendSelectionFull ->
+                Just (utxo, selection)
+
+data ExtendSelectionError
+    = ExtendSelectionAdaInsufficient
+    | ExtendSelectionEntriesExhausted
+    | ExtendSelectionFull
+
+extendSelectionStep
+    :: Size s
+    => SelectionParameters s
+    -> UTxOEntryClassification
+    -> (ClassifiedUTxO i, Selection i s)
+    -> Either ExtendSelectionError (ClassifiedUTxO i, Selection i s)
+extendSelectionStep params classification (utxo, selection) =
+    case selectWithClassification classification utxo of
+        Just (supporter, utxoMinusSupporter) ->
+            let inputsWithSupporter = supporter `NE.cons` inputs selection in
+            case Selection.create params (Coin 0) inputsWithSupporter of
+                Right selectionWithSupporter ->
+                    Right (utxoMinusSupporter, selectionWithSupporter)
+                Left SelectionAdaInsufficient ->
+                    Left ExtendSelectionAdaInsufficient
+                Left SelectionFull {} ->
+                    Left ExtendSelectionFull
+        Nothing ->
+            Left ExtendSelectionEntriesExhausted
+
+selectWithClassification
+    :: UTxOEntryClassification
+    -> ClassifiedUTxO i
+    -> Maybe ((i, TokenBundle), ClassifiedUTxO i)
+selectWithClassification = \case
+    Supporter -> selectSupporter
+    Freerider -> selectFreerider
+    Ignorable -> const Nothing
+
+selectSupporter
+    :: ClassifiedUTxO i
+    -> Maybe ((i, TokenBundle), ClassifiedUTxO i)
+selectSupporter utxo = case supporters utxo of
+    supporter : remaining ->
+        Just (supporter, utxo {supporters = remaining})
+    [] ->
+        Nothing
+
+selectFreerider
+    :: ClassifiedUTxO i
+    -> Maybe ((i, TokenBundle), ClassifiedUTxO i)
+selectFreerider utxo = case freeriders utxo of
+    freerider : remaining ->
+        Just (freerider, utxo {freeriders = remaining})
+    [] ->
+        Nothing
+
+--------------------------------------------------------------------------------
+-- Classification of UTxO entries
 --------------------------------------------------------------------------------
 
 data ClassifiedUTxO i = ClassifiedUTxO
-    { initiators :: [(i, TokenBundle)]
-    , supporters :: [(i, TokenBundle)]
+    { supporters :: [(i, TokenBundle)]
     , freeriders :: [(i, TokenBundle)]
     , ignorables :: [(i, TokenBundle)]
     }
@@ -56,73 +202,47 @@ data ClassifiedUTxO i = ClassifiedUTxO
 
 classifyUTxO :: Size s => SelectionParameters s -> UTxO -> ClassifiedUTxO TxIn
 classifyUTxO params (UTxO u) = ClassifiedUTxO
-    { initiators = entriesMatching Initiator
-    , supporters = entriesMatching Supporter
+    { supporters = entriesMatching Supporter
     , freeriders = entriesMatching Freerider
     , ignorables = entriesMatching Ignorable
     }
   where
-    entries :: [(TxIn, (TokenBundle, TokenBundleClassification))]
+    entries :: [(TxIn, (TokenBundle, UTxOEntryClassification))]
     entries =
-        fmap ((\b -> (b, classifyTokenBundle params b)) . view #tokens)
+        fmap ((\b -> (b, classifyUTxOEntry params b)) . view #tokens)
             <$> Map.toList u
 
-    entriesMatching :: TokenBundleClassification -> [(TxIn, TokenBundle)]
+    entriesMatching :: UTxOEntryClassification -> [(TxIn, TokenBundle)]
     entriesMatching classification =
         fmap fst <$> L.filter ((== classification) . snd . snd) entries
 
-data TokenBundleClassification
-    = Initiator
-    -- ^ A coin or bundle that can be used to single-handedly initialize a
-    -- singleton selection. An entry with this classification is capable of
-    -- paying for both the base transaction fee and its own marginal fee.
-    | Supporter
-    -- ^ A coin or bundle that can be used in conjunction with others to
-    -- initialize a selection. An entry with this classification is capable of
-    -- paying for its own marginal fee, but not capable of paying for the base
-    -- transaction fee.
+data UTxOEntryClassification
+    = Supporter
+    -- ^ A coin or token bundle that is capable of paying for its own marginal
+    -- fee.
     | Freerider
-    -- ^ A bundle that cannot be used to initialize a selection. An entry with
-    -- this classification can only be added to a pre-existing selection by
-    -- reclaiming ada from other pre-existing outputs, or by merging the value
-    -- into a pre-existing output.
+    -- ^ A coin or token bundle that is not capable of paying for its own
+    -- marginal fee.
     | Ignorable
     -- ^ A coin that should not be added to a selection, because its value is
     -- lower than the marginal fee for an input.
     deriving (Eq, Show)
 
-classifyTokenBundle
+classifyUTxOEntry
     :: Size s
     => SelectionParameters s
     -> TokenBundle
-    -> TokenBundleClassification
-classifyTokenBundle params b
-    | Just c <- TokenBundle.toCoin b, coinIsInitiator c =
-        Initiator
+    -> UTxOEntryClassification
+classifyUTxOEntry params b
     | Just c <- TokenBundle.toCoin b, coinIsIgnorable c =
         Ignorable
     | Just _ <- TokenBundle.toCoin b =
         Supporter
-    | bundleIsInitiator b =
-        Initiator
     | bundleIsSupporter b =
         Supporter
     | otherwise =
         Freerider
   where
-    bundleIsInitiator :: TokenBundle -> Bool
-    bundleIsInitiator b@(TokenBundle c m) =
-        case computeOutputCoin of
-            Nothing -> False
-            Just oc -> outputIsValid params (TokenBundle oc m)
-      where
-        computeOutputCoin :: Maybe Coin
-        computeOutputCoin = coinFromInteger
-            $ coinToInteger c
-            - coinToInteger (costOfEmptySelection params)
-            - coinToInteger (costOfInput params)
-            - coinToInteger (costOfOutput params b)
-
     bundleIsSupporter :: TokenBundle -> Bool
     bundleIsSupporter b@(TokenBundle c m) =
         case computeOutputCoin of
@@ -135,40 +255,12 @@ classifyTokenBundle params b
             - coinToInteger (costOfInput params)
             - coinToInteger (costOfOutput params b)
 
-    coinIsInitiator :: Coin -> Bool
-    coinIsInitiator c = c >= mconcat
-        [ costOfEmptySelection params
-        , costOfInput params
-        ]
-
     coinIsIgnorable :: Coin -> Bool
     coinIsIgnorable c = c <= costOfInput params
 
 --------------------------------------------------------------------------------
 -- Miscellaneous types and functions
 --------------------------------------------------------------------------------
-
-newtype NegativeCoin = NegativeCoin
-    { unNegativeCoin :: Coin
-    }
-    deriving (Eq, Show)
-
-newtype TokenQuantityAssessor = TokenQuantityAssessor
-    { assessTokenQuantity :: TokenQuantity -> TokenQuantityAssessment
-    }
-
-data TokenQuantityAssessment
-    = TokenQuantityWithinLimit
-    | TokenQuantityExceedsLimit
-    deriving (Eq, Generic, Show)
-
-guardE :: Bool -> e -> Either e ()
-guardE = undefined
-
-replaceHeadOfList :: [a] -> a -> [a]
-replaceHeadOfList as a = case as of
-    _ : xs -> a : xs
-    [] -> []
 
 coinFromInteger :: Integer -> Maybe Coin
 coinFromInteger i
@@ -178,19 +270,3 @@ coinFromInteger i
 
 coinToInteger :: Coin -> Integer
 coinToInteger = fromIntegral . unCoin
-
-insertManyBy :: (a -> a -> Ordering) -> [a] -> [a] -> [a]
-insertManyBy order itemsToInsert sortedItems =
-    L.foldl' f sortedItems itemsToInsert
-  where
-    f acc itemToInsert = L.insertBy order itemToInsert acc
-
-eithersToEither :: NonEmpty (Either e a) -> Either e a
-eithersToEither eithers
-    | Just success <- maybesToMaybe $ NE.toList (eitherToMaybe <$> eithers) =
-        pure success
-    | otherwise =
-        NE.head eithers
-
-maybesToMaybe :: [Maybe a] -> Maybe a
-maybesToMaybe = listToMaybe . catMaybes

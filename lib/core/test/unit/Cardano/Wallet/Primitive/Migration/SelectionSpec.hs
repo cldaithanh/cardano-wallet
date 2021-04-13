@@ -7,6 +7,7 @@
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE NumericUnderscores #-}
 {-# LANGUAGE OverloadedLabels #-}
+{-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
 {-# OPTIONS_GHC -fno-warn-orphans #-}
@@ -612,8 +613,8 @@ genTokenQuantityRange (TokenQuantity a) (TokenQuantity b) =
 --------------------------------------------------------------------------------
 
 data MockTxConstraints = MockTxConstraints
-    { mockTxCostMultiplier
-        :: MockTxCostMultiplier
+    { mockTxCostFactor
+        :: MockTxCostFactor
     , mockTxBaseCost
         :: MockTxBaseCost
     , mockTxBaseSize
@@ -633,36 +634,36 @@ data MockTxConstraints = MockTxConstraints
 
 unMockTxConstraints
     :: MockTxConstraints -> TxConstraints MockSize
-unMockTxConstraints m = TxConstraints
+unMockTxConstraints MockTxConstraints {..} = TxConstraints
     { txBaseCost =
-        unMockTxBaseCost $ mockTxBaseCost m
+        unMockTxBaseCost mockTxBaseCost
     , txBaseSize =
-        unMockTxBaseSize $ mockTxBaseSize m
+        unMockTxBaseSize mockTxBaseSize
     , txInputCost =
-        mockSizeToCost (mockTxCostMultiplier m) <$> unMockTxInputSize $ mockTxInputSize m
+        mockSizeToCost mockTxCostFactor $ unMockTxInputSize mockTxInputSize
     , txInputSize =
-        unMockTxInputSize $ mockTxInputSize m
+        unMockTxInputSize mockTxInputSize
     , txOutputCost =
-        mockSizeToCost (mockTxCostMultiplier m) . mockOutputSize
+        mockSizeToCost mockTxCostFactor . mockOutputSize
     , txOutputSize =
         mockOutputSize
     , txOutputMaximumSize =
-        unMockTxOutputMaximumSize $ mockTxOutputMaximumSize m
+        unMockTxOutputMaximumSize mockTxOutputMaximumSize
     , txOutputMaximumTokenQuantity =
-        unMockTxOutputMaximumTokenQuantity $ mockTxOutputMaximumTokenQuantity m
+        unMockTxOutputMaximumTokenQuantity mockTxOutputMaximumTokenQuantity
     , txOutputMinimumAdaQuantity =
-        unMockTxOutputMinimumAdaQuantity $ mockTxOutputMinimumAdaQuantity m
+        unMockTxOutputMinimumAdaQuantity mockTxOutputMinimumAdaQuantity
     , txRewardWithdrawalCost =
-        mockSizeToCost (mockTxCostMultiplier m) . mockRewardWithdrawalSize
+        mockSizeToCost mockTxCostFactor . mockRewardWithdrawalSize
     , txRewardWithdrawalSize =
         mockRewardWithdrawalSize
     , txMaximumSize =
-        unMockTxMaximumSize $ mockTxMaximumSize m
+        unMockTxMaximumSize mockTxMaximumSize
     }
 
 genMockTxConstraints :: Gen MockTxConstraints
 genMockTxConstraints = MockTxConstraints
-    <$> genMockTxCostMultiplier
+    <$> genMockTxCostFactor
     <*> genMockTxBaseCost
     <*> genMockTxBaseSize
     <*> genMockTxInputSize
@@ -682,8 +683,8 @@ mockRewardWithdrawalSize = \case
     Coin 0 -> MockSize 0
     Coin c -> MockSize $ fromIntegral $ BS.length $ pretty $ Coin c
 
-mockSizeToCost :: MockTxCostMultiplier -> MockSize -> Coin
-mockSizeToCost (MockTxCostMultiplier m) (MockSize s) =
+mockSizeToCost :: MockTxCostFactor -> MockSize -> Coin
+mockSizeToCost (MockTxCostFactor m) (MockSize s) =
     Coin $ fromIntegral (fromIntegral m * s)
 
 --------------------------------------------------------------------------------
@@ -727,14 +728,14 @@ genMockSizeRange minSize maxSize =
 -- Mock transaction cost multipliers
 --------------------------------------------------------------------------------
 
-newtype MockTxCostMultiplier = MockTxCostMultiplier
-    { unMockTxCostMultiplier :: Int }
+newtype MockTxCostFactor = MockTxCostFactor
+    { unMockTxCostFactor :: Int }
     deriving stock (Eq, Generic, Ord)
     deriving Show via Int
 
-genMockTxCostMultiplier :: Gen MockTxCostMultiplier
-genMockTxCostMultiplier =
-    MockTxCostMultiplier <$> choose (1, 10)
+genMockTxCostFactor :: Gen MockTxCostFactor
+genMockTxCostFactor =
+    MockTxCostFactor <$> choose (1, 10)
 
 --------------------------------------------------------------------------------
 -- Mock base transaction sizes

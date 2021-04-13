@@ -465,6 +465,8 @@ prop_minimizeFeeForOutput mockArgs =
 --
 -- Find a way to merge the common parts of cost and size calculations.
 -- Find a way to test the effect increasing the size of a token quantity.
+-- Find a way to test that the largest possible bundle has a cost that does
+-- not exceed maxBound :: Word64.
 
 data MockTxOutputCostArguments = MockTxOutputCostArguments
     { mockConstraints :: MockTxConstraints

@@ -38,6 +38,7 @@ import Data.List.NonEmpty
 
 import qualified Cardano.Wallet.Primitive.Migration.Selection as Selection
 import qualified Cardano.Wallet.Primitive.Types.TokenBundle as TokenBundle
+import qualified Data.Foldable as F
 import qualified Data.List as L
 import qualified Data.List.NonEmpty as NE
 import qualified Data.Map.Strict as Map
@@ -67,7 +68,7 @@ createPlan constraints =
         Nothing -> MigrationPlan
             { selections
             , unselected = utxo
-            , totalFee = undefined
+            , totalFee = F.foldMap (view #fee) selections
             }
 
 createSelection

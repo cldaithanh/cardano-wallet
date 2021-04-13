@@ -708,7 +708,7 @@ genMockTxOutputMaximumSize = MockTxOutputMaximumSize
 
 newtype MockTxOutputMaximumTokenQuantity = MockTxOutputMaximumTokenQuantity
     { unMockTxOutputMaximumTokenQuantity :: TokenQuantity }
-    deriving stock (Eq, Ord)
+    deriving stock Eq
     deriving Show via Natural
 
 genMockTxOutputMaximumTokenQuantity :: Gen MockTxOutputMaximumTokenQuantity
@@ -744,7 +744,7 @@ genMockTxOutputMinimumAdaQuantity = MockTxOutputMinimumAdaQuantity
 
 newtype MockTxMaximumSize = MockTxMaximumSize
     { unMockTxMaximumSize :: MockSize }
-    deriving stock (Eq, Ord)
+    deriving stock Eq
     deriving Show via Natural
 
 genMockTxMaximumSize :: Gen MockTxMaximumSize

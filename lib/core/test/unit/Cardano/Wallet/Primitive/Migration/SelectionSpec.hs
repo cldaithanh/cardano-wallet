@@ -25,6 +25,7 @@ import Cardano.Wallet.Primitive.Migration.Selection
     , check
     , coalesceOutputs
     , create
+    , minimizeFee
     , minimizeFeeForOutput
     , outputSizeWithinLimit
     )
@@ -113,6 +114,8 @@ spec = describe "Cardano.Wallet.Primitive.Migration.SelectionSpec" $
 
     parallel $ describe "Minimizing fees" $ do
 
+        it "prop_minimizeFee" $
+            property prop_minimizeFee
         it "prop_minimizeFeeForOutput" $
             property prop_minimizeFeeForOutput
 
@@ -237,55 +240,126 @@ prop_coalesceOutputs mockArgs =
     constraints = unMockTxConstraints mockConstraints
 
 --------------------------------------------------------------------------------
--- Minimizing fee excesses
+-- Minimizing fees
 --------------------------------------------------------------------------------
 
-data MockMinimizeFeeExcessForOutputArguments =
-    MockMinimizeFeeExcessForOutputArguments
-        { mockConstraints :: MockTxConstraints
-        , mockFeeExcessToMinimize :: Coin
-        , mockOutput :: TokenBundle
-        }
+data MockMinimizeFeeArguments = MockMinimizeFeeArguments
+    { mockConstraints :: MockTxConstraints
+    , mockFeeExcessToMinimize :: Coin
+    , mockOutputs :: NonEmpty TokenBundle
+    }
     deriving (Eq, Show)
 
-genMockMinimizeFeeExcessForOutputArguments
-    :: Gen MockMinimizeFeeExcessForOutputArguments
-genMockMinimizeFeeExcessForOutputArguments = do
+genMockMinimizeFeeArguments :: Gen MockMinimizeFeeArguments
+genMockMinimizeFeeArguments = do
+    mockConstraints <- genMockTxConstraints
+    mockOutputCount <- choose (1, 10)
+    mockOutputs <- (:|)
+        <$> genTokenBundle
+        <*> replicateM (mockOutputCount - 1) genTokenBundle
+    mockFeeExcessToMinimize <- genCoinRange (Coin 0) (Coin 100)
+    pure MockMinimizeFeeArguments
+        { mockConstraints
+        , mockFeeExcessToMinimize
+        , mockOutputs
+        }
+
+instance Arbitrary MockMinimizeFeeArguments where
+    arbitrary = genMockMinimizeFeeArguments
+
+prop_minimizeFee :: Blind MockMinimizeFeeArguments -> Property
+prop_minimizeFee mockArgs =
+    checkCoverage $
+    cover 50 (feeExcessAfter == Coin 0)
+        "feeExcessAfter == 0" $
+    cover 5 (totalOutputCostIncrease > Coin 0)
+        "totalOutputCostIncrease > 0" $
+    conjoin $
+        [ length outputsAfter == length outputsBefore
+        , feeExcessAfter <= feeExcessBefore
+        , totalOutputCostIncrease <> totalOutputAdaIncrease ==
+            feeExcessReduction
+        ]
+  where
+    Blind MockMinimizeFeeArguments
+        { mockConstraints
+        , mockFeeExcessToMinimize
+        , mockOutputs
+        } = mockArgs
+    constraints = unMockTxConstraints mockConstraints
+
+    (feeExcessAfter, outputsAfter) =
+        minimizeFee constraints (mockFeeExcessToMinimize, mockOutputs)
+    feeExcessBefore =
+        mockFeeExcessToMinimize
+    feeExcessReduction =
+        Coin.distance feeExcessBefore feeExcessAfter
+    outputsBefore =
+        mockOutputs
+
+    totalOutputAdaAfter =
+        F.foldMap (view #coin) outputsAfter
+    totalOutputAdaBefore =
+        F.foldMap (view #coin) outputsBefore
+    totalOutputAdaIncrease =
+        Coin.distance totalOutputAdaAfter totalOutputAdaBefore
+
+    totalOutputCostAfter =
+        F.foldMap (txOutputCost constraints) outputsAfter
+    totalOutputCostBefore =
+        F.foldMap (txOutputCost constraints) outputsBefore
+    totalOutputCostIncrease =
+        Coin.distance totalOutputCostBefore totalOutputCostAfter
+
+--------------------------------------------------------------------------------
+-- Minimizing fees for outputs
+--------------------------------------------------------------------------------
+
+data MockMinimizeFeeForOutputArguments = MockMinimizeFeeForOutputArguments
+    { mockConstraints :: MockTxConstraints
+    , mockFeeExcessToMinimize :: Coin
+    , mockOutput :: TokenBundle
+    }
+    deriving (Eq, Show)
+
+genMockMinimizeFeeForOutputArguments :: Gen MockMinimizeFeeForOutputArguments
+genMockMinimizeFeeForOutputArguments = do
     mockConstraints <- genMockTxConstraints
     mockOutput <- genTokenBundle
     -- Choose a low fee excess that is difficult to minimize:
     mockFeeExcessToMinimize <- genCoinRange (Coin 0) (Coin 10)
-    pure MockMinimizeFeeExcessForOutputArguments
+    pure MockMinimizeFeeForOutputArguments
         { mockConstraints
         , mockFeeExcessToMinimize
         , mockOutput
         }
 
-instance Arbitrary MockMinimizeFeeExcessForOutputArguments where
-    arbitrary = genMockMinimizeFeeExcessForOutputArguments
+instance Arbitrary MockMinimizeFeeForOutputArguments where
+    arbitrary = genMockMinimizeFeeForOutputArguments
 
-prop_minimizeFeeForOutput
-    :: Blind MockMinimizeFeeExcessForOutputArguments -> Property
+prop_minimizeFeeForOutput :: Blind MockMinimizeFeeForOutputArguments -> Property
 prop_minimizeFeeForOutput mockArgs =
     checkCoverage $
     cover 50 (feeExcessAfter == Coin 0)
         "feeExcessAfter == 0" $
     cover 0.1 (feeExcessAfter /= Coin 0)
         "feeExcessAfter /= 0" $
+    cover 1 (outputCostIncrease > Coin 0)
+        "outputCostIncrease > 0" $
     counterexample counterexampleText $ conjoinMap
         [ ( "feeExcessAfter > feeExcessBefore"
           , feeExcessAfter <= feeExcessBefore )
         , ( "outputCoinAfter < outputCoinBefore"
           , outputCoinAfter >= outputCoinBefore )
-        , ( "outputCoinCostAfter < outputCoinCostBefore"
-          , outputCoinCostAfter >= outputCoinCostBefore )
+        , ( "outputCostAfter < outputCostBefore"
+          , outputCostAfter >= outputCostBefore )
         , ( "feeExcessReduction <> feeExcessAfter /= feeExcessBefore"
           , feeExcessReduction <> feeExcessAfter == feeExcessBefore )
         , ( "costOfEliminatingFeeExcess < gainOfEliminatingFeeExcess"
           , costOfEliminatingFeeExcess >= gainOfEliminatingFeeExcess )
         ]
   where
-    Blind MockMinimizeFeeExcessForOutputArguments
+    Blind MockMinimizeFeeForOutputArguments
         { mockConstraints
         , mockFeeExcessToMinimize
         , mockOutput
@@ -294,28 +368,33 @@ prop_minimizeFeeForOutput mockArgs =
 
     (feeExcessAfter, outputAfter) =
         minimizeFeeForOutput constraints (mockFeeExcessToMinimize, mockOutput)
+
     costOfEliminatingFeeExcess = Coin.distance
         (txOutputCoinCost constraints outputCoinAfter)
         (txOutputCoinCost constraints (outputCoinAfter <> feeExcessAfter))
     gainOfEliminatingFeeExcess = fromMaybe (Coin 0) $ Coin.subtractCoin
         feeExcessAfter
         costOfEliminatingFeeExcess
+
     feeExcessBefore =
         mockFeeExcessToMinimize
     feeExcessReduction =
         outputCoinIncrease <> outputCostIncrease
+
+    outputBefore =
+        mockOutput
     outputCoinAfter =
         view #coin outputAfter
     outputCoinBefore =
         view #coin mockOutput
     outputCoinIncrease =
         Coin.distance outputCoinBefore outputCoinAfter
-    outputCoinCostAfter =
-        txOutputCoinCost constraints outputCoinAfter
-    outputCoinCostBefore =
-        txOutputCoinCost constraints outputCoinBefore
+    outputCostAfter =
+        txOutputCost constraints outputAfter
+    outputCostBefore =
+        txOutputCost constraints outputBefore
     outputCostIncrease =
-        Coin.distance outputCoinCostBefore outputCoinCostAfter
+        Coin.distance outputCostBefore outputCostAfter
 
     counterexampleText = counterexampleMap
         [ ( "costOfEliminatingFeeExcess"
@@ -332,10 +411,10 @@ prop_minimizeFeeForOutput mockArgs =
           , show outputCoinAfter )
         , ( "outputCoinBefore"
           , show outputCoinBefore )
-        , ( "outputCoinCostAfter"
-          , show outputCoinCostAfter )
-        , ( "outputCoinCostBefore"
-          , show outputCoinCostBefore )
+        , ( "outputCostAfter"
+          , show outputCostAfter )
+        , ( "outputCostBefore"
+          , show outputCostBefore )
         , ( "outputCostIncrease"
           , show outputCostIncrease )
         ]

@@ -526,9 +526,10 @@ create
     -> NonEmpty (i, TokenBundle)
     -> Either (SelectionError s) (Selection i s)
 create constraints rewardWithdrawal inputs = do
-    let minimizedOutputs = minimizeOutput constraints <$> NE.sortBy
-            (outputOrdering constraints)
-            (coalesceOutputs constraints $ snd <$> inputs)
+    let minimizedOutputs =
+            NE.sortBy (comparing (view #coin)) $
+            minimizeOutput constraints <$>
+                (coalesceOutputs constraints $ snd <$> inputs)
     let unbalancedSelection = Selection
             { inputs
             , outputs = minimizedOutputs
@@ -537,18 +538,32 @@ create constraints rewardWithdrawal inputs = do
             , size = mempty
             , rewardWithdrawal
             }
-    currentFee <- first (const SelectionAdaInsufficient) $
+    unbalancedFee <- first (const SelectionAdaInsufficient) $
         computeCurrentFee unbalancedSelection
-    let minimumFee = computeMinimumFee constraints unbalancedSelection
-    currentFeeExcess <- maybeToEither SelectionAdaInsufficient $
-            Coin.subtractCoin currentFee minimumFee
-    let (feeExcess, outputs) =
-            minimizeFee constraints (currentFeeExcess, minimizedOutputs)
-    let fee = minimumFee <> feeExcess
-    let balancedSelection = unbalancedSelection {fee, feeExcess, outputs}
+    let minimumFeeForUnbalancedSelection =
+            computeMinimumFee constraints unbalancedSelection
+    unbalancedFeeExcess <- maybeToEither SelectionAdaInsufficient $
+            Coin.subtractCoin unbalancedFee minimumFeeForUnbalancedSelection
+    let (minimizedFeeExcess, maximizedOutputs) =
+            minimizeFee constraints (unbalancedFeeExcess, minimizedOutputs)
+    let costIncrease = Coin.distance
+            (totalCoinCost minimizedOutputs)
+            (totalCoinCost maximizedOutputs)
+    let balancedSelection = unbalancedSelection
+            { fee = mconcat
+                [ minimumFeeForUnbalancedSelection
+                , minimizedFeeExcess
+                , costIncrease
+                ]
+            , feeExcess = minimizedFeeExcess
+            , outputs = maximizedOutputs
+            }
     size <- guardSize constraints $
         computeCurrentSize constraints balancedSelection
     pure balancedSelection {size}
+  where
+    totalCoinCost :: NonEmpty TokenBundle -> Coin
+    totalCoinCost = F.foldMap (txOutputCoinCost constraints . view #coin)
 
 --------------------------------------------------------------------------------
 -- Coalescing outputs
@@ -581,9 +596,9 @@ minimizeFee constraints (currentFeeExcess, outputs) =
   where
     run :: Coin -> [TokenBundle] -> [TokenBundle] -> (Coin, [TokenBundle])
     run (Coin 0) remaining processed =
-        (Coin 0, insertManyBy (outputOrdering constraints) remaining processed)
+        (Coin 0, L.reverse processed <> remaining)
     run feeExcessRemaining [] processed =
-        (feeExcessRemaining, L.sortBy (outputOrdering constraints) processed)
+        (feeExcessRemaining, L.reverse processed)
     run feeExcessRemaining (output : remaining) processed =
         run feeExcessRemaining' remaining (output' : processed)
       where
@@ -699,9 +714,6 @@ guardSize constraints selectionSizeRequired
             }
   where
     selectionSizeMaximum = txMaximumSize constraints
-
-insertManyBy :: (a -> a -> Ordering) -> [a] -> [a] -> [a]
-insertManyBy = L.foldl' . flip . L.insertBy
 
 maybesToMaybe :: NonEmpty (Maybe a) -> Maybe a
 maybesToMaybe = listToMaybe . catMaybes . NE.toList

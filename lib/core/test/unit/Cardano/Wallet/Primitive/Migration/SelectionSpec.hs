@@ -645,7 +645,8 @@ genMockSizeRange minSize maxSize =
 
 newtype MockTxBaseSize = MockTxBaseSize
     { unMockTxBaseSize :: MockSize }
-    deriving (Eq, Generic, Ord, Show)
+    deriving stock (Eq, Generic, Ord)
+    deriving Show via Natural
 
 genMockTxBaseSize :: Gen MockTxBaseSize
 genMockTxBaseSize =
@@ -667,9 +668,10 @@ genMockTxInputSize = MockTxInputSize <$> genMockSizeRange 0 10
 -- Mock maximum output sizes
 --------------------------------------------------------------------------------
 
-data MockTxOutputMaximumSize = MockTxOutputMaximumSize
+newtype MockTxOutputMaximumSize = MockTxOutputMaximumSize
     { unMockTxOutputMaximumSize :: MockSize }
-    deriving (Eq, Show)
+    deriving stock Eq
+    deriving Show via Natural
 
 genMockTxOutputMaximumSize :: Gen MockTxOutputMaximumSize
 genMockTxOutputMaximumSize = MockTxOutputMaximumSize
@@ -683,7 +685,8 @@ genMockTxOutputMaximumSize = MockTxOutputMaximumSize
 
 newtype MockTxMaximumSize = MockTxMaximumSize
     { unMockTxMaximumSize :: MockSize }
-    deriving (Eq, Generic, Ord, Show)
+    deriving stock (Eq, Ord)
+    deriving Show via Natural
 
 genMockTxMaximumSize :: Gen MockTxMaximumSize
 genMockTxMaximumSize =
@@ -695,7 +698,8 @@ genMockTxMaximumSize =
 
 newtype MockTxOutputMaximumTokenQuantity = MockTxOutputMaximumTokenQuantity
     { unMockTxOutputMaximumTokenQuantity :: TokenQuantity }
-    deriving (Eq, Generic, Ord, Show)
+    deriving stock (Eq, Ord)
+    deriving Show via Natural
 
 genMockTxOutputMaximumTokenQuantity :: Gen MockTxOutputMaximumTokenQuantity
 genMockTxOutputMaximumTokenQuantity = MockTxOutputMaximumTokenQuantity <$>

@@ -63,6 +63,8 @@ import Cardano.Wallet.Primitive.Types.TokenMap
     ( TokenMap )
 import Cardano.Wallet.Primitive.Types.Tx
     ( TxConstraints (..), txOutputCoinCost )
+import Data.Bifunctor
+    ( first )
 import Data.Either.Extra
     ( eitherToMaybe, maybeToEither )
 import Data.Functor
@@ -95,6 +97,8 @@ data Selection i s = Selection
       -- ^ The selected inputs.
     , outputs :: NonEmpty TokenBundle
       -- ^ The generated outputs, in descending order of excess ada.
+    , fee :: !Coin
+      -- ^ The actual fee payable for this selection.
     , feeExcess :: !Coin
       -- ^ The excess over the minimum permissible fee for this selection.
     , size :: !s
@@ -112,6 +116,8 @@ data SelectionCorrectness s
     = SelectionCorrect
     | SelectionAssetBalanceIncorrect
       SelectionAssetBalanceIncorrectError
+    | SelectionFeeIncorrect
+      SelectionFeeIncorrectError
     | SelectionFeeExcessIncorrect
       SelectionFeeExcessIncorrectError
     | SelectionFeeInsufficient
@@ -136,6 +142,8 @@ check
 check constraints selection
     | Just e <- checkAssetBalance selection =
         SelectionAssetBalanceIncorrect e
+    | Just e <- checkFee selection =
+        SelectionFeeIncorrect e
     | Just e <- checkFeeSufficient constraints selection =
         SelectionFeeInsufficient e
     | Just e <- checkFeeExcess constraints selection =
@@ -181,6 +189,34 @@ checkAssetBalance Selection {inputs, outputs}
     assetBalanceOutputs = F.foldMap (tokens) outputs
 
 --------------------------------------------------------------------------------
+-- Selection correctness: fee correctness
+--------------------------------------------------------------------------------
+
+data SelectionFeeIncorrectError = SelectionFeeIncorrectError
+    { selectionFeeComputed
+        :: Either NegativeCoin Coin
+    , selectionFeeStored
+        :: Coin
+    }
+    deriving (Eq, Show)
+
+checkFee :: Selection i s -> Maybe SelectionFeeIncorrectError
+checkFee selection =
+    case computeCurrentFee selection of
+      Left negativeFee ->
+          pure SelectionFeeIncorrectError
+              { selectionFeeComputed = Left negativeFee
+              , selectionFeeStored = fee selection
+              }
+      Right positiveFee | positiveFee /= fee selection ->
+          pure SelectionFeeIncorrectError
+              { selectionFeeComputed = Right positiveFee
+              , selectionFeeStored = fee selection
+              }
+      Right _ ->
+          Nothing
+
+--------------------------------------------------------------------------------
 -- Selection correctness: fee excess correctness
 --------------------------------------------------------------------------------
 
@@ -218,13 +254,12 @@ checkFeeExcess constraints selection =
 -- Selection correctness: fee sufficiency
 --------------------------------------------------------------------------------
 
-data SelectionFeeInsufficientError =
-    SelectionFeeInsufficientError
-        { selectionFeeActual
-            :: Either NegativeCoin Coin
-        , selectionFeeMinimum
-            :: Coin
-        }
+data SelectionFeeInsufficientError = SelectionFeeInsufficientError
+    { selectionFeeActual
+        :: Either NegativeCoin Coin
+    , selectionFeeMinimum
+        :: Coin
+    }
     deriving (Eq, Show)
 
 checkFeeSufficient
@@ -430,16 +465,6 @@ computeCurrentFee Selection {inputs, outputs, rewardWithdrawal}
     adaDifference =
         Coin.distance adaBalanceIn adaBalanceOut
 
-computeFeeExcess
-    :: TxConstraints s -> Selection i s -> Maybe Coin
-computeFeeExcess constraints selection = case computeCurrentFee selection of
-    Right currentFee | currentFee >= minimumFee ->
-        Just $ Coin.distance currentFee minimumFee
-    _ ->
-        Nothing
-  where
-    minimumFee = computeMinimumFee constraints selection
-
 -- | Calculates the current size of a selection.
 --
 computeCurrentSize
@@ -507,15 +532,20 @@ create constraints rewardWithdrawal inputs = do
     let unbalancedSelection = Selection
             { inputs
             , outputs = minimizedOutputs
+            , fee = Coin 0
             , feeExcess = Coin 0
             , size = mempty
             , rewardWithdrawal
             }
+    currentFee <- first (const SelectionAdaInsufficient) $
+        computeCurrentFee unbalancedSelection
+    let minimumFee = computeMinimumFee constraints unbalancedSelection
     currentFeeExcess <- maybeToEither SelectionAdaInsufficient $
-        computeFeeExcess constraints unbalancedSelection
+            Coin.subtractCoin currentFee minimumFee
     let (feeExcess, outputs) =
             minimizeFee constraints (currentFeeExcess, minimizedOutputs)
-    let balancedSelection = unbalancedSelection {feeExcess, outputs}
+    let fee = minimumFee <> feeExcess
+    let balancedSelection = unbalancedSelection {fee, feeExcess, outputs}
     size <- guardSize constraints $
         computeCurrentSize constraints balancedSelection
     pure balancedSelection {size}

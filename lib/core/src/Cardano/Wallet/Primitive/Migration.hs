@@ -49,6 +49,7 @@ import qualified Data.Map.Strict as Map
 data MigrationPlan i s = MigrationPlan
     { selections :: [Selection i s]
     , unselected :: ClassifiedUTxO i
+    , totalFee :: Coin
     }
     deriving (Eq, Show)
 
@@ -57,15 +58,16 @@ createPlan
     => TxConstraints s
     -> ClassifiedUTxO i
     -> MigrationPlan i s
-createPlan params =
+createPlan constraints =
     run []
   where
-    run selections utxo = case createSelection params utxo of
+    run selections utxo = case createSelection constraints utxo of
         Just (utxo', selection) ->
             run (selection : selections) utxo'
         Nothing -> MigrationPlan
             { selections
             , unselected = utxo
+            , totalFee = undefined
             }
 
 createSelection
@@ -73,21 +75,21 @@ createSelection
     => TxConstraints s
     -> ClassifiedUTxO i
     -> Maybe (ClassifiedUTxO i, Selection i s)
-createSelection params utxo =
-    extendSelection params =<< initializeSelection params utxo
+createSelection constraints utxo =
+    extendSelection constraints =<< initializeSelection constraints utxo
 
 initializeSelection
     :: TxSize s
     => TxConstraints s
     -> ClassifiedUTxO i
     -> Maybe (ClassifiedUTxO i, Selection i s)
-initializeSelection params utxoAtStart
+initializeSelection constraints utxoAtStart
     | Just (supporter, utxo) <- selectSupporter utxoAtStart =
         run utxo (supporter :| [])
     | otherwise =
         Nothing
   where
-    run utxo inputs = case Selection.create params (Coin 0) inputs of
+    run utxo inputs = case Selection.create constraints (Coin 0) inputs of
         Right selection ->
             Just (utxo, selection)
         Left SelectionAdaInsufficient ->
@@ -104,10 +106,10 @@ extendSelection
     => TxConstraints s
     -> (ClassifiedUTxO i, Selection i s)
     -> Maybe (ClassifiedUTxO i, Selection i s)
-extendSelection params = extendSelectionWithFreerider
+extendSelection constraints = extendSelectionWithFreerider
   where
     extendSelectionWithFreerider (utxo, selection) =
-        case extendSelectionWithEntry params Freerider (utxo, selection) of
+        case extendSelectionWithEntry constraints Freerider (utxo, selection) of
             Right (utxo', selection') ->
                 extendSelectionWithFreerider (utxo', selection')
             Left ExtendSelectionAdaInsufficient ->
@@ -118,7 +120,7 @@ extendSelection params = extendSelectionWithFreerider
                 Just (utxo, selection)
 
     extendSelectionWithSupporter (utxo, selection) =
-        case extendSelectionWithEntry params Supporter (utxo, selection) of
+        case extendSelectionWithEntry constraints Supporter (utxo, selection) of
             Right (utxo', selection') ->
                 extendSelectionWithFreerider (utxo', selection')
             Left ExtendSelectionAdaInsufficient ->
@@ -139,11 +141,11 @@ extendSelectionWithEntry
     -> UTxOEntryClassification
     -> (ClassifiedUTxO i, Selection i s)
     -> Either ExtendSelectionError (ClassifiedUTxO i, Selection i s)
-extendSelectionWithEntry params classification (utxo, selection) =
+extendSelectionWithEntry constraints classification (utxo, selection) =
     case selectWithClassification classification utxo of
         Just (input, utxo') ->
             let inputs' = input `NE.cons` inputs selection in
-            case Selection.create params (Coin 0) inputs' of
+            case Selection.create constraints (Coin 0) inputs' of
                 Right selection' ->
                     Right (utxo', selection')
                 Left SelectionAdaInsufficient ->
@@ -196,7 +198,7 @@ data ClassifiedUTxO i = ClassifiedUTxO
     deriving (Eq, Show)
 
 classifyUTxO :: TxSize s => TxConstraints s -> UTxO -> ClassifiedUTxO TxIn
-classifyUTxO params (UTxO u) = ClassifiedUTxO
+classifyUTxO constraints (UTxO u) = ClassifiedUTxO
     { supporters = entriesMatching Supporter
     , freeriders = entriesMatching Freerider
     , ignorables = entriesMatching Ignorable
@@ -204,7 +206,7 @@ classifyUTxO params (UTxO u) = ClassifiedUTxO
   where
     entries :: [(TxIn, (TokenBundle, UTxOEntryClassification))]
     entries =
-        fmap ((\b -> (b, classifyUTxOEntry params b)) . view #tokens)
+        fmap ((\b -> (b, classifyUTxOEntry constraints b)) . view #tokens)
             <$> Map.toList u
 
     entriesMatching :: UTxOEntryClassification -> [(TxIn, TokenBundle)]
@@ -228,7 +230,7 @@ classifyUTxOEntry
     => TxConstraints s
     -> TokenBundle
     -> UTxOEntryClassification
-classifyUTxOEntry params b
+classifyUTxOEntry constraints b
     | Just c <- TokenBundle.toCoin b, coinIsIgnorable c =
         Ignorable
     | Just _ <- TokenBundle.toCoin b =
@@ -242,16 +244,16 @@ classifyUTxOEntry params b
     bundleIsSupporter b@(TokenBundle c m) =
         case computeOutputCoin of
             Nothing -> False
-            Just oc -> outputIsValid params (TokenBundle oc m)
+            Just oc -> outputIsValid constraints (TokenBundle oc m)
       where
         computeOutputCoin :: Maybe Coin
         computeOutputCoin = coinFromInteger
             $ coinToInteger c
-            - coinToInteger (txInputCost params)
-            - coinToInteger (txOutputCost params b)
+            - coinToInteger (txInputCost constraints)
+            - coinToInteger (txOutputCost constraints b)
 
     coinIsIgnorable :: Coin -> Bool
-    coinIsIgnorable c = c <= txInputCost params
+    coinIsIgnorable c = c <= txInputCost constraints
 
 --------------------------------------------------------------------------------
 -- Miscellaneous types and functions

@@ -58,49 +58,58 @@ createPlan
     :: TxSize s
     => TxConstraints s
     -> ClassifiedUTxO i
+    -> Coin
+    -- ^ Reward balance
     -> MigrationPlan i s
 createPlan constraints =
     run []
   where
-    run selections utxo = case createSelection constraints utxo of
-        Just (utxo', selection) ->
-            run (selection : selections) utxo'
-        Nothing -> MigrationPlan
-            { selections
-            , unselected = utxo
-            , totalFee = F.foldMap (view #fee) selections
-            }
+    run selections utxo rewardBalance =
+        case createSelection constraints utxo rewardBalance of
+            Just (utxo', selection) ->
+                run (selection : selections) utxo' (Coin 0)
+            Nothing -> MigrationPlan
+                { selections
+                , unselected = utxo
+                , totalFee = F.foldMap (view #fee) selections
+                }
 
 createSelection
     :: TxSize s
     => TxConstraints s
     -> ClassifiedUTxO i
+    -> Coin
+    -- ^ Reward balance
     -> Maybe (ClassifiedUTxO i, Selection i s)
-createSelection constraints utxo =
-    extendSelection constraints =<< initializeSelection constraints utxo
+createSelection constraints utxo rewardBalance =
+    extendSelection constraints
+        =<< initializeSelection constraints utxo rewardBalance
 
 initializeSelection
     :: TxSize s
     => TxConstraints s
     -> ClassifiedUTxO i
+    -> Coin
+    -- ^ Reward balance
     -> Maybe (ClassifiedUTxO i, Selection i s)
-initializeSelection constraints utxoAtStart
+initializeSelection constraints utxoAtStart rewardBalance
     | Just (supporter, utxo) <- selectSupporter utxoAtStart =
         run utxo (supporter :| [])
     | otherwise =
         Nothing
   where
-    run utxo inputs = case Selection.create constraints (Coin 0) inputs of
-        Right selection ->
-            Just (utxo, selection)
-        Left SelectionAdaInsufficient ->
-            case selectSupporter utxo of
-                Just (input, utxo') ->
-                    run utxo' (input `NE.cons` inputs)
-                Nothing ->
-                    Nothing
-        Left (SelectionFull _) ->
-            Nothing
+    run utxo inputs =
+        case Selection.create constraints rewardBalance inputs of
+            Right selection ->
+                Just (utxo, selection)
+            Left SelectionAdaInsufficient ->
+                case selectSupporter utxo of
+                    Just (input, utxo') ->
+                        run utxo' (input `NE.cons` inputs)
+                    Nothing ->
+                        Nothing
+            Left (SelectionFull _) ->
+                Nothing
 
 extendSelection
     :: TxSize s

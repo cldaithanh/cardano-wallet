@@ -56,7 +56,7 @@ import Data.Text.Class
 import Data.Word
     ( Word64 )
 import Fmt
-    ( Buildable (..), fixedF )
+    ( Buildable (..) )
 import GHC.Generics
     ( Generic )
 import GHC.Stack

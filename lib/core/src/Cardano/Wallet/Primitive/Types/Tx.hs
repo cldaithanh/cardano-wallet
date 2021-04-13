@@ -45,6 +45,11 @@ module Cardano.Wallet.Primitive.Types.Tx
     , txOutMinTokenQuantity
     , txOutMaxTokenQuantity
 
+    -- * Constraints
+    , TxConstraints (..)
+    , txOutputCoinCost
+    , txOutputCoinSize
+
     ) where
 
 import Prelude
@@ -493,3 +498,40 @@ txOutMinTokenQuantity = TokenQuantity 1
 --
 txOutMaxTokenQuantity :: TokenQuantity
 txOutMaxTokenQuantity = TokenQuantity $ fromIntegral $ maxBound @Word64
+
+--------------------------------------------------------------------------------
+-- Constraints
+--------------------------------------------------------------------------------
+
+data TxConstraints s = TxConstraints
+    { txBaseCost :: Coin
+      -- ^ The constant cost of an empty transaction.
+    , txBaseSize :: s
+      -- ^ The constant size of an empty transaction.
+    , txInputCost :: Coin
+      -- ^ The constant cost of a transation input.
+    , txInputSize :: s
+      -- ^ The constant size of a transaction input.
+    , txOutputCost :: TokenBundle -> Coin
+      -- ^ The variable cost of a transaction output.
+    , txOutputSize :: TokenBundle -> s
+      -- ^ The variable size of a transaction output.
+    , txOutputMaximumSize :: s
+      -- ^ The maximum size of a transaction output.
+    , txOutputMaximumTokenQuantity :: TokenQuantity
+      -- ^ The maximum token quantity that can appear in a transaction output.
+    , txOutputMinimumAdaQuantity :: TokenMap -> Coin
+      -- ^ The variable minimum ada quantity of a transaction output.
+    , txRewardWithdrawalCost :: Coin -> Coin
+      -- ^ The variable cost of a reward withdrawal.
+    , txRewardWithdrawalSize :: Coin -> s
+      -- ^ The variable size of a reward withdrawal.
+    , txMaximumSize :: s
+      -- ^ The maximum size of a transaction.
+    }
+
+txOutputCoinCost :: TxConstraints s -> Coin -> Coin
+txOutputCoinCost constraints = txOutputCost constraints . TokenBundle.fromCoin
+
+txOutputCoinSize :: TxConstraints s -> Coin -> s
+txOutputCoinSize constraints = txOutputSize constraints . TokenBundle.fromCoin

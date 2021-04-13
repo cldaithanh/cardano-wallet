@@ -21,12 +21,9 @@ import Cardano.Wallet.Primitive.Migration.Selection
     , SelectionCorrectness (..)
     , SelectionError (..)
     , SelectionFullError (..)
-    , SelectionParameters (..)
-    , Size (..)
+    , TxSize (..)
     , check
     , coalesceOutputs
-    , costOfOutputCoin
-    , sizeOfOutputCoin
     , create
     , minimizeFeeForOutput
     , outputSizeWithinLimit
@@ -41,6 +38,8 @@ import Cardano.Wallet.Primitive.Types.TokenMap.Gen
     ( genAssetIdLargeRange )
 import Cardano.Wallet.Primitive.Types.TokenQuantity
     ( TokenQuantity (..) )
+import Cardano.Wallet.Primitive.Types.Tx
+    ( TxConstraints (..), txOutputCoinCost, txOutputCoinSize )
 import Control.Monad
     ( replicateM )
 import Data.ByteArray.Encoding
@@ -119,34 +118,34 @@ spec = describe "Cardano.Wallet.Primitive.Migration.SelectionSpec" $
 
     parallel $ describe "Cost calculations" $ do
 
-        it "prop_costOfOutput" $
-            property prop_costOfOutput
+        it "prop_txOutputCost" $
+            property prop_txOutputCost
 
     parallel $ describe "Size calculations" $ do
 
-        it "prop_sizeOfOutput" $
-            property prop_sizeOfOutput
+        it "prop_txOutputSize" $
+            property prop_txOutputSize
 
 --------------------------------------------------------------------------------
 -- Creating a selection
 --------------------------------------------------------------------------------
 
 data MockCreateArguments = MockCreateArguments
-    { mockSelectionParameters :: MockSelectionParameters
+    { mockConstraints :: MockTxConstraints
     , mockInputs :: NonEmpty (MockInputId, TokenBundle)
     , mockRewardWithdrawal :: Coin
     } deriving (Eq, Show)
 
 genMockCreateArguments :: Gen MockCreateArguments
 genMockCreateArguments = do
-    mockSelectionParameters <- genMockSelectionParameters
+    mockConstraints <- genMockTxConstraints
     mockRewardWithdrawal <- genCoinRange (Coin 0) (Coin 100)
     inputCount <- choose (1, 10)
     mockInputs <- (:|)
         <$> genMockInput
         <*> replicateM (inputCount - 1) genMockInput
     pure MockCreateArguments
-        { mockSelectionParameters
+        { mockConstraints
         , mockInputs
         , mockRewardWithdrawal
         }
@@ -179,37 +178,37 @@ prop_create args =
             property (selectionSizeMaximum e < selectionSizeRequired e)
         Right selection ->
             conjoin
-                [ check params selection === SelectionCorrect
+                [ check constraints selection === SelectionCorrect
                 , inputs selection === mockInputs
                 ]
   where
     MockCreateArguments
-        { mockSelectionParameters
+        { mockConstraints
         , mockInputs
         , mockRewardWithdrawal
         } = args
-    params = unMockSelectionParameters mockSelectionParameters
-    result = create params mockRewardWithdrawal mockInputs
+    constraints = unMockTxConstraints mockConstraints
+    result = create constraints mockRewardWithdrawal mockInputs
 
 --------------------------------------------------------------------------------
 -- Coalescing token bundles
 --------------------------------------------------------------------------------
 
 data MockCoalesceOutputsArguments = MockCoalesceOutputsArguments
-    { mockSelectionParameters :: MockSelectionParameters
+    { mockConstraints :: MockTxConstraints
     , mockOutputs :: NonEmpty TokenBundle
     }
     deriving (Eq, Show)
 
 genMockCoalesceOutputsArguments :: Gen MockCoalesceOutputsArguments
 genMockCoalesceOutputsArguments = do
-    mockSelectionParameters <- genMockSelectionParameters
+    mockConstraints <- genMockTxConstraints
     mockOutputCount <- choose (1, 10)
     mockOutputs <- (:|)
         <$> genTokenBundle
         <*> replicateM (mockOutputCount - 1) genTokenBundle
     pure MockCoalesceOutputsArguments
-        { mockSelectionParameters
+        { mockConstraints
         , mockOutputs
         }
 
@@ -226,16 +225,16 @@ prop_coalesceOutputs mockArgs =
     cover 2 (length result == 2)
         "length result == 2" $
     conjoin
-        [ all (outputSizeWithinLimit params) result
+        [ all (outputSizeWithinLimit constraints) result
         , F.fold result == F.fold mockOutputs
         ]
   where
     Blind MockCoalesceOutputsArguments
-        { mockSelectionParameters
+        { mockConstraints
         , mockOutputs
         } = mockArgs
-    result = coalesceOutputs params mockOutputs
-    params = unMockSelectionParameters mockSelectionParameters
+    result = coalesceOutputs constraints mockOutputs
+    constraints = unMockTxConstraints mockConstraints
 
 --------------------------------------------------------------------------------
 -- Minimizing fee excesses
@@ -243,7 +242,7 @@ prop_coalesceOutputs mockArgs =
 
 data MockMinimizeFeeExcessForOutputArguments =
     MockMinimizeFeeExcessForOutputArguments
-        { mockSelectionParameters :: MockSelectionParameters
+        { mockConstraints :: MockTxConstraints
         , mockFeeExcessToMinimize :: Coin
         , mockOutput :: TokenBundle
         }
@@ -252,12 +251,12 @@ data MockMinimizeFeeExcessForOutputArguments =
 genMockMinimizeFeeExcessForOutputArguments
     :: Gen MockMinimizeFeeExcessForOutputArguments
 genMockMinimizeFeeExcessForOutputArguments = do
-    mockSelectionParameters <- genMockSelectionParameters
+    mockConstraints <- genMockTxConstraints
     mockOutput <- genTokenBundle
     -- Choose a low fee excess that is difficult to minimize:
     mockFeeExcessToMinimize <- genCoinRange (Coin 0) (Coin 10)
     pure MockMinimizeFeeExcessForOutputArguments
-        { mockSelectionParameters
+        { mockConstraints
         , mockFeeExcessToMinimize
         , mockOutput
         }
@@ -287,17 +286,17 @@ prop_minimizeFeeForOutput mockArgs =
         ]
   where
     Blind MockMinimizeFeeExcessForOutputArguments
-        { mockSelectionParameters
+        { mockConstraints
         , mockFeeExcessToMinimize
         , mockOutput
         } = mockArgs
-    params = unMockSelectionParameters mockSelectionParameters
+    constraints = unMockTxConstraints mockConstraints
 
     (feeExcessAfter, outputAfter) =
-        minimizeFeeForOutput params (mockFeeExcessToMinimize, mockOutput)
+        minimizeFeeForOutput constraints (mockFeeExcessToMinimize, mockOutput)
     costOfEliminatingFeeExcess = Coin.distance
-        (costOfOutputCoin params outputCoinAfter)
-        (costOfOutputCoin params (outputCoinAfter <> feeExcessAfter))
+        (txOutputCoinCost constraints outputCoinAfter)
+        (txOutputCoinCost constraints (outputCoinAfter <> feeExcessAfter))
     gainOfEliminatingFeeExcess = fromMaybe (Coin 0) $ Coin.subtractCoin
         feeExcessAfter
         costOfEliminatingFeeExcess
@@ -312,9 +311,9 @@ prop_minimizeFeeForOutput mockArgs =
     outputCoinIncrease =
         Coin.distance outputCoinBefore outputCoinAfter
     outputCoinCostAfter =
-        costOfOutputCoin params outputCoinAfter
+        txOutputCoinCost constraints outputCoinAfter
     outputCoinCostBefore =
-        costOfOutputCoin params outputCoinBefore
+        txOutputCoinCost constraints outputCoinBefore
     outputCostIncrease =
         Coin.distance outputCoinCostBefore outputCoinCostAfter
 
@@ -345,82 +344,84 @@ prop_minimizeFeeForOutput mockArgs =
 -- Cost calculations
 --------------------------------------------------------------------------------
 
-data MockCostOfOutputArguments = MockCostOfOutputArguments
-    { mockSelectionParameters :: MockSelectionParameters
+data MockTxOutputCostArguments = MockTxOutputCostArguments
+    { mockConstraints :: MockTxConstraints
     , mockOutput :: TokenBundle
     } deriving (Eq, Show)
 
-genMockCostOfOutputArguments :: Gen MockCostOfOutputArguments
-genMockCostOfOutputArguments = MockCostOfOutputArguments
-    <$> genMockSelectionParameters
+genMockTxOutputCostArguments :: Gen MockTxOutputCostArguments
+genMockTxOutputCostArguments = MockTxOutputCostArguments
+    <$> genMockTxConstraints
     <*> genTokenBundle
 
-instance Arbitrary MockCostOfOutputArguments where
-    arbitrary = genMockCostOfOutputArguments
+instance Arbitrary MockTxOutputCostArguments where
+    arbitrary = genMockTxOutputCostArguments
 
-prop_costOfOutput :: MockCostOfOutputArguments -> Property
-prop_costOfOutput mockArgs = conjoin
-    [ costOfOutput params mockOutput < costOfOutput params outputWithLargerCoin
+prop_txOutputCost :: MockTxOutputCostArguments -> Property
+prop_txOutputCost mockArgs = conjoin
+    [ txOutputCost constraints mockOutput <
+      txOutputCost constraints outputWithLargerCoin
     , Coin.distance
-        (costOfOutput params mockOutput)
-        (costOfOutput params outputWithLargerCoin)
+        (txOutputCost constraints mockOutput)
+        (txOutputCost constraints outputWithLargerCoin)
       ==
       Coin.distance
-        (costOfOutputCoin params (view #coin mockOutput))
-        (costOfOutputCoin params (view #coin outputWithLargerCoin))
+        (txOutputCoinCost constraints (view #coin mockOutput))
+        (txOutputCoinCost constraints (view #coin outputWithLargerCoin))
     ]
   where
     outputWithLargerCoin =
         TokenBundle.setCoin mockOutput
             $ multiplyCoinByTen
             $ TokenBundle.getCoin mockOutput
-    MockCostOfOutputArguments
-        { mockSelectionParameters
+    MockTxOutputCostArguments
+        { mockConstraints
         , mockOutput
         } = mockArgs
-    params =
-        unMockSelectionParameters mockSelectionParameters
+    constraints =
+        unMockTxConstraints mockConstraints
     multiplyCoinByTen (Coin n) = Coin $ 10 * n
 
 --------------------------------------------------------------------------------
 -- Size calculations
 --------------------------------------------------------------------------------
 
-data MockSizeOfOutputArguments = MockSizeOfOutputArguments
-    { mockSelectionParameters :: MockSelectionParameters
+data MockTxOutputSizeArguments = MockTxOutputSizeArguments
+    { mockConstraints :: MockTxConstraints
     , mockOutput :: TokenBundle
     } deriving (Eq, Show)
 
-genMockSizeOfOutputArguments :: Gen MockSizeOfOutputArguments
-genMockSizeOfOutputArguments = MockSizeOfOutputArguments
-    <$> genMockSelectionParameters
+genMockTxOutputSizeArguments :: Gen MockTxOutputSizeArguments
+genMockTxOutputSizeArguments = MockTxOutputSizeArguments
+    <$> genMockTxConstraints
     <*> genTokenBundle
 
-instance Arbitrary MockSizeOfOutputArguments where
-    arbitrary = genMockSizeOfOutputArguments
+instance Arbitrary MockTxOutputSizeArguments where
+    arbitrary = genMockTxOutputSizeArguments
 
-prop_sizeOfOutput :: MockSizeOfOutputArguments -> Property
-prop_sizeOfOutput mockArgs = conjoin
-    [ sizeOfOutput params mockOutput < sizeOfOutput params outputWithLargerCoin
-    , sizeDistance
-        (sizeOfOutput params mockOutput)
-        (sizeOfOutput params outputWithLargerCoin)
+prop_txOutputSize :: MockTxOutputSizeArguments -> Property
+prop_txOutputSize mockArgs = conjoin
+    [ txOutputSize constraints mockOutput <
+      txOutputSize constraints outputWithLargerCoin
+    , txSizeDistance
+        (txOutputSize constraints mockOutput)
+        (txOutputSize constraints outputWithLargerCoin)
       ==
-      sizeDistance
-        (sizeOfOutputCoin params (view #coin mockOutput))
-        (sizeOfOutputCoin params (view #coin outputWithLargerCoin))
+      txSizeDistance
+        (txOutputCoinSize constraints (view #coin mockOutput))
+        (txOutputCoinSize constraints (view #coin outputWithLargerCoin))
     ]
   where
     outputWithLargerCoin =
         TokenBundle.setCoin mockOutput
             $ multiplyCoinByTen
             $ TokenBundle.getCoin mockOutput
-    MockSizeOfOutputArguments
-        { mockSelectionParameters
+    MockTxOutputSizeArguments
+        { mockConstraints
         , mockOutput
         } = mockArgs
-    params =
-        unMockSelectionParameters mockSelectionParameters
+    constraints =
+        unMockTxConstraints mockConstraints
     multiplyCoinByTen (Coin n) = Coin $ 10 * n
 
 --------------------------------------------------------------------------------
@@ -527,99 +528,91 @@ genTokenQuantityRange (TokenQuantity a) (TokenQuantity b) =
         <$> choose (fromIntegral a, fromIntegral b)
 
 --------------------------------------------------------------------------------
--- Mock selection parameters
+-- Mock transaction constraints
 --------------------------------------------------------------------------------
 
-mockSizeOfOutput :: TokenBundle -> MockSize
-mockSizeOfOutput = MockSize . fromIntegral . BS.length . pretty . Flat
-
-mockSizeOfRewardWithdrawal :: Coin -> MockSize
-mockSizeOfRewardWithdrawal = \case
-    Coin 0 -> MockSize 0
-    Coin c -> MockSize $ fromIntegral $ BS.length $ pretty $ Coin c
-
-mockSizeToFee :: MockSize -> Coin
-mockSizeToFee = Coin . fromIntegral . unMockSize
-
-data MockSelectionParameters = MockSelectionParameters
-    { mockFeeForEmptySelection
-        :: MockFeeForEmptySelection
-    , mockSizeOfEmptySelection
-        :: MockSizeOfEmptySelection
-    , mockSizeOfInput
-        :: MockSizeOfInput
-    , mockMaximumSizeOfOutput
-        :: MockMaximumSizeOfOutput
-    , mockMaximumSizeOfSelection
-        :: MockMaximumSizeOfSelection
-    , mockMaximumTokenQuantity
-        :: MockMaximumTokenQuantity
-    , mockMinimumAdaQuantityForOutput
-        :: MockMinimumAdaQuantityForOutput
+data MockTxConstraints = MockTxConstraints
+    { mockTxBaseCost
+        :: MockTxBaseCost
+    , mockTxBaseSize
+        :: MockTxBaseSize
+    , mockTxInputSize
+        :: MockTxInputSize
+    , mockTxOutputMaximumSize
+        :: MockTxOutputMaximumSize
+    , mockTxOutputMaximumTokenQuantity
+        :: MockTxOutputMaximumTokenQuantity
+    , mockTxOutputMinimumAdaQuantity
+        :: MockTxOutputMinimumAdaQuantity
+    , mockTxMaximumSize
+        :: MockTxMaximumSize
     }
     deriving (Eq, Generic, Show)
 
-unMockSelectionParameters
-    :: MockSelectionParameters -> SelectionParameters MockSize
-unMockSelectionParameters m = SelectionParameters
-    { costOfEmptySelection =
-        unMockFeeForEmptySelection
-            $ view #mockFeeForEmptySelection m
-    , costOfInput =
-        mockSizeToFee <$> unMockSizeOfInput
-            $ view #mockSizeOfInput m
-    , costOfOutput =
-        mockSizeToFee . mockSizeOfOutput
-    , costOfRewardWithdrawal =
-        mockSizeToFee . mockSizeOfRewardWithdrawal
-    , sizeOfEmptySelection =
-        unMockSizeOfEmptySelection
-            $ view #mockSizeOfEmptySelection m
-    , sizeOfInput =
-        unMockSizeOfInput
-            $ view #mockSizeOfInput m
-    , sizeOfOutput =
-        mockSizeOfOutput
-    , sizeOfRewardWithdrawal =
-        mockSizeOfRewardWithdrawal
-    , maximumSizeOfOutput =
-        unMockMaximumSizeOfOutput
-            $ view #mockMaximumSizeOfOutput m
-    , maximumSizeOfSelection =
-        unMockMaximumSizeOfSelection
-            $ view #mockMaximumSizeOfSelection m
-    , maximumTokenQuantity =
-        unMockMaximumTokenQuantity
-            $ view #mockMaximumTokenQuantity m
-    , minimumAdaQuantityForOutput =
-        unMockMinimumAdaQuantityForOutput
-            $ view #mockMinimumAdaQuantityForOutput m
+unMockTxConstraints
+    :: MockTxConstraints -> TxConstraints MockSize
+unMockTxConstraints m = TxConstraints
+    { txBaseCost =
+        unMockTxBaseCost $ mockTxBaseCost m
+    , txBaseSize =
+        unMockTxBaseSize $ mockTxBaseSize m
+    , txInputCost =
+        mockSizeToCost <$> unMockTxInputSize $ mockTxInputSize m
+    , txInputSize =
+        unMockTxInputSize $ mockTxInputSize m
+    , txOutputCost =
+        mockSizeToCost . mockOutputSize
+    , txOutputSize =
+        mockOutputSize
+    , txOutputMaximumSize =
+        unMockTxOutputMaximumSize $ mockTxOutputMaximumSize m
+    , txOutputMaximumTokenQuantity =
+        unMockTxOutputMaximumTokenQuantity $ mockTxOutputMaximumTokenQuantity m
+    , txOutputMinimumAdaQuantity =
+        unMockTxOutputMinimumAdaQuantity $ mockTxOutputMinimumAdaQuantity m
+    , txRewardWithdrawalCost =
+        mockSizeToCost . mockRewardWithdrawalSize
+    , txRewardWithdrawalSize =
+        mockRewardWithdrawalSize
+    , txMaximumSize =
+        unMockTxMaximumSize $ mockTxMaximumSize m
     }
 
-genMockSelectionParameters :: Gen MockSelectionParameters
-genMockSelectionParameters = MockSelectionParameters
-    <$> genMockFeeForEmptySelection
-    <*> genMockSizeOfEmptySelection
-    <*> genMockSizeOfInput
-    <*> genMockMaximumSizeOfOutput
-    <*> genMockMaximumSizeOfSelection
-    <*> genMockMaximumTokenQuantity
-    <*> genMockMinimumAdaQuantityForOutput
+genMockTxConstraints :: Gen MockTxConstraints
+genMockTxConstraints = MockTxConstraints
+    <$> genMockTxBaseCost
+    <*> genMockTxBaseSize
+    <*> genMockTxInputSize
+    <*> genMockTxOutputMaximumSize
+    <*> genMockTxOutputMaximumTokenQuantity
+    <*> genMockTxOutputMinimumAdaQuantity
+    <*> genMockTxMaximumSize
 
-instance Arbitrary MockSelectionParameters where
-    arbitrary = genMockSelectionParameters
+instance Arbitrary MockTxConstraints where
+    arbitrary = genMockTxConstraints
+
+mockOutputSize :: TokenBundle -> MockSize
+mockOutputSize = MockSize . fromIntegral . BS.length . pretty . Flat
+
+mockRewardWithdrawalSize :: Coin -> MockSize
+mockRewardWithdrawalSize = \case
+    Coin 0 -> MockSize 0
+    Coin c -> MockSize $ fromIntegral $ BS.length $ pretty $ Coin c
+
+mockSizeToCost :: MockSize -> Coin
+mockSizeToCost = Coin . fromIntegral . unMockSize
 
 --------------------------------------------------------------------------------
--- Mock fees for empty selections
+-- Mock transaction base costs
 --------------------------------------------------------------------------------
 
-newtype MockFeeForEmptySelection = MockFeeForEmptySelection
-    { unMockFeeForEmptySelection :: Coin }
+newtype MockTxBaseCost = MockTxBaseCost
+    { unMockTxBaseCost :: Coin }
     deriving stock Eq
     deriving Show via Coin
 
-genMockFeeForEmptySelection :: Gen MockFeeForEmptySelection
-genMockFeeForEmptySelection = MockFeeForEmptySelection
+genMockTxBaseCost :: Gen MockTxBaseCost
+genMockTxBaseCost = MockTxBaseCost
     <$> genCoinRange (Coin 0) (Coin 100)
 
 --------------------------------------------------------------------------------
@@ -636,8 +629,8 @@ instance Semigroup MockSize where
 instance Monoid MockSize where
     mempty = MockSize 0
 
-instance Size MockSize where
-    MockSize a `sizeDistance` MockSize b
+instance TxSize MockSize where
+    MockSize a `txSizeDistance` MockSize b
         | a >= b    = MockSize (a - b)
         | otherwise = MockSize (b - a)
 
@@ -647,87 +640,87 @@ genMockSizeRange minSize maxSize =
         choose (fromIntegral minSize, fromIntegral maxSize)
 
 --------------------------------------------------------------------------------
--- Mock sizes of empty selections
+-- Mock base transaction sizes
 --------------------------------------------------------------------------------
 
-newtype MockSizeOfEmptySelection = MockSizeOfEmptySelection
-    { unMockSizeOfEmptySelection :: MockSize }
+newtype MockTxBaseSize = MockTxBaseSize
+    { unMockTxBaseSize :: MockSize }
     deriving (Eq, Generic, Ord, Show)
 
-genMockSizeOfEmptySelection :: Gen MockSizeOfEmptySelection
-genMockSizeOfEmptySelection =
-    MockSizeOfEmptySelection <$> genMockSizeRange 0 100
+genMockTxBaseSize :: Gen MockTxBaseSize
+genMockTxBaseSize =
+    MockTxBaseSize <$> genMockSizeRange 0 100
 
 --------------------------------------------------------------------------------
--- Mock sizes of inputs
+-- Mock input sizes
 --------------------------------------------------------------------------------
 
-newtype MockSizeOfInput = MockSizeOfInput
-    { unMockSizeOfInput :: MockSize }
+newtype MockTxInputSize = MockTxInputSize
+    { unMockTxInputSize :: MockSize }
     deriving stock Eq
     deriving Show via Natural
 
-genMockSizeOfInput :: Gen MockSizeOfInput
-genMockSizeOfInput = MockSizeOfInput <$> genMockSizeRange 0 10
+genMockTxInputSize :: Gen MockTxInputSize
+genMockTxInputSize = MockTxInputSize <$> genMockSizeRange 0 10
 
 --------------------------------------------------------------------------------
--- Mock maximum sizes of outputs
+-- Mock maximum output sizes
 --------------------------------------------------------------------------------
 
-data MockMaximumSizeOfOutput = MockMaximumSizeOfOutput
-    { unMockMaximumSizeOfOutput :: MockSize }
+data MockTxOutputMaximumSize = MockTxOutputMaximumSize
+    { unMockTxOutputMaximumSize :: MockSize }
     deriving (Eq, Show)
 
-genMockMaximumSizeOfOutput :: Gen MockMaximumSizeOfOutput
-genMockMaximumSizeOfOutput = MockMaximumSizeOfOutput
+genMockTxOutputMaximumSize :: Gen MockTxOutputMaximumSize
+genMockTxOutputMaximumSize = MockTxOutputMaximumSize
     -- Chosen so that the upper limit is just above the unconstrained maximum
     -- size of token bundles generated by 'genTokenBundle'.
     <$> genMockSizeRange 200 1500
 
 --------------------------------------------------------------------------------
--- Mock maximum sizes of selections
+-- Mock maximum transaction sizes
 --------------------------------------------------------------------------------
 
-newtype MockMaximumSizeOfSelection = MockMaximumSizeOfSelection
-    { unMockMaximumSizeOfSelection :: MockSize }
+newtype MockTxMaximumSize = MockTxMaximumSize
+    { unMockTxMaximumSize :: MockSize }
     deriving (Eq, Generic, Ord, Show)
 
-genMockMaximumSizeOfSelection :: Gen MockMaximumSizeOfSelection
-genMockMaximumSizeOfSelection =
-    MockMaximumSizeOfSelection <$> genMockSizeRange 0 10_000
+genMockTxMaximumSize :: Gen MockTxMaximumSize
+genMockTxMaximumSize =
+    MockTxMaximumSize <$> genMockSizeRange 0 10_000
 
 --------------------------------------------------------------------------------
 -- Mock maximum token quantities
 --------------------------------------------------------------------------------
 
-newtype MockMaximumTokenQuantity = MockMaximumTokenQuantity
-    { unMockMaximumTokenQuantity :: TokenQuantity }
+newtype MockTxOutputMaximumTokenQuantity = MockTxOutputMaximumTokenQuantity
+    { unMockTxOutputMaximumTokenQuantity :: TokenQuantity }
     deriving (Eq, Generic, Ord, Show)
 
-genMockMaximumTokenQuantity :: Gen MockMaximumTokenQuantity
-genMockMaximumTokenQuantity = MockMaximumTokenQuantity <$>
+genMockTxOutputMaximumTokenQuantity :: Gen MockTxOutputMaximumTokenQuantity
+genMockTxOutputMaximumTokenQuantity = MockTxOutputMaximumTokenQuantity <$>
     genTokenQuantityRange (TokenQuantity 100) (TokenQuantity 2000)
 
 --------------------------------------------------------------------------------
--- Mock minimum ada quantities for outputs
+-- Mock minimum ada quantities
 --------------------------------------------------------------------------------
 
-data MockMinimumAdaQuantityForOutput = MockMinimumAdaQuantityForOutput
+data MockTxOutputMinimumAdaQuantity = MockTxOutputMinimumAdaQuantity
     { mockMinimumAdaQuantityPerOutput :: Coin
     , mockMinimumAdaQuantityPerOutputAsset :: Coin
     }
     deriving (Eq, Show)
 
-unMockMinimumAdaQuantityForOutput
-    :: MockMinimumAdaQuantityForOutput
+unMockTxOutputMinimumAdaQuantity
+    :: MockTxOutputMinimumAdaQuantity
     -> (TokenMap -> Coin)
-unMockMinimumAdaQuantityForOutput mock = \m ->
+unMockTxOutputMinimumAdaQuantity mock = \m ->
     let assetCount = Set.size $ TokenMap.getAssets m in
     mockMinimumAdaQuantityPerOutput mock
         <> mtimesDefault assetCount (mockMinimumAdaQuantityPerOutputAsset mock)
 
-genMockMinimumAdaQuantityForOutput :: Gen MockMinimumAdaQuantityForOutput
-genMockMinimumAdaQuantityForOutput = MockMinimumAdaQuantityForOutput
+genMockTxOutputMinimumAdaQuantity :: Gen MockTxOutputMinimumAdaQuantity
+genMockTxOutputMinimumAdaQuantity = MockTxOutputMinimumAdaQuantity
     <$> genCoinRange (Coin 0) (Coin 10)
     <*> genCoinRange (Coin 0) (Coin 10)
 

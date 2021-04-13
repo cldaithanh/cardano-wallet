@@ -15,27 +15,18 @@ module Cardano.Wallet.Primitive.Migration
     , createPlan
     , MigrationPlan (..)
 
-      -- * Selection parameters
-    , SelectionParameters (..)
-    , Size (..)
-
     ) where
 
 import Prelude
 
 import Cardano.Wallet.Primitive.Migration.Selection
-    ( Selection (..)
-    , SelectionError (..)
-    , SelectionParameters (..)
-    , Size (..)
-    , outputIsValid
-    )
+    ( Selection (..), SelectionError (..), TxSize (..), outputIsValid )
 import Cardano.Wallet.Primitive.Types.Coin
     ( Coin (..) )
 import Cardano.Wallet.Primitive.Types.TokenBundle
     ( TokenBundle (..) )
 import Cardano.Wallet.Primitive.Types.Tx
-    ( TxIn )
+    ( TxConstraints (..), TxIn )
 import Cardano.Wallet.Primitive.Types.UTxO
     ( UTxO (..) )
 import Data.Generics.Internal.VL.Lens
@@ -62,8 +53,8 @@ data MigrationPlan i s = MigrationPlan
     deriving (Eq, Show)
 
 createPlan
-    :: Size s
-    => SelectionParameters s
+    :: TxSize s
+    => TxConstraints s
     -> ClassifiedUTxO i
     -> MigrationPlan i s
 createPlan params =
@@ -78,16 +69,16 @@ createPlan params =
             }
 
 createSelection
-    :: Size s
-    => SelectionParameters s
+    :: TxSize s
+    => TxConstraints s
     -> ClassifiedUTxO i
     -> Maybe (ClassifiedUTxO i, Selection i s)
 createSelection params utxo =
     extendSelection params =<< initializeSelection params utxo
 
 initializeSelection
-    :: Size s
-    => SelectionParameters s
+    :: TxSize s
+    => TxConstraints s
     -> ClassifiedUTxO i
     -> Maybe (ClassifiedUTxO i, Selection i s)
 initializeSelection params utxoAtStart
@@ -109,8 +100,8 @@ initializeSelection params utxoAtStart
             Nothing
 
 extendSelection
-    :: Size s
-    => SelectionParameters s
+    :: TxSize s
+    => TxConstraints s
     -> (ClassifiedUTxO i, Selection i s)
     -> Maybe (ClassifiedUTxO i, Selection i s)
 extendSelection params = extendSelectionWithFreerider
@@ -143,8 +134,8 @@ data ExtendSelectionError
     | ExtendSelectionFull
 
 extendSelectionWithEntry
-    :: Size s
-    => SelectionParameters s
+    :: TxSize s
+    => TxConstraints s
     -> UTxOEntryClassification
     -> (ClassifiedUTxO i, Selection i s)
     -> Either ExtendSelectionError (ClassifiedUTxO i, Selection i s)
@@ -204,7 +195,7 @@ data ClassifiedUTxO i = ClassifiedUTxO
     }
     deriving (Eq, Show)
 
-classifyUTxO :: Size s => SelectionParameters s -> UTxO -> ClassifiedUTxO TxIn
+classifyUTxO :: TxSize s => TxConstraints s -> UTxO -> ClassifiedUTxO TxIn
 classifyUTxO params (UTxO u) = ClassifiedUTxO
     { supporters = entriesMatching Supporter
     , freeriders = entriesMatching Freerider
@@ -233,8 +224,8 @@ data UTxOEntryClassification
     deriving (Eq, Show)
 
 classifyUTxOEntry
-    :: Size s
-    => SelectionParameters s
+    :: TxSize s
+    => TxConstraints s
     -> TokenBundle
     -> UTxOEntryClassification
 classifyUTxOEntry params b
@@ -256,11 +247,11 @@ classifyUTxOEntry params b
         computeOutputCoin :: Maybe Coin
         computeOutputCoin = coinFromInteger
             $ coinToInteger c
-            - coinToInteger (costOfInput params)
-            - coinToInteger (costOfOutput params b)
+            - coinToInteger (txInputCost params)
+            - coinToInteger (txOutputCost params b)
 
     coinIsIgnorable :: Coin -> Bool
-    coinIsIgnorable c = c <= costOfInput params
+    coinIsIgnorable c = c <= txInputCost params
 
 --------------------------------------------------------------------------------
 -- Miscellaneous types and functions

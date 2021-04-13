@@ -616,8 +616,8 @@ minimizeFeeForOutput constraints =
   where
     reduceFee :: (Coin, TokenBundle) -> (Coin, TokenBundle)
     reduceFee (feeExcess, outputBundle)
-        | outputCoinFinal > outputCoin
-        , outputCoinFinalCostIncrease < outputCoinFinalIncrease =
+        | outputCoinFinal > outputCoin &&
+          outputCoinFinalCostIncrease < outputCoinFinalIncrease =
              (feeExcessFinal, outputBundleFinal)
         | otherwise =
             (feeExcess, outputBundle)

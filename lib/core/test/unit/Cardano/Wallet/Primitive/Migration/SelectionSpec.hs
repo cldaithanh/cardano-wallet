@@ -461,6 +461,11 @@ prop_minimizeFeeForOutput mockArgs =
 -- Cost calculations
 --------------------------------------------------------------------------------
 
+-- TODO:
+--
+-- Find a way to merge the common parts of cost and size calculations.
+-- Find a way to test the effect increasing the size of a token quantity.
+
 data MockTxOutputCostArguments = MockTxOutputCostArguments
     { mockConstraints :: MockTxConstraints
     , mockOutput :: TokenBundle
@@ -602,12 +607,17 @@ unMockTxConstraints MockTxConstraints {..} = TxConstraints
     }
   where
     mockOutputSize :: TokenBundle -> MockSize
-    mockOutputSize = MockSize . fromIntegral . BS.length . pretty . Flat
+    mockOutputSize (TokenBundle c m) = (<>)
+        (MockSize $ fromIntegral $ BS.length $ pretty $ Flat m)
+        (mockCoinSize c)
 
     mockRewardWithdrawalSize :: Coin -> MockSize
     mockRewardWithdrawalSize = \case
         Coin 0 -> MockSize 0
-        Coin c -> MockSize $ fromIntegral $ BS.length $ pretty $ Coin c
+        Coin c -> mockCoinSize (Coin c)
+
+    mockCoinSize :: Coin -> MockSize
+    mockCoinSize = MockSize . fromIntegral . length . show
 
     mockSizeToCost :: MockSize -> Coin
     mockSizeToCost (MockSize s) =

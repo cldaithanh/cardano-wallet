@@ -257,7 +257,7 @@ genMockMinimizeFeeArguments = do
     mockOutputs <- (:|)
         <$> genTokenBundle
         <*> replicateM (mockOutputCount - 1) genTokenBundle
-    mockFeeExcessToMinimize <- genCoinRange (Coin 0) (Coin 100)
+    mockFeeExcessToMinimize <- genCoinRange (Coin 0) (Coin 1000)
     pure MockMinimizeFeeArguments
         { mockConstraints
         , mockFeeExcessToMinimize
@@ -326,8 +326,7 @@ genMockMinimizeFeeForOutputArguments :: Gen MockMinimizeFeeForOutputArguments
 genMockMinimizeFeeForOutputArguments = do
     mockConstraints <- genMockTxConstraints
     mockOutput <- genTokenBundle
-    -- Choose a low fee excess that is difficult to minimize:
-    mockFeeExcessToMinimize <- genCoinRange (Coin 0) (Coin 10)
+    mockFeeExcessToMinimize <- genCoinRange (Coin 0) (Coin 1000)
     pure MockMinimizeFeeForOutputArguments
         { mockConstraints
         , mockFeeExcessToMinimize
@@ -342,9 +341,9 @@ prop_minimizeFeeForOutput mockArgs =
     checkCoverage $
     cover 50 (feeExcessAfter == Coin 0)
         "feeExcessAfter == 0" $
-    cover 0.1 (feeExcessAfter /= Coin 0)
+    cover 0.01 (feeExcessAfter /= Coin 0)
         "feeExcessAfter /= 0" $
-    cover 1 (outputCostIncrease > Coin 0)
+    cover 0.01 (outputCostIncrease > Coin 0)
         "outputCostIncrease > 0" $
     counterexample counterexampleText $ conjoinMap
         [ ( "feeExcessAfter > feeExcessBefore"
@@ -379,7 +378,7 @@ prop_minimizeFeeForOutput mockArgs =
     feeExcessBefore =
         mockFeeExcessToMinimize
     feeExcessReduction =
-        outputCoinIncrease <> outputCostIncrease
+        Coin.distance feeExcessBefore feeExcessAfter
 
     outputBefore =
         mockOutput
@@ -411,6 +410,8 @@ prop_minimizeFeeForOutput mockArgs =
           , show outputCoinAfter )
         , ( "outputCoinBefore"
           , show outputCoinBefore )
+        , ( "outputCoinIncrease"
+          , show outputCoinIncrease )
         , ( "outputCostAfter"
           , show outputCostAfter )
         , ( "outputCostBefore"
@@ -588,7 +589,7 @@ genTokenBundle = do
 --------------------------------------------------------------------------------
 
 genCoin :: Gen Coin
-genCoin = genCoinRange (Coin 1) (Coin 1000)
+genCoin = genCoinRange (Coin 1) (Coin 10_000)
 
 genCoinRange :: Coin -> Coin -> Gen Coin
 genCoinRange (Coin minCoin) (Coin maxCoin) =
@@ -611,7 +612,9 @@ genTokenQuantityRange (TokenQuantity a) (TokenQuantity b) =
 --------------------------------------------------------------------------------
 
 data MockTxConstraints = MockTxConstraints
-    { mockTxBaseCost
+    { mockTxCostMultiplier
+        :: MockTxCostMultiplier
+    , mockTxBaseCost
         :: MockTxBaseCost
     , mockTxBaseSize
         :: MockTxBaseSize
@@ -636,11 +639,11 @@ unMockTxConstraints m = TxConstraints
     , txBaseSize =
         unMockTxBaseSize $ mockTxBaseSize m
     , txInputCost =
-        mockSizeToCost <$> unMockTxInputSize $ mockTxInputSize m
+        mockSizeToCost (mockTxCostMultiplier m) <$> unMockTxInputSize $ mockTxInputSize m
     , txInputSize =
         unMockTxInputSize $ mockTxInputSize m
     , txOutputCost =
-        mockSizeToCost . mockOutputSize
+        mockSizeToCost (mockTxCostMultiplier m) . mockOutputSize
     , txOutputSize =
         mockOutputSize
     , txOutputMaximumSize =
@@ -650,7 +653,7 @@ unMockTxConstraints m = TxConstraints
     , txOutputMinimumAdaQuantity =
         unMockTxOutputMinimumAdaQuantity $ mockTxOutputMinimumAdaQuantity m
     , txRewardWithdrawalCost =
-        mockSizeToCost . mockRewardWithdrawalSize
+        mockSizeToCost (mockTxCostMultiplier m) . mockRewardWithdrawalSize
     , txRewardWithdrawalSize =
         mockRewardWithdrawalSize
     , txMaximumSize =
@@ -659,7 +662,8 @@ unMockTxConstraints m = TxConstraints
 
 genMockTxConstraints :: Gen MockTxConstraints
 genMockTxConstraints = MockTxConstraints
-    <$> genMockTxBaseCost
+    <$> genMockTxCostMultiplier
+    <*> genMockTxBaseCost
     <*> genMockTxBaseSize
     <*> genMockTxInputSize
     <*> genMockTxOutputMaximumSize
@@ -678,8 +682,9 @@ mockRewardWithdrawalSize = \case
     Coin 0 -> MockSize 0
     Coin c -> MockSize $ fromIntegral $ BS.length $ pretty $ Coin c
 
-mockSizeToCost :: MockSize -> Coin
-mockSizeToCost = Coin . fromIntegral . unMockSize
+mockSizeToCost :: MockTxCostMultiplier -> MockSize -> Coin
+mockSizeToCost (MockTxCostMultiplier m) (MockSize s) =
+    Coin $ fromIntegral (fromIntegral m * s)
 
 --------------------------------------------------------------------------------
 -- Mock transaction base costs
@@ -717,6 +722,19 @@ genMockSizeRange :: Natural -> Natural -> Gen MockSize
 genMockSizeRange minSize maxSize =
     MockSize . fromIntegral @Integer @Natural <$>
         choose (fromIntegral minSize, fromIntegral maxSize)
+
+--------------------------------------------------------------------------------
+-- Mock transaction cost multipliers
+--------------------------------------------------------------------------------
+
+newtype MockTxCostMultiplier = MockTxCostMultiplier
+    { unMockTxCostMultiplier :: Int }
+    deriving stock (Eq, Generic, Ord)
+    deriving Show via Int
+
+genMockTxCostMultiplier :: Gen MockTxCostMultiplier
+genMockTxCostMultiplier =
+    MockTxCostMultiplier <$> choose (1, 10)
 
 --------------------------------------------------------------------------------
 -- Mock base transaction sizes

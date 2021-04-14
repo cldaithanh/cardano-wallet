@@ -49,6 +49,10 @@ module Cardano.Wallet.Primitive.Types.Tx
     , TxConstraints (..)
     , txOutputCoinCost
     , txOutputCoinSize
+    , txOutputIsValid
+    , txOutputHasValidAdaQuantity
+    , txOutputHasValidSize
+    , txOutputHasValidTokenQuantities
 
     ) where
 
@@ -535,3 +539,22 @@ txOutputCoinCost constraints = txOutputCost constraints . TokenBundle.fromCoin
 
 txOutputCoinSize :: TxConstraints s -> Coin -> s
 txOutputCoinSize constraints = txOutputSize constraints . TokenBundle.fromCoin
+
+txOutputIsValid :: Ord s => TxConstraints s -> TokenBundle -> Bool
+txOutputIsValid constraints b = and
+    [ constraints `txOutputHasValidAdaQuantity` b
+    , constraints `txOutputHasValidSize` b
+    , constraints `txOutputHasValidTokenQuantities` b
+    ]
+
+txOutputHasValidAdaQuantity :: TxConstraints s -> TokenBundle -> Bool
+txOutputHasValidAdaQuantity constraints (TokenBundle c m) =
+    c >= txOutputMinimumAdaQuantity constraints m
+
+txOutputHasValidSize :: Ord s => TxConstraints s -> TokenBundle -> Bool
+txOutputHasValidSize constraints b =
+    txOutputSize constraints b <= txOutputMaximumSize constraints
+
+txOutputHasValidTokenQuantities :: TxConstraints s -> TokenBundle -> Bool
+txOutputHasValidTokenQuantities constraints (TokenBundle _ b) =
+    TokenMap.maximumQuantity b <= txOutputMaximumTokenQuantity constraints

@@ -37,10 +37,6 @@ module Cardano.Wallet.Primitive.Migration.Selection
     , computeCurrentSize
     , computeMinimumFee
 
-    -- * Output queries
-    , outputIsValid
-    , outputSizeWithinLimit
-
     -- * Selection queries
     , outputOrdering
 
@@ -62,15 +58,13 @@ import Cardano.Wallet.Primitive.Types.TokenBundle
 import Cardano.Wallet.Primitive.Types.TokenMap
     ( TokenMap )
 import Cardano.Wallet.Primitive.Types.Tx
-    ( TxConstraints (..), txOutputCoinCost )
+    ( TxConstraints (..), txOutputCoinCost, txOutputHasValidSize )
 import Control.Monad
     ( (>=>) )
 import Data.Bifunctor
     ( first )
 import Data.Either.Extra
     ( eitherToMaybe, maybeToEither )
-import Data.Functor
-    ( (<&>) )
 import Data.Generics.Internal.VL.Lens
     ( view )
 import Data.Generics.Labels
@@ -340,7 +334,7 @@ checkOutputSizes constraints selection =
         :: TokenBundle
         -> Maybe SelectionOutputSizeExceedsLimitError
     checkOutput selectionOutput
-        | outputSizeWithinLimit constraints selectionOutput =
+        | txOutputHasValidSize constraints selectionOutput =
             Nothing
         | otherwise =
             Just SelectionOutputSizeExceedsLimitError
@@ -420,32 +414,6 @@ checkSizeWithinLimit constraints selection
   where
     selectionSizeComputed = computeCurrentSize constraints selection
     selectionSizeMaximum = txMaximumSize constraints
-
---------------------------------------------------------------------------------
--- Output query functions
---------------------------------------------------------------------------------
-
-outputIsValid
-    :: forall s. TxSize s
-    => TxConstraints s
-    -> TokenBundle
-    -> Bool
-outputIsValid constraints b = and $ conditions <&> (\f -> f constraints b)
-  where
-    conditions :: [TxConstraints s -> TokenBundle -> Bool]
-    conditions =
-        [ outputSatisfiesMinimumAdaQuantity
-        , outputSizeWithinLimit
-        ]
-
-outputSatisfiesMinimumAdaQuantity
-    :: TxConstraints s -> TokenBundle -> Bool
-outputSatisfiesMinimumAdaQuantity constraints (TokenBundle c m) =
-    c >= txOutputMinimumAdaQuantity constraints m
-
-outputSizeWithinLimit :: TxSize s => TxConstraints s -> TokenBundle -> Bool
-outputSizeWithinLimit constraints b =
-    txOutputSize constraints b <= txOutputMaximumSize constraints
 
 --------------------------------------------------------------------------------
 -- Selection query functions
@@ -669,7 +637,7 @@ splitBundleIfSizeExceedsLimit
     -> TokenBundle
     -> NonEmpty TokenBundle
 splitBundleIfSizeExceedsLimit constraints bundle
-    | outputSizeWithinLimit constraints bundleWithMaxAda =
+    | txOutputHasValidSize constraints bundleWithMaxAda =
         pure bundle
     | otherwise =
         splitInHalf bundle >>= splitBundleIfSizeExceedsLimit constraints

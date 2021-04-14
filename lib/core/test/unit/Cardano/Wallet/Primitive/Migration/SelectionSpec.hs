@@ -28,7 +28,6 @@ import Cardano.Wallet.Primitive.Migration.Selection
     , create
     , minimizeFee
     , minimizeFeeForOutput
-    , outputSizeWithinLimit
     )
 import Cardano.Wallet.Primitive.Types.Coin
     ( Coin (..) )
@@ -41,7 +40,11 @@ import Cardano.Wallet.Primitive.Types.TokenMap.Gen
 import Cardano.Wallet.Primitive.Types.TokenQuantity
     ( TokenQuantity (..) )
 import Cardano.Wallet.Primitive.Types.Tx
-    ( TxConstraints (..), txOutputCoinCost, txOutputCoinSize )
+    ( TxConstraints (..)
+    , txOutputCoinCost
+    , txOutputCoinSize
+    , txOutputHasValidSize
+    )
 import Control.Monad
     ( replicateM )
 import Data.ByteArray.Encoding
@@ -265,7 +268,7 @@ prop_coalesceOutputs mockArgs =
     cover 2 (length result == 2)
         "length result == 2" $
     conjoin
-        [ all (outputSizeWithinLimit constraints) result
+        [ all (txOutputHasValidSize constraints) result
         , F.fold result == F.fold mockOutputs
         ]
   where

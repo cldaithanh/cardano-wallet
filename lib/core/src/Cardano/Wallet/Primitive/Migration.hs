@@ -20,13 +20,13 @@ module Cardano.Wallet.Primitive.Migration
 import Prelude
 
 import Cardano.Wallet.Primitive.Migration.Selection
-    ( Selection (..), SelectionError (..), TxSize (..), outputIsValid )
+    ( Selection (..), SelectionError (..), TxSize (..) )
 import Cardano.Wallet.Primitive.Types.Coin
     ( Coin (..) )
 import Cardano.Wallet.Primitive.Types.TokenBundle
     ( TokenBundle (..) )
 import Cardano.Wallet.Primitive.Types.Tx
-    ( TxConstraints (..), TxIn )
+    ( TxConstraints (..), TxIn, txOutputIsValid )
 import Cardano.Wallet.Primitive.Types.UTxO
     ( UTxO (..) )
 import Data.Generics.Internal.VL.Lens
@@ -254,7 +254,7 @@ classifyUTxOEntry constraints b
     bundleIsSupporter b@(TokenBundle c m) =
         case computeOutputCoin of
             Nothing -> False
-            Just oc -> outputIsValid constraints (TokenBundle oc m)
+            Just oc -> txOutputIsValid constraints (TokenBundle oc m)
       where
         computeOutputCoin :: Maybe Coin
         computeOutputCoin = coinFromInteger

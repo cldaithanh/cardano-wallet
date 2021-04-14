@@ -19,6 +19,7 @@ module Cardano.Wallet.Primitive.Migration
 
       -- * Utility functions
     , addValueToOutputs
+    , selectWithPriority
 
     ) where
 
@@ -93,8 +94,8 @@ createSelection
     -- ^ Reward balance
     -> Maybe (CategorizedUTxO i, Selection i s)
 createSelection constraints utxo rewardBalance =
-    extendSelection constraints
-        =<< initializeSelection constraints utxo rewardBalance
+    initializeSelection constraints utxo rewardBalance
+    <&> extendSelection constraints
 
 initializeSelection
     :: TxSize s
@@ -126,54 +127,54 @@ extendSelection
     :: TxSize s
     => TxConstraints s
     -> (CategorizedUTxO i, Selection i s)
-    -> Maybe (CategorizedUTxO i, Selection i s)
-extendSelection constraints = extendSelectionWithFreerider
+    -> (CategorizedUTxO i, Selection i s)
+extendSelection constraints = extendWithFreerider
   where
-    extendSelectionWithFreerider (utxo, selection) =
-        case extendSelectionWith Freerider constraints (utxo, selection) of
+    extendWithFreerider (utxo, selection) =
+        case extendWith Freerider constraints (utxo, selection) of
             Right (utxo', selection') ->
-                extendSelectionWithFreerider (utxo', selection')
+                extendWithFreerider (utxo', selection')
             Left ExtendSelectionAdaInsufficient ->
-                extendSelectionWithSupporter (utxo, selection)
+                extendWithSupporter (utxo, selection)
             Left ExtendSelectionEntriesExhausted ->
-                extendSelectionWithSupporter (utxo, selection)
+                extendWithSupporter (utxo, selection)
             Left ExtendSelectionFull ->
-                Just (utxo, selection)
+                (utxo, selection)
 
-    extendSelectionWithSupporter (utxo, selection) =
-        case extendSelectionWith Supporter constraints (utxo, selection) of
+    extendWithSupporter (utxo, selection) =
+        case extendWith Supporter constraints (utxo, selection) of
             Right (utxo', selection') ->
-                extendSelectionWithFreerider (utxo', selection')
+                extendWithFreerider (utxo', selection')
             Left ExtendSelectionAdaInsufficient ->
-                extendSelectionWithInitiator (utxo, selection)
+                extendWithInitiator (utxo, selection)
             Left ExtendSelectionEntriesExhausted ->
-                extendSelectionWithInitiator (utxo, selection)
+                extendWithInitiator (utxo, selection)
             Left ExtendSelectionFull ->
-                Just (utxo, selection)
+                (utxo, selection)
 
-    extendSelectionWithInitiator (utxo, selection) =
-        case extendSelectionWith Initiator constraints (utxo, selection) of
+    extendWithInitiator (utxo, selection) =
+        case extendWith Initiator constraints (utxo, selection) of
             Right (utxo', selection') ->
-                extendSelectionWithFreerider (utxo', selection')
+                extendWithFreerider (utxo', selection')
             Left ExtendSelectionAdaInsufficient ->
-                Just (utxo, selection)
+                (utxo, selection)
             Left ExtendSelectionEntriesExhausted ->
-                Just (utxo, selection)
+                (utxo, selection)
             Left ExtendSelectionFull ->
-                Just (utxo, selection)
+                (utxo, selection)
 
 data ExtendSelectionError
     = ExtendSelectionAdaInsufficient
     | ExtendSelectionEntriesExhausted
     | ExtendSelectionFull
 
-extendSelectionWith
+extendWith
     :: TxSize s
     => UTxOEntryCategory
     -> TxConstraints s
     -> (CategorizedUTxO i, Selection i s)
     -> Either ExtendSelectionError (CategorizedUTxO i, Selection i s)
-extendSelectionWith category constraints (utxo, selection) =
+extendWith category constraints (utxo, selection) =
     case utxo `select` category of
         Just (input, utxo') ->
             let inputs' = input `NE.cons` inputs selection in

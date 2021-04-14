@@ -1,6 +1,8 @@
+{-# LANGUAGE DuplicateRecordFields #-}
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE NumericUnderscores #-}
 {-# LANGUAGE OverloadedLabels #-}
+{-# LANGUAGE OverloadedLists #-}
 {-# LANGUAGE TypeApplications #-}
 
 module Cardano.Wallet.Primitive.MigrationSpec
@@ -9,20 +11,23 @@ module Cardano.Wallet.Primitive.MigrationSpec
 import Prelude
 
 import Cardano.Wallet.Primitive.Migration
-    ( createPlan
+    ( categorizeUTxOEntries
+    , categorizeUTxOEntry
+    , CategorizedUTxO (..)
+    , createPlan
+    , uncategorizeUTxOEntries
     , MigrationPlan (..)
+    , UTxOEntryCategory (..)
     )
-import Data.Ratio
-    ( (%) )
-import Data.Map.Strict
-    ( Map )
-import Data.Maybe
-    ( catMaybes )
-import Cardano.Wallet.Unsafe
-    ( unsafeMkPercentage )
+--import Data.Map.Strict
+--    ( Map )
+--import Data.Maybe
+--    ( catMaybes )
 import Cardano.Wallet.Primitive.Migration.Selection
     ( Selection (..)
     )
+import Data.Either
+    ( isLeft, isRight )
 import Cardano.Wallet.Primitive.Migration.SelectionSpec
     ( MockTxConstraints (..)
     , MockInputId
@@ -32,18 +37,16 @@ import Cardano.Wallet.Primitive.Migration.SelectionSpec
     , unMockTxConstraints
     , counterexampleMap
     )
-import Data.List.NonEmpty
-    ( NonEmpty (..) )
+--import Data.List.NonEmpty
+--    ( NonEmpty (..) )
 import Cardano.Wallet.Primitive.Types.Coin
     ( Coin (..) )
 import Cardano.Wallet.Primitive.Types.TokenBundle
     ( TokenBundle (..) )
 import Cardano.Wallet.Primitive.Types.Tx
-    ( TxConstraints (..), txOutputCoinCost )
+    ( txOutputHasValidSize )
 import Control.Monad
     ( replicateM )
-import Data.Quantity
-    ( Percentage )
 import Data.Set
     ( Set )
 import Test.Hspec
@@ -64,29 +67,33 @@ import Test.QuickCheck
     , checkCoverage
     , cover
     , counterexample
+    , suchThat
     , (===)
     )
-import Data.Generics.Internal.VL.Lens
-    ( view )
 import Data.Generics.Labels
     ()
 
 import qualified Cardano.Wallet.Primitive.Migration.Selection as Selection
-import qualified Cardano.Wallet.Primitive.Types.TokenBundle as TokenBundle
+--import qualified Cardano.Wallet.Primitive.Types.TokenBundle as TokenBundle
 import qualified Data.Foldable as F
 import qualified Data.List.NonEmpty as NE
 import qualified Data.Set as Set
-import qualified Data.Map.Strict as Map
+--import qualified Data.Map.Strict as Map
 
 spec :: Spec
 spec = describe "Cardano.Wallet.Primitive.MigrationSpec" $
 
-    modifyMaxSuccess (const 10) $ do
+    modifyMaxSuccess (const 1000) $ do
 
     parallel $ describe "Creating migration plans" $ do
 
         it "prop_createPlan" $
             property prop_createPlan
+
+    parallel $ describe "Categorizing UTxO entries" $ do
+
+        it "prop_categorizeUTxOEntry" $
+            property prop_categorizeUTxOEntry
 
 --------------------------------------------------------------------------------
 -- Creating migration plans
@@ -121,18 +128,14 @@ prop_createPlan :: Blind MockCreatePlanArguments -> Property
 prop_createPlan mockArgs =
     checkCoverage $
     counterexample counterexampleText $
-    cover 0 (percentageOfAdaNotSelected <= unsafeMkPercentage (5 % 100))
-        "percentageOfAdaNotSelected <= 5 %" $
-    cover 5 (selectionCount == 1)
+    cover 0.1 (selectionCount == 1)
         "selectionCount == 1" $
-    cover 5 (selectionCount == 2)
+    cover 0.1 (selectionCount == 2)
         "selectionCount == 2" $
-    cover 5 (selectionCount == 3)
-        "selectionCount == 3" $
     conjoin
         [ inputIds === inputIdsSelected `Set.union` inputIdsNotSelected
         , totalFee result === totalFeeExpected
-        , Map.elems erroneouslyUnselectedNonDustInputCoins === []
+        , initiators (unselected result) === []
         ]
   where
     Blind MockCreatePlanArguments
@@ -141,7 +144,9 @@ prop_createPlan mockArgs =
         , mockRewardBalance
         } = mockArgs
     constraints = unMockTxConstraints mockConstraints
-    result = createPlan constraints mockInputs mockRewardBalance
+    result = createPlan constraints categorizedUTxO mockRewardBalance
+
+    categorizedUTxO = categorizeUTxOEntries constraints mockInputs
 
     inputIds :: Set MockInputId
     inputIds = Set.fromList (fst <$> mockInputs)
@@ -154,77 +159,85 @@ prop_createPlan mockArgs =
         ]
 
     inputIdsNotSelected :: Set MockInputId
-    inputIdsNotSelected = Set.fromList (fst <$> unselected result)
+    inputIdsNotSelected = Set.fromList
+        $ fmap fst
+        $ uncategorizeUTxOEntries
+        $ unselected result
 
     selectionCount = length (selections result)
 
     totalFeeExpected :: Coin
     totalFeeExpected = F.foldMap fee (selections result)
 
-    -- we really want to get all the inputs which can make a transaction for
-    -- themselves.
-    nonDustInputCoins :: Map MockInputId Coin
-    nonDustInputCoins =
-        Map.fromList $ catMaybes $ toMatchingInputCoin <$> mockInputs
-      where
-        toMatchingInputCoin
-            :: (MockInputId, TokenBundle) -> Maybe (MockInputId, Coin)
-        toMatchingInputCoin (i, b)
-            | Just c <- TokenBundle.toCoin b, match c =
-                Just (i, c)
-            | otherwise =
-                Nothing
-          where
-            match :: Coin -> Bool
-            match c = c >= mconcat
-                [ txOutputMinimumAdaQuantity constraints mempty
-                , txBaseCost constraints
-                , txInputCost constraints
-                , txOutputCoinCost constraints c
-                ]
-
-    unselectedNonDustInputCoins :: Map MockInputId Coin
-    unselectedNonDustInputCoins =
-        nonDustInputCoins `Map.restrictKeys` inputIdsNotSelected
-
-    -- this can be erroneouslyUnselectedInputs
-    -- perhaps we want to sort in decreasing order of ada quantity.
-    -- also need to check that we're categorizing correctly.
-    erroneouslyUnselectedNonDustInputCoins :: Map MockInputId Coin
-    erroneouslyUnselectedNonDustInputCoins =
-        Map.filterWithKey condition unselectedNonDustInputCoins
-      where
-        condition i c =
-            case selectionResult of
-                Left _ ->
-                    False
-                Right _ ->
-                    True
-          where
-            selectionResult = Selection.create constraints (Coin 0)
-                ((i, TokenBundle.fromCoin c) :| [])
-
-    totalAdaAvailable :: Coin
-    totalAdaAvailable = F.foldMap (view #coin . snd) mockInputs
-
-    totalAdaNotSelected :: Coin
-    totalAdaNotSelected = F.foldMap (view #coin . snd) (unselected result)
-
-    percentageOfAdaNotSelected :: Percentage
-    percentageOfAdaNotSelected
-        | totalAdaAvailable == Coin 0 =
-            unsafeMkPercentage 0
-        | otherwise =
-            unsafeMkPercentage $ (%)
-                (coinToInteger totalAdaNotSelected)
-                (coinToInteger totalAdaAvailable)
-
     counterexampleText = counterexampleMap
         [ ( "mockConstraints"
           , show mockConstraints )
-        , ( "length nonDustInputCoins"
-          , show (length nonDustInputCoins) )
+        , ( "count of initiators available"
+          , show (length $ initiators categorizedUTxO) )
+        , ( "count of initiators not selected"
+          , show (length $ initiators $ unselected result) )
+        , ( "count of supporters available"
+          , show (length $ supporters categorizedUTxO) )
+        , ( "count of supporters not selected"
+          , show (length $ supporters $ unselected result) )
+        , ( "count of freeriders available"
+          , show (length $ freeriders categorizedUTxO) )
+        , ( "count of freeriders not selected"
+          , show (length $ freeriders $ unselected result) )
+        , ( "count of ignorables available"
+          , show (length $ ignorables categorizedUTxO) )
+        , ( "count of ignorables not selected"
+          , show (length $ ignorables $ unselected result) )
         ]
+
+--------------------------------------------------------------------------------
+-- Categorizing UTxO entries
+--------------------------------------------------------------------------------
+
+data MockCategorizeUTxOEntryArguments = MockCategorizeUTxOEntryArguments
+    { mockConstraints :: MockTxConstraints
+    , mockEntry :: (MockInputId, TokenBundle)
+    }
+    deriving (Eq, Show)
+
+instance Arbitrary MockCategorizeUTxOEntryArguments where
+    arbitrary = genMockCategorizeUTxOEntryArguments
+
+genMockCategorizeUTxOEntryArguments :: Gen MockCategorizeUTxOEntryArguments
+genMockCategorizeUTxOEntryArguments = do
+    mockConstraints <- genMockTxConstraints
+    let constraints = unMockTxConstraints mockConstraints
+    mockEntry <- genMockInput `suchThat`
+        (txOutputHasValidSize constraints . snd)
+    pure MockCategorizeUTxOEntryArguments
+        { mockConstraints
+        , mockEntry
+        }
+
+prop_categorizeUTxOEntry :: MockCategorizeUTxOEntryArguments -> Property
+prop_categorizeUTxOEntry mockArgs =
+    checkCoverage $
+    cover 1 (result == Initiator) "Initiator" $
+    cover 1 (result == Supporter) "Supporter" $
+    cover 1 (result == Freerider) "Freerider" $
+    cover 0 (result == Ignorable) "Ignorable" $
+    property $ case result of
+        Initiator ->
+            isRight $ Selection.create constraints (Coin 0) [mockEntry]
+        Supporter ->
+            isLeft $ Selection.create constraints (Coin 0) [mockEntry]
+        Freerider ->
+            isLeft $ Selection.create constraints (Coin 0) [mockEntry]
+        Ignorable ->
+            isLeft $ Selection.create constraints (Coin 0) [mockEntry]
+  where
+    MockCategorizeUTxOEntryArguments
+        { mockConstraints
+        , mockEntry
+        } = mockArgs
+    (_mockInputId, mockInputBundle) = mockEntry
+    constraints = unMockTxConstraints mockConstraints
+    result = categorizeUTxOEntry constraints mockInputBundle
 
 --------------------------------------------------------------------------------
 -- Miscellaneous types and functions

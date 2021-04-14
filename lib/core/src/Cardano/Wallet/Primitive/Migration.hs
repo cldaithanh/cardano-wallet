@@ -3,6 +3,7 @@
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE OverloadedLabels #-}
+{-# LANGUAGE OverloadedLists #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
 
@@ -11,7 +12,10 @@ module Cardano.Wallet.Primitive.Migration
       -- * UTxO entry category
       categorizeUTxO
     , categorizeUTxOEntries
+    , categorizeUTxOEntry
     , CategorizedUTxO (..)
+    , uncategorizeUTxOEntries
+    , UTxOEntryCategory (..)
 
       -- * Migration plans
     , createPlan
@@ -61,7 +65,7 @@ import qualified Data.Map.Strict as Map
 
 data MigrationPlan i s = MigrationPlan
     { selections :: [Selection i s]
-    , unselected :: [(i, TokenBundle)]
+    , unselected :: CategorizedUTxO i
     , totalFee :: Coin
     }
     deriving (Eq, Show)
@@ -69,12 +73,12 @@ data MigrationPlan i s = MigrationPlan
 createPlan
     :: TxSize s
     => TxConstraints s
-    -> [(i, TokenBundle)]
+    -> CategorizedUTxO i
     -> Coin
     -- ^ Reward balance
     -> MigrationPlan i s
-createPlan constraints entries =
-    run [] (categorizeUTxOEntries constraints entries)
+createPlan constraints utxo =
+    run [] utxo
   where
     run selections utxo rewardBalance =
         case createSelection constraints utxo rewardBalance of
@@ -82,7 +86,7 @@ createPlan constraints entries =
                 run (selection : selections) utxo' (Coin 0)
             Nothing -> MigrationPlan
                 { selections
-                , unselected = uncategorizeUTxOEntries utxo
+                , unselected = utxo
                 , totalFee = F.foldMap (view #fee) selections
                 }
 
@@ -104,24 +108,35 @@ initializeSelection
     -> Coin
     -- ^ Reward balance
     -> Maybe (CategorizedUTxO i, Selection i s)
-initializeSelection constraints utxoAtStart rewardBalance
-    | Just (supporter, utxo) <- utxoAtStart `select` Supporter =
-        run utxo (supporter :| [])
-    | otherwise =
-        Nothing
+initializeSelection constraints utxoAtStart rewardBalance =
+    case initializeWith [Freerider, Supporter, Initiator] of
+        Nothing ->
+            case initializeWith [Supporter, Initiator] of
+                Nothing ->
+                    initializeWith [Initiator]
+                Just r ->
+                    Just r
+        Just r ->
+            Just r
   where
-    run utxo inputs =
-        case Selection.create constraints rewardBalance inputs of
-            Right selection ->
-                Just (utxo, selection)
-            Left SelectionAdaInsufficient ->
-                case utxo `select` Supporter of
-                    Just (input, utxo') ->
-                        run utxo' (input `NE.cons` inputs)
-                    Nothing ->
-                        Nothing
-            Left (SelectionFull _) ->
-                Nothing
+    initializeWith categories
+        | Just (supporter, utxo) <- utxoAtStart `selectWithPriority` categories =
+            run utxo (supporter :| [])
+        | otherwise =
+            Nothing
+      where
+        run utxo inputs =
+            case Selection.create constraints rewardBalance inputs of
+                Right selection ->
+                    Just (utxo, selection)
+                Left SelectionAdaInsufficient ->
+                    case utxo `selectWithPriority` categories of
+                        Just (input, utxo') ->
+                            run utxo' (input `NE.cons` inputs)
+                        Nothing ->
+                            Nothing
+                Left (SelectionFull _) ->
+                    Nothing
 
 extendSelection
     :: TxSize s
@@ -287,13 +302,22 @@ categorizeUTxOEntry constraints b
         Freerider
   where
     bundleIsInitiator :: TokenBundle -> Bool
-    bundleIsInitiator b@(TokenBundle c m) = c >= mconcat
-        [ txBaseCost constraints
-        , txInputCost constraints
-        , txOutputCost constraints b
-        , txOutputMinimumAdaQuantity constraints m
-        ]
-
+    bundleIsInitiator b =
+        case Selection.create constraints (Coin 0) [((), b)] of
+            Right _ ->
+                True
+            Left SelectionAdaInsufficient ->
+                False
+            Left (SelectionFull _) ->
+                False
+        {-
+        c >= mconcat
+            [ txBaseCost constraints
+            , txInputCost constraints
+            , txOutputCost constraints b
+            , txOutputMinimumAdaQuantity constraints m
+            ]
+        -}
     bundleIsSupporter :: TokenBundle -> Bool
     bundleIsSupporter b@(TokenBundle c m) = c >= mconcat
         [ txInputCost constraints

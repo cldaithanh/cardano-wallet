@@ -725,8 +725,8 @@ genMockTxOutputMaximumTokenQuantity = MockTxOutputMaximumTokenQuantity <$>
 --------------------------------------------------------------------------------
 
 data MockTxOutputMinimumAdaQuantity = MockTxOutputMinimumAdaQuantity
-    { mockMinimumAdaQuantityPerOutput :: Coin
-    , mockMinimumAdaQuantityPerOutputAsset :: Coin
+    { perOutput :: Coin
+    , perOutputAsset :: Coin
     }
     deriving (Eq, Show)
 
@@ -735,8 +735,8 @@ unMockTxOutputMinimumAdaQuantity
     -> (TokenMap -> Coin)
 unMockTxOutputMinimumAdaQuantity mock = \m ->
     let assetCount = Set.size $ TokenMap.getAssets m in
-    mockMinimumAdaQuantityPerOutput mock
-        <> mtimesDefault assetCount (mockMinimumAdaQuantityPerOutputAsset mock)
+    perOutput mock
+        <> mtimesDefault assetCount (perOutputAsset mock)
 
 genMockTxOutputMinimumAdaQuantity :: Gen MockTxOutputMinimumAdaQuantity
 genMockTxOutputMinimumAdaQuantity = MockTxOutputMinimumAdaQuantity
@@ -783,8 +783,7 @@ genTokenBundle :: Gen TokenBundle
 genTokenBundle = do
     assetCount <- oneof
         [ pure 0
-        , pure 1
-        , choose (2, 4)
+        , choose (1, 4)
         ]
     tokens <- TokenMap.fromFlatList <$> replicateM assetCount genAssetQuantity
     coin <- genCoinRange (Coin 1) (Coin 1000)

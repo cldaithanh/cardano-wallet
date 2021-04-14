@@ -3,17 +3,22 @@
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE OverloadedLabels #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
 
 module Cardano.Wallet.Primitive.Migration
     (
       -- * UTxO entry classification
       classifyUTxO
+    , classifyUTxOEntries
     , ClassifiedUTxO (..)
 
       -- * Migration plans
     , createPlan
     , MigrationPlan (..)
+
+      -- * Utility functions
+    , addValueToOutputs
 
     ) where
 
@@ -26,9 +31,13 @@ import Cardano.Wallet.Primitive.Types.Coin
 import Cardano.Wallet.Primitive.Types.TokenBundle
     ( TokenBundle (..) )
 import Cardano.Wallet.Primitive.Types.Tx
-    ( TxConstraints (..), TxIn, txOutputIsValid )
+    ( TxConstraints (..), TxIn, TxOut, txOutputIsValid, txOutputHasValidSize )
 import Cardano.Wallet.Primitive.Types.UTxO
     ( UTxO (..) )
+import Control.Monad
+    ( (>=>) )
+import Data.Functor
+    ( (<&>) )
 import Data.Generics.Internal.VL.Lens
     ( view )
 import Data.Generics.Labels
@@ -49,7 +58,7 @@ import qualified Data.Map.Strict as Map
 
 data MigrationPlan i s = MigrationPlan
     { selections :: [Selection i s]
-    , unselected :: ClassifiedUTxO i
+    , unselected :: [(i, TokenBundle)]
     , totalFee :: Coin
     }
     deriving (Eq, Show)
@@ -57,12 +66,12 @@ data MigrationPlan i s = MigrationPlan
 createPlan
     :: TxSize s
     => TxConstraints s
-    -> ClassifiedUTxO i
+    -> [(i, TokenBundle)]
     -> Coin
     -- ^ Reward balance
     -> MigrationPlan i s
-createPlan constraints =
-    run []
+createPlan constraints entries =
+    run [] (classifyUTxOEntries constraints entries)
   where
     run selections utxo rewardBalance =
         case createSelection constraints utxo rewardBalance of
@@ -70,7 +79,7 @@ createPlan constraints =
                 run (selection : selections) utxo' (Coin 0)
             Nothing -> MigrationPlan
                 { selections
-                , unselected = utxo
+                , unselected = unclassifyUTxOEntries utxo
                 , totalFee = F.foldMap (view #fee) selections
                 }
 
@@ -134,7 +143,7 @@ extendSelection constraints = extendSelectionWithFreerider
             Right (utxo', selection') ->
                 extendSelectionWithFreerider (utxo', selection')
             Left ExtendSelectionAdaInsufficient ->
-                extendSelectionWithSupporter (utxo, selection)
+                Just (utxo, selection)
             Left ExtendSelectionEntriesExhausted ->
                 Just (utxo, selection)
             Left ExtendSelectionFull ->
@@ -196,10 +205,6 @@ selectFreerider utxo = case freeriders utxo of
 -- Classification of UTxO entries
 --------------------------------------------------------------------------------
 
--- giver
--- taker
--- dust
-
 data ClassifiedUTxO i = ClassifiedUTxO
     { supporters :: [(i, TokenBundle)]
     , freeriders :: [(i, TokenBundle)]
@@ -207,19 +212,31 @@ data ClassifiedUTxO i = ClassifiedUTxO
     }
     deriving (Eq, Show)
 
-classifyUTxO :: TxSize s => TxConstraints s -> UTxO -> ClassifiedUTxO TxIn
-classifyUTxO constraints (UTxO u) = ClassifiedUTxO
+classifyUTxO
+    :: TxSize s
+    => TxConstraints s
+    -> UTxO
+    -> ClassifiedUTxO (TxIn, TxOut)
+classifyUTxO constraints (UTxO u) =
+    classifyUTxOEntries constraints
+        ((\(i, o) -> ((i, o), view #tokens o)) <$> Map.toList u)
+
+classifyUTxOEntries
+    :: forall i s. TxSize s
+    => TxConstraints s
+    -> [(i, TokenBundle)]
+    -> ClassifiedUTxO i
+classifyUTxOEntries constraints unclassifiedEntries = ClassifiedUTxO
     { supporters = entriesMatching Supporter
     , freeriders = entriesMatching Freerider
     , ignorables = entriesMatching Ignorable
     }
   where
-    entries :: [(TxIn, (TokenBundle, UTxOEntryClassification))]
-    entries =
-        fmap ((\b -> (b, classifyUTxOEntry constraints b)) . view #tokens)
-            <$> Map.toList u
+    entries :: [(i, (TokenBundle, UTxOEntryClassification))]
+    entries = unclassifiedEntries
+        <&> (\(i, b) -> (i, (b, classifyUTxOEntry constraints b)))
 
-    entriesMatching :: UTxOEntryClassification -> [(TxIn, TokenBundle)]
+    entriesMatching :: UTxOEntryClassification -> [(i, TokenBundle)]
     entriesMatching classification =
         fmap fst <$> L.filter ((== classification) . snd . snd) entries
 
@@ -264,6 +281,89 @@ classifyUTxOEntry constraints b
 
     coinIsIgnorable :: Coin -> Bool
     coinIsIgnorable c = c <= txInputCost constraints
+
+unclassifyUTxOEntries :: ClassifiedUTxO i -> [(i, TokenBundle)]
+unclassifyUTxOEntries utxo = mconcat
+    [ supporters utxo
+    , freeriders utxo
+    , ignorables utxo
+    ]
+
+--------------------------------------------------------------------------------
+-- Adding value to outputs
+--------------------------------------------------------------------------------
+
+addValueToOutputs
+    :: TxSize s
+    => TxConstraints s
+    -> TokenBundle
+    -- ^ Value to add
+    -> NonEmpty TokenBundle
+    -- ^ Existing set of outputs
+    -> NonEmpty TokenBundle
+    -- ^ Set of outputs with the value added
+addValueToOutputs constraints valueUnchecked outputs =
+    F.foldl' (flip addToOutputs) outputs $
+        splitOutputIfLimitsExceeded constraints valueUnchecked
+  where
+    addToOutputs :: TokenBundle -> NonEmpty TokenBundle -> NonEmpty TokenBundle
+    addToOutputs value = NE.fromList . add [] . NE.toList
+      where
+        add considered (candidate : unconsidered) =
+            case safeMergeOutputValue value candidate of
+                Just merged ->
+                    merged : (considered <> unconsidered)
+                Nothing ->
+                    add unconsidered (candidate : considered)
+        add considered [] =
+            value : considered
+
+    safeMergeOutputValue :: TokenBundle -> TokenBundle -> Maybe TokenBundle
+    safeMergeOutputValue a b
+        | txOutputIsValid constraints valueWithMaxAda =
+            Just value
+        | otherwise =
+            Nothing
+      where
+        value = a <> b
+        valueWithMaxAda = TokenBundle.setCoin value maxBound
+
+--------------------------------------------------------------------------------
+-- Splitting output values
+--------------------------------------------------------------------------------
+
+splitOutputIfLimitsExceeded
+    :: TxSize s
+    => TxConstraints s
+    -> TokenBundle
+    -> NonEmpty TokenBundle
+splitOutputIfLimitsExceeded constraints =
+    splitOutputIfSizeExceedsLimit constraints >=>
+    splitOutputIfTokenQuantityExceedsLimit constraints
+
+splitOutputIfTokenQuantityExceedsLimit
+    :: TxConstraints s
+    -> TokenBundle
+    -> NonEmpty TokenBundle
+splitOutputIfTokenQuantityExceedsLimit
+    = flip TokenBundle.equipartitionQuantitiesWithUpperBound
+    . txOutputMaximumTokenQuantity
+
+splitOutputIfSizeExceedsLimit
+    :: TxSize s
+    => TxConstraints s
+    -> TokenBundle
+    -> NonEmpty TokenBundle
+splitOutputIfSizeExceedsLimit constraints bundle
+    | txOutputHasValidSize constraints bundleWithMaxAda =
+        pure bundle
+    | otherwise =
+        splitInHalf bundle >>= splitOutputIfSizeExceedsLimit constraints
+    | otherwise =
+        pure bundle
+  where
+    bundleWithMaxAda = TokenBundle.setCoin bundle maxBound
+    splitInHalf = flip TokenBundle.equipartitionAssets (() :| [()])
 
 --------------------------------------------------------------------------------
 -- Miscellaneous types and functions

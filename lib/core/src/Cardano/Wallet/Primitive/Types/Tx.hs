@@ -555,6 +555,7 @@ txOutputHasValidSize :: Ord s => TxConstraints s -> TokenBundle -> Bool
 txOutputHasValidSize constraints b =
     txOutputSize constraints b <= txOutputMaximumSize constraints
 
+-- TODO: This should take TokenMap.
 txOutputHasValidTokenQuantities :: TxConstraints s -> TokenBundle -> Bool
 txOutputHasValidTokenQuantities constraints (TokenBundle _ b) =
     TokenMap.maximumQuantity b <= txOutputMaximumTokenQuantity constraints

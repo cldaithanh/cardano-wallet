@@ -3,6 +3,7 @@
 {-# LANGUAGE NumericUnderscores #-}
 {-# LANGUAGE OverloadedLabels #-}
 {-# LANGUAGE OverloadedLists #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
 
 module Cardano.Wallet.Primitive.MigrationSpec
@@ -11,42 +12,37 @@ module Cardano.Wallet.Primitive.MigrationSpec
 import Prelude
 
 import Cardano.Wallet.Primitive.Migration
-    ( categorizeUTxOEntries
-    , categorizeUTxOEntry
-    , CategorizedUTxO (..)
-    , createPlan
-    , uncategorizeUTxOEntries
+    ( CategorizedUTxO (..)
     , MigrationPlan (..)
     , UTxOEntryCategory (..)
+    , categorizeUTxOEntries
+    , categorizeUTxOEntry
+    , createPlan
+    , uncategorizeUTxOEntries
     )
---import Data.Map.Strict
---    ( Map )
---import Data.Maybe
---    ( catMaybes )
 import Cardano.Wallet.Primitive.Migration.Selection
-    ( Selection (..)
-    )
-import Data.Either
-    ( isLeft, isRight )
+    ( Selection (..) )
 import Cardano.Wallet.Primitive.Migration.SelectionSpec
-    ( MockTxConstraints (..)
-    , MockInputId
-    , genMockTxConstraints
-    , genMockInput
-    , genCoinRange
-    , unMockTxConstraints
+    ( MockInputId
+    , MockTxConstraints (..)
     , counterexampleMap
+    , genCoinRange
+    , genMockInput
+    , genMockTxConstraints
+    , unMockTxConstraints
     )
---import Data.List.NonEmpty
---    ( NonEmpty (..) )
 import Cardano.Wallet.Primitive.Types.Coin
     ( Coin (..) )
 import Cardano.Wallet.Primitive.Types.TokenBundle
     ( TokenBundle (..) )
 import Cardano.Wallet.Primitive.Types.Tx
-    ( txOutputHasValidSize )
+    ( txOutputHasValidSize, txOutputHasValidTokenQuantities )
 import Control.Monad
     ( replicateM )
+import Data.Either
+    ( isLeft, isRight )
+import Data.Generics.Labels
+    ()
 import Data.Set
     ( Set )
 import Test.Hspec
@@ -56,29 +52,26 @@ import Test.Hspec.Core.QuickCheck
 import Test.Hspec.Extra
     ( parallel )
 import Test.QuickCheck
-    ( Property
+    ( Arbitrary (..)
     , Blind (..)
     , Gen
-    , choose
-    , Arbitrary (..)
-    , oneof
-    , conjoin
-    , property
+    , Property
     , checkCoverage
-    , cover
+    , choose
+    , conjoin
     , counterexample
+    , cover
+    , oneof
+    , property
     , suchThat
     , (===)
     )
-import Data.Generics.Labels
-    ()
 
 import qualified Cardano.Wallet.Primitive.Migration.Selection as Selection
---import qualified Cardano.Wallet.Primitive.Types.TokenBundle as TokenBundle
+import qualified Cardano.Wallet.Primitive.Types.TokenBundle as TokenBundle
 import qualified Data.Foldable as F
 import qualified Data.List.NonEmpty as NE
 import qualified Data.Set as Set
---import qualified Data.Map.Strict as Map
 
 spec :: Spec
 spec = describe "Cardano.Wallet.Primitive.MigrationSpec" $
@@ -112,7 +105,7 @@ instance Arbitrary MockCreatePlanArguments where
 genMockCreatePlanArguments :: Gen MockCreatePlanArguments
 genMockCreatePlanArguments = do
     mockConstraints <- genMockTxConstraints
-    mockInputCount <- choose (0, 100)
+    mockInputCount <- choose (0, 50)
     mockInputs <- replicateM mockInputCount genMockInput
     mockRewardBalance <- oneof
         [ pure (Coin 0)
@@ -126,12 +119,17 @@ genMockCreatePlanArguments = do
 
 prop_createPlan :: Blind MockCreatePlanArguments -> Property
 prop_createPlan mockArgs =
+    -- TODO: check how many different types of entries are unselected.
     checkCoverage $
     counterexample counterexampleText $
     cover 0.1 (selectionCount == 1)
         "selectionCount == 1" $
     cover 0.1 (selectionCount == 2)
         "selectionCount == 2" $
+    cover 0.1 (selectionCount == 3)
+        "selectionCount == 3" $
+    cover 0.1 (selectionCount == 4)
+        "selectionCount == 4" $
     conjoin
         [ inputIds === inputIdsSelected `Set.union` inputIdsNotSelected
         , totalFee result === totalFeeExpected
@@ -206,13 +204,19 @@ instance Arbitrary MockCategorizeUTxOEntryArguments where
 genMockCategorizeUTxOEntryArguments :: Gen MockCategorizeUTxOEntryArguments
 genMockCategorizeUTxOEntryArguments = do
     mockConstraints <- genMockTxConstraints
-    let constraints = unMockTxConstraints mockConstraints
     mockEntry <- genMockInput `suchThat`
-        (txOutputHasValidSize constraints . snd)
+        (bundleIsAcceptable mockConstraints . snd)
     pure MockCategorizeUTxOEntryArguments
         { mockConstraints
         , mockEntry
         }
+  where
+    bundleIsAcceptable :: MockTxConstraints -> TokenBundle -> Bool
+    bundleIsAcceptable mockConstraints b =
+        txOutputHasValidSize constraints (TokenBundle.setCoin b maxBound) &&
+        txOutputHasValidTokenQuantities constraints b
+      where
+        constraints = unMockTxConstraints mockConstraints
 
 prop_categorizeUTxOEntry :: MockCategorizeUTxOEntryArguments -> Property
 prop_categorizeUTxOEntry mockArgs =

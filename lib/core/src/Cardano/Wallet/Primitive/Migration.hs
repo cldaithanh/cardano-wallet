@@ -36,11 +36,13 @@ import Cardano.Wallet.Primitive.Types.Coin
 import Cardano.Wallet.Primitive.Types.TokenBundle
     ( TokenBundle (..) )
 import Cardano.Wallet.Primitive.Types.Tx
-    ( TxConstraints (..), TxIn, TxOut, txOutputIsValid, txOutputHasValidSize )
+    ( TxConstraints (..), TxIn, TxOut, txOutputHasValidSize, txOutputIsValid )
 import Cardano.Wallet.Primitive.Types.UTxO
     ( UTxO (..) )
 import Control.Monad
     ( (>=>) )
+import Data.Either
+    ( isRight )
 import Data.Functor
     ( (<&>) )
 import Data.Generics.Internal.VL.Lens
@@ -303,21 +305,13 @@ categorizeUTxOEntry constraints b
   where
     bundleIsInitiator :: TokenBundle -> Bool
     bundleIsInitiator b =
-        case Selection.create constraints (Coin 0) [((), b)] of
-            Right _ ->
-                True
-            Left SelectionAdaInsufficient ->
-                False
-            Left (SelectionFull _) ->
-                False
-        {-
-        c >= mconcat
-            [ txBaseCost constraints
-            , txInputCost constraints
-            , txOutputCost constraints b
-            , txOutputMinimumAdaQuantity constraints m
-            ]
-        -}
+        isRight $ Selection.create constraints (Coin 0) [((), b)]
+        --c >= mconcat
+        --    [ txBaseCost constraints
+        --    , txInputCost constraints
+        --    , txOutputCost constraints b
+        --    , txOutputMinimumAdaQuantity constraints m
+        --    ]
     bundleIsSupporter :: TokenBundle -> Bool
     bundleIsSupporter b@(TokenBundle c m) = c >= mconcat
         [ txInputCost constraints

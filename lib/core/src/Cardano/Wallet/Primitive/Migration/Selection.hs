@@ -63,6 +63,8 @@ import Cardano.Wallet.Primitive.Types.TokenMap
     ( TokenMap )
 import Cardano.Wallet.Primitive.Types.Tx
     ( TxConstraints (..), txOutputCoinCost )
+import Control.Monad
+    ( (>=>) )
 import Data.Bifunctor
     ( first )
 import Data.Either.Extra
@@ -649,27 +651,17 @@ splitBundleIfLimitsExceeded
     => TxConstraints s
     -> TokenBundle
     -> NonEmpty TokenBundle
-splitBundleIfLimitsExceeded constraints b
-    = splitBundlesWithExcessiveTokenQuantities constraints
-    $ splitBundlesWithExcessiveSizes constraints
-    $ b :| []
+splitBundleIfLimitsExceeded constraints =
+    splitBundleIfSizeExceedsLimit constraints >=>
+    splitBundleIfTokenQuantityExceedsLimit constraints
 
-splitBundlesWithExcessiveSizes
-    :: TxSize s
-    => TxConstraints s
-    -> NonEmpty TokenBundle
-    -> NonEmpty TokenBundle
-splitBundlesWithExcessiveSizes constraints bs =
-    splitBundleIfSizeExceedsLimit constraints =<< bs
-
-splitBundlesWithExcessiveTokenQuantities
+splitBundleIfTokenQuantityExceedsLimit
     :: TxConstraints s
+    -> TokenBundle
     -> NonEmpty TokenBundle
-    -> NonEmpty TokenBundle
-splitBundlesWithExcessiveTokenQuantities constraints bs =
-    (`TokenBundle.equipartitionQuantitiesWithUpperBound` maxQuantity) =<< bs
-  where
-    maxQuantity = txOutputMaximumTokenQuantity constraints
+splitBundleIfTokenQuantityExceedsLimit
+    = flip TokenBundle.equipartitionQuantitiesWithUpperBound
+    . txOutputMaximumTokenQuantity
 
 splitBundleIfSizeExceedsLimit
     :: TxSize s
@@ -684,8 +676,8 @@ splitBundleIfSizeExceedsLimit constraints bundle
     | otherwise =
         pure bundle
   where
-    splitInHalf = flip TokenBundle.equipartitionAssets (() :| [()])
     bundleWithMaxAda = TokenBundle.setCoin bundle maxBound
+    splitInHalf = flip TokenBundle.equipartitionAssets (() :| [()])
 
 --------------------------------------------------------------------------------
 -- Miscellaneous types and functions

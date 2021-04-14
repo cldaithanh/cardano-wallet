@@ -130,7 +130,7 @@ extendSelection
 extendSelection constraints = extendSelectionWithFreerider
   where
     extendSelectionWithFreerider (utxo, selection) =
-        case extendSelectionWithEntry constraints Freerider (utxo, selection) of
+        case extendSelectionWith Freerider constraints (utxo, selection) of
             Right (utxo', selection') ->
                 extendSelectionWithFreerider (utxo', selection')
             Left ExtendSelectionAdaInsufficient ->
@@ -141,7 +141,18 @@ extendSelection constraints = extendSelectionWithFreerider
                 Just (utxo, selection)
 
     extendSelectionWithSupporter (utxo, selection) =
-        case extendSelectionWithEntry constraints Supporter (utxo, selection) of
+        case extendSelectionWith Supporter constraints (utxo, selection) of
+            Right (utxo', selection') ->
+                extendSelectionWithFreerider (utxo', selection')
+            Left ExtendSelectionAdaInsufficient ->
+                extendSelectionWithInitiator (utxo, selection)
+            Left ExtendSelectionEntriesExhausted ->
+                extendSelectionWithInitiator (utxo, selection)
+            Left ExtendSelectionFull ->
+                Just (utxo, selection)
+
+    extendSelectionWithInitiator (utxo, selection) =
+        case extendSelectionWith Initiator constraints (utxo, selection) of
             Right (utxo', selection') ->
                 extendSelectionWithFreerider (utxo', selection')
             Left ExtendSelectionAdaInsufficient ->
@@ -156,13 +167,13 @@ data ExtendSelectionError
     | ExtendSelectionEntriesExhausted
     | ExtendSelectionFull
 
-extendSelectionWithEntry
+extendSelectionWith
     :: TxSize s
-    => TxConstraints s
-    -> UTxOEntryCategory
+    => UTxOEntryCategory
+    -> TxConstraints s
     -> (CategorizedUTxO i, Selection i s)
     -> Either ExtendSelectionError (CategorizedUTxO i, Selection i s)
-extendSelectionWithEntry constraints category (utxo, selection) =
+extendSelectionWith category constraints (utxo, selection) =
     case utxo `select` category of
         Just (input, utxo') ->
             let inputs' = input `NE.cons` inputs selection in

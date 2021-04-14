@@ -8,10 +8,10 @@
 
 module Cardano.Wallet.Primitive.Migration
     (
-      -- * UTxO entry classification
-      classifyUTxO
-    , classifyUTxOEntries
-    , ClassifiedUTxO (..)
+      -- * UTxO entry category
+      categorizeUTxO
+    , categorizeUTxOEntries
+    , CategorizedUTxO (..)
 
       -- * Migration plans
     , createPlan
@@ -44,6 +44,8 @@ import Data.Generics.Labels
     ()
 import Data.List.NonEmpty
     ( NonEmpty (..) )
+import Data.Maybe
+    ( catMaybes, listToMaybe )
 
 import qualified Cardano.Wallet.Primitive.Migration.Selection as Selection
 import qualified Cardano.Wallet.Primitive.Types.TokenBundle as TokenBundle
@@ -71,7 +73,7 @@ createPlan
     -- ^ Reward balance
     -> MigrationPlan i s
 createPlan constraints entries =
-    run [] (classifyUTxOEntries constraints entries)
+    run [] (categorizeUTxOEntries constraints entries)
   where
     run selections utxo rewardBalance =
         case createSelection constraints utxo rewardBalance of
@@ -79,17 +81,17 @@ createPlan constraints entries =
                 run (selection : selections) utxo' (Coin 0)
             Nothing -> MigrationPlan
                 { selections
-                , unselected = unclassifyUTxOEntries utxo
+                , unselected = uncategorizeUTxOEntries utxo
                 , totalFee = F.foldMap (view #fee) selections
                 }
 
 createSelection
     :: TxSize s
     => TxConstraints s
-    -> ClassifiedUTxO i
+    -> CategorizedUTxO i
     -> Coin
     -- ^ Reward balance
-    -> Maybe (ClassifiedUTxO i, Selection i s)
+    -> Maybe (CategorizedUTxO i, Selection i s)
 createSelection constraints utxo rewardBalance =
     extendSelection constraints
         =<< initializeSelection constraints utxo rewardBalance
@@ -97,12 +99,12 @@ createSelection constraints utxo rewardBalance =
 initializeSelection
     :: TxSize s
     => TxConstraints s
-    -> ClassifiedUTxO i
+    -> CategorizedUTxO i
     -> Coin
     -- ^ Reward balance
-    -> Maybe (ClassifiedUTxO i, Selection i s)
+    -> Maybe (CategorizedUTxO i, Selection i s)
 initializeSelection constraints utxoAtStart rewardBalance
-    | Just (supporter, utxo) <- selectSupporter utxoAtStart =
+    | Just (supporter, utxo) <- utxoAtStart `select` Supporter =
         run utxo (supporter :| [])
     | otherwise =
         Nothing
@@ -112,7 +114,7 @@ initializeSelection constraints utxoAtStart rewardBalance
             Right selection ->
                 Just (utxo, selection)
             Left SelectionAdaInsufficient ->
-                case selectSupporter utxo of
+                case utxo `select` Supporter of
                     Just (input, utxo') ->
                         run utxo' (input `NE.cons` inputs)
                     Nothing ->
@@ -123,8 +125,8 @@ initializeSelection constraints utxoAtStart rewardBalance
 extendSelection
     :: TxSize s
     => TxConstraints s
-    -> (ClassifiedUTxO i, Selection i s)
-    -> Maybe (ClassifiedUTxO i, Selection i s)
+    -> (CategorizedUTxO i, Selection i s)
+    -> Maybe (CategorizedUTxO i, Selection i s)
 extendSelection constraints = extendSelectionWithFreerider
   where
     extendSelectionWithFreerider (utxo, selection) =
@@ -157,11 +159,11 @@ data ExtendSelectionError
 extendSelectionWithEntry
     :: TxSize s
     => TxConstraints s
-    -> UTxOEntryClassification
-    -> (ClassifiedUTxO i, Selection i s)
-    -> Either ExtendSelectionError (ClassifiedUTxO i, Selection i s)
-extendSelectionWithEntry constraints classification (utxo, selection) =
-    case selectWithClassification classification utxo of
+    -> UTxOEntryCategory
+    -> (CategorizedUTxO i, Selection i s)
+    -> Either ExtendSelectionError (CategorizedUTxO i, Selection i s)
+extendSelectionWithEntry constraints category (utxo, selection) =
+    case utxo `select` category of
         Just (input, utxo') ->
             let inputs' = input `NE.cons` inputs selection in
             case Selection.create constraints (Coin 0) inputs' of
@@ -174,117 +176,126 @@ extendSelectionWithEntry constraints classification (utxo, selection) =
         Nothing ->
             Left ExtendSelectionEntriesExhausted
 
-selectWithClassification
-    :: UTxOEntryClassification
-    -> ClassifiedUTxO i
-    -> Maybe ((i, TokenBundle), ClassifiedUTxO i)
-selectWithClassification = \case
+selectWithPriority
+    :: CategorizedUTxO i
+    -> NonEmpty UTxOEntryCategory
+    -> Maybe ((i, TokenBundle), CategorizedUTxO i)
+selectWithPriority utxo = maybesToMaybe . fmap (select utxo)
+
+select
+    :: CategorizedUTxO i
+    -> UTxOEntryCategory
+    -> Maybe ((i, TokenBundle), CategorizedUTxO i)
+select utxo = \case
+    Initiator -> selectInitiator
     Supporter -> selectSupporter
     Freerider -> selectFreerider
-    Ignorable -> const Nothing
-
-selectSupporter
-    :: ClassifiedUTxO i
-    -> Maybe ((i, TokenBundle), ClassifiedUTxO i)
-selectSupporter utxo = case supporters utxo of
-    supporter : remaining ->
-        Just (supporter, utxo {supporters = remaining})
-    [] ->
-        Nothing
-
-selectFreerider
-    :: ClassifiedUTxO i
-    -> Maybe ((i, TokenBundle), ClassifiedUTxO i)
-selectFreerider utxo = case freeriders utxo of
-    freerider : remaining ->
-        Just (freerider, utxo {freeriders = remaining})
-    [] ->
+    Ignorable -> selectIgnorable
+  where
+    selectInitiator = case initiators utxo of
+        entry : remaining -> Just (entry, utxo {initiators = remaining})
+        [] -> Nothing
+    selectSupporter = case supporters utxo of
+        entry : remaining -> Just (entry, utxo {supporters = remaining})
+        [] -> Nothing
+    selectFreerider = case freeriders utxo of
+        entry : remaining -> Just (entry, utxo {freeriders = remaining})
+        [] ->  Nothing
+    selectIgnorable =
+        -- We never select an entry that should be ignored:
         Nothing
 
 --------------------------------------------------------------------------------
--- Classification of UTxO entries
+-- Categorization of UTxO entries
 --------------------------------------------------------------------------------
 
-data ClassifiedUTxO i = ClassifiedUTxO
-    { supporters :: [(i, TokenBundle)]
+data CategorizedUTxO i = CategorizedUTxO
+    { initiators :: [(i, TokenBundle)]
+    , supporters :: [(i, TokenBundle)]
     , freeriders :: [(i, TokenBundle)]
     , ignorables :: [(i, TokenBundle)]
     }
     deriving (Eq, Show)
 
-classifyUTxO
+categorizeUTxO
     :: TxSize s
     => TxConstraints s
     -> UTxO
-    -> ClassifiedUTxO (TxIn, TxOut)
-classifyUTxO constraints (UTxO u) =
-    classifyUTxOEntries constraints
-        ((\(i, o) -> ((i, o), view #tokens o)) <$> Map.toList u)
+    -> CategorizedUTxO (TxIn, TxOut)
+categorizeUTxO constraints (UTxO u) = categorizeUTxOEntries constraints $
+    (\(i, o) -> ((i, o), view #tokens o)) <$> Map.toList u
 
-classifyUTxOEntries
+categorizeUTxOEntries
     :: forall i s. TxSize s
     => TxConstraints s
     -> [(i, TokenBundle)]
-    -> ClassifiedUTxO i
-classifyUTxOEntries constraints unclassifiedEntries = ClassifiedUTxO
-    { supporters = entriesMatching Supporter
+    -> CategorizedUTxO i
+categorizeUTxOEntries constraints uncategorizedEntries = CategorizedUTxO
+    { initiators = entriesMatching Initiator
+    , supporters = entriesMatching Supporter
     , freeriders = entriesMatching Freerider
     , ignorables = entriesMatching Ignorable
     }
   where
-    entries :: [(i, (TokenBundle, UTxOEntryClassification))]
-    entries = unclassifiedEntries
-        <&> (\(i, b) -> (i, (b, classifyUTxOEntry constraints b)))
+    categorizedEntries :: [(i, (TokenBundle, UTxOEntryCategory))]
+    categorizedEntries = uncategorizedEntries
+        <&> (\(i, b) -> (i, (b, categorizeUTxOEntry constraints b)))
 
-    entriesMatching :: UTxOEntryClassification -> [(i, TokenBundle)]
-    entriesMatching classification =
-        fmap fst <$> L.filter ((== classification) . snd . snd) entries
+    entriesMatching :: UTxOEntryCategory -> [(i, TokenBundle)]
+    entriesMatching category =
+        fmap fst <$> L.filter ((== category) . snd . snd) categorizedEntries
 
-data UTxOEntryClassification
-    = Supporter
-    -- ^ A coin or token bundle that is capable of paying for its own marginal
-    -- fee.
+data UTxOEntryCategory
+    = Initiator
+    -- ^ A coin or bundle that is capable of paying for its own marginal fee
+    -- and the base transaction fee.
+    | Supporter
+    -- ^ A coin or bundle that is capable of paying for its own marginal fee,
+    -- but not the base transaction fee.
     | Freerider
-    -- ^ A coin or token bundle that is not capable of paying for its own
-    -- marginal fee.
+    -- ^ A bundle that is not capable of paying for its own marginal fee.
     | Ignorable
     -- ^ A coin that should not be added to a selection, because its value is
     -- lower than the marginal fee for an input.
     deriving (Eq, Show)
 
-classifyUTxOEntry
+categorizeUTxOEntry
     :: TxSize s
     => TxConstraints s
     -> TokenBundle
-    -> UTxOEntryClassification
-classifyUTxOEntry constraints b
+    -> UTxOEntryCategory
+categorizeUTxOEntry constraints b
     | Just c <- TokenBundle.toCoin b, coinIsIgnorable c =
         Ignorable
-    | Just _ <- TokenBundle.toCoin b =
-        Supporter
+    | bundleIsInitiator b =
+        Initiator
     | bundleIsSupporter b =
         Supporter
     | otherwise =
         Freerider
   where
+    bundleIsInitiator :: TokenBundle -> Bool
+    bundleIsInitiator b@(TokenBundle c m) = c >= mconcat
+        [ txBaseCost constraints
+        , txInputCost constraints
+        , txOutputCost constraints b
+        , txOutputMinimumAdaQuantity constraints m
+        ]
+
     bundleIsSupporter :: TokenBundle -> Bool
-    bundleIsSupporter b@(TokenBundle c m) =
-        case computeOutputCoin of
-            Nothing -> False
-            Just oc -> txOutputIsValid constraints (TokenBundle oc m)
-      where
-        computeOutputCoin :: Maybe Coin
-        computeOutputCoin = coinFromInteger
-            $ coinToInteger c
-            - coinToInteger (txInputCost constraints)
-            - coinToInteger (txOutputCost constraints b)
+    bundleIsSupporter b@(TokenBundle c m) = c >= mconcat
+        [ txInputCost constraints
+        , txOutputCost constraints b
+        , txOutputMinimumAdaQuantity constraints m
+        ]
 
     coinIsIgnorable :: Coin -> Bool
     coinIsIgnorable c = c <= txInputCost constraints
 
-unclassifyUTxOEntries :: ClassifiedUTxO i -> [(i, TokenBundle)]
-unclassifyUTxOEntries utxo = mconcat
-    [ supporters utxo
+uncategorizeUTxOEntries :: CategorizedUTxO i -> [(i, TokenBundle)]
+uncategorizeUTxOEntries utxo = mconcat
+    [ initiators utxo
+    , supporters utxo
     , freeriders utxo
     , ignorables utxo
     ]
@@ -369,11 +380,5 @@ splitOutputIfSizeExceedsLimit constraints bundle
 -- Miscellaneous types and functions
 --------------------------------------------------------------------------------
 
-coinFromInteger :: Integer -> Maybe Coin
-coinFromInteger i
-    | i < fromIntegral (unCoin $ minBound @Coin) = Nothing
-    | i > fromIntegral (unCoin $ maxBound @Coin) = Nothing
-    | otherwise = Just $ Coin $ fromIntegral i
-
-coinToInteger :: Coin -> Integer
-coinToInteger = fromIntegral . unCoin
+maybesToMaybe :: NonEmpty (Maybe a) -> Maybe a
+maybesToMaybe = listToMaybe . catMaybes . NE.toList

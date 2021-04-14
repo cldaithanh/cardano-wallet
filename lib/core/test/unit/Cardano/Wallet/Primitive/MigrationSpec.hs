@@ -189,6 +189,7 @@ prop_createPlan mockArgs =
 
     -- this can be erroneouslyUnselectedInputs
     -- perhaps we want to sort in decreasing order of ada quantity.
+    -- also need to check that we're categorizing correctly.
     erroneouslyUnselectedNonDustInputCoins :: Map MockInputId Coin
     erroneouslyUnselectedNonDustInputCoins =
         Map.filterWithKey condition unselectedNonDustInputCoins

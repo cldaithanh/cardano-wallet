@@ -85,8 +85,8 @@ createPlan
     -> Coin
     -- ^ Reward balance
     -> MigrationPlan i s
-createPlan constraints utxo =
-    run [] utxo
+createPlan constraints =
+    run []
   where
     run selections utxo rewardBalance =
         case createSelection constraints utxo rewardBalance of
@@ -117,17 +117,11 @@ initializeSelection
     -- ^ Reward balance
     -> Maybe (CategorizedUTxO i, Selection i s)
 initializeSelection constraints utxoAtStart rewardBalance =
-    case initializeWith [Freerider, Supporter, Initiator] of
-        Nothing ->
-            case initializeWith [Supporter, Initiator] of
-                Nothing ->
-                    initializeWith [Initiator]
-                Just r ->
-                    Just r
-        Just r ->
-            Just r
+    maybesToMaybe $ tryWith <$> L.tails [Freerider, Supporter, Initiator]
   where
-    initializeWith categories
+    tryWith :: [UTxOEntryCategory] -> Maybe (CategorizedUTxO i, Selection i s)
+    tryWith [] = Nothing
+    tryWith categories
         | Just ((inputId, inputValue), utxo) <-
             utxoAtStart `selectWithPriority` categories =
                 run utxo inputValue [inputId]
@@ -223,7 +217,7 @@ extendWith category constraints (utxo, selection) =
 
 selectWithPriority
     :: CategorizedUTxO i
-    -> NonEmpty UTxOEntryCategory
+    -> [UTxOEntryCategory]
     -> Maybe ((i, TokenBundle), CategorizedUTxO i)
 selectWithPriority utxo = maybesToMaybe . fmap (select utxo)
 
@@ -429,5 +423,5 @@ splitOutputIfTokenQuantityExceedsLimit
 -- Miscellaneous types and functions
 --------------------------------------------------------------------------------
 
-maybesToMaybe :: NonEmpty (Maybe a) -> Maybe a
-maybesToMaybe = listToMaybe . catMaybes . NE.toList
+maybesToMaybe :: Foldable f => f (Maybe a) -> Maybe a
+maybesToMaybe = listToMaybe . catMaybes . F.toList

@@ -225,15 +225,9 @@ prop_categorizeUTxOEntry mockArgs =
     cover 8.0 (result == Supporter) "Supporter" $
     cover 8.0 (result == Freerider) "Freerider" $
     cover 0.4 (result == Ignorable) "Ignorable" $
-    property $ case result of
-        Initiator ->
-            isRight $ Selection.create constraints (Coin 0) [mockEntry]
-        Supporter ->
-            isLeft $ Selection.create constraints (Coin 0) [mockEntry]
-        Freerider ->
-            isLeft $ Selection.create constraints (Coin 0) [mockEntry]
-        Ignorable ->
-            isLeft $ Selection.create constraints (Coin 0) [mockEntry]
+    property
+        $ selectionCreateExpectation
+        $ Selection.create constraints (Coin 0) [mockEntry]
   where
     MockCategorizeUTxOEntryArguments
         { mockConstraints
@@ -242,6 +236,11 @@ prop_categorizeUTxOEntry mockArgs =
     (_mockInputId, mockInputBundle) = mockEntry
     constraints = unMockTxConstraints mockConstraints
     result = categorizeUTxOEntry constraints mockInputBundle
+    selectionCreateExpectation = case result of
+        Initiator -> isRight
+        Supporter -> isLeft
+        Freerider -> isLeft
+        Ignorable -> isLeft
 
 --------------------------------------------------------------------------------
 -- Miscellaneous types and functions

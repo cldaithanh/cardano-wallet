@@ -89,9 +89,11 @@ import qualified Data.List.NonEmpty as NE
 --------------------------------------------------------------------------------
 
 data Selection i s = Selection
-    { inputs :: NonEmpty (i, TokenBundle)
+    { inputIds :: !(NonEmpty i)
       -- ^ The selected inputs.
-    , outputs :: NonEmpty TokenBundle
+    , inputBalance :: !TokenBundle
+      -- ^ The total input balance.
+    , outputs :: !(NonEmpty TokenBundle)
       -- ^ The generated outputs, in descending order of excess ada.
     , fee :: !Coin
       -- ^ The actual fee payable for this selection.
@@ -172,7 +174,7 @@ data SelectionAssetBalanceIncorrectError = SelectionAssetBalanceIncorrectError
 checkAssetBalance
     :: Selection i s
     -> Maybe SelectionAssetBalanceIncorrectError
-checkAssetBalance Selection {inputs, outputs}
+checkAssetBalance Selection {inputBalance, outputs}
     | assetBalanceInputs == assetBalanceOutputs =
         Nothing
     | otherwise =
@@ -181,7 +183,7 @@ checkAssetBalance Selection {inputs, outputs}
             , assetBalanceOutputs
             }
   where
-    assetBalanceInputs = F.foldMap (tokens . snd) inputs
+    assetBalanceInputs = view #tokens inputBalance
     assetBalanceOutputs = F.foldMap (tokens) outputs
 
 --------------------------------------------------------------------------------
@@ -422,14 +424,14 @@ checkSizeWithinLimit constraints selection
 -- | Calculates the current fee for a selection.
 --
 computeCurrentFee :: Selection i s -> Either NegativeCoin Coin
-computeCurrentFee Selection {inputs, outputs, rewardWithdrawal}
+computeCurrentFee Selection {inputBalance, outputs, rewardWithdrawal}
     | adaBalanceIn >= adaBalanceOut =
         Right adaDifference
     | otherwise =
         Left (NegativeCoin adaDifference)
   where
     adaBalanceIn =
-        F.foldMap (TokenBundle.getCoin . snd) inputs <> rewardWithdrawal
+        rewardWithdrawal <> view #coin inputBalance
     adaBalanceOut =
         F.foldMap (TokenBundle.getCoin) outputs
     adaDifference =
@@ -444,7 +446,7 @@ computeCurrentSize
     -> s
 computeCurrentSize constraints selection = mconcat
     [ txBaseSize constraints
-    , F.foldMap (const $ txInputSize constraints) (inputs selection)
+    , F.foldMap (const $ txInputSize constraints) (inputIds selection)
     , F.foldMap (txOutputSize constraints) (outputs selection)
     , txRewardWithdrawalSize constraints (rewardWithdrawal selection)
     ]
@@ -454,7 +456,7 @@ computeCurrentSize constraints selection = mconcat
 computeMinimumFee :: TxConstraints s -> Selection i s -> Coin
 computeMinimumFee constraints selection = mconcat
     [ txBaseCost constraints
-    , F.foldMap (const $ txInputCost constraints) (inputs selection)
+    , F.foldMap (const $ txInputCost constraints) (inputIds selection)
     , F.foldMap (txOutputCost constraints) (outputs selection)
     , txRewardWithdrawalCost constraints (rewardWithdrawal selection)
     ]
@@ -493,15 +495,19 @@ create
     :: forall i s. TxSize s
     => TxConstraints s
     -> Coin
-    -> NonEmpty (i, TokenBundle)
+    -- ^ Reward balance
+    -> TokenBundle
+    -- ^ Input balance
+    -> NonEmpty i
     -> Either (SelectionError s) (Selection i s)
-create constraints rewardWithdrawal inputs = do
+create constraints rewardWithdrawal inputBalance inputIds = do
     let minimizedOutputs =
             NE.sortBy (comparing (view #coin)) $
             minimizeOutput constraints <$>
-                (coalesceOutputs constraints $ snd <$> inputs)
+                (coalesceOutputs constraints inputBalance)
     let unbalancedSelection = Selection
-            { inputs
+            { inputIds
+            , inputBalance
             , outputs = minimizedOutputs
             , fee = Coin 0
             , feeExcess = Coin 0
@@ -542,9 +548,9 @@ create constraints rewardWithdrawal inputs = do
 coalesceOutputs
     :: TxSize s
     => TxConstraints s
+    -> TokenBundle
     -> NonEmpty TokenBundle
-    -> NonEmpty TokenBundle
-coalesceOutputs constraints = splitBundleIfLimitsExceeded constraints . F.fold
+coalesceOutputs = splitBundleIfLimitsExceeded
 
 minimizeOutput :: TxConstraints s -> TokenBundle -> TokenBundle
 minimizeOutput constraints output

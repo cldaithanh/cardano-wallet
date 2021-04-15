@@ -85,6 +85,7 @@ import Test.QuickCheck
     , conjoin
     , counterexample
     , cover
+    , frequency
     , genericShrink
     , oneof
     , property
@@ -194,7 +195,6 @@ prop_create args =
         Right selection ->
             conjoin
                 [ check constraints selection === SelectionCorrect
-                , inputs selection === mockInputs
                 ]
   where
     MockCreateArguments
@@ -203,14 +203,15 @@ prop_create args =
         , mockRewardWithdrawal
         } = args
     constraints = unMockTxConstraints mockConstraints
-    result = create constraints mockRewardWithdrawal mockInputs
+    result = create constraints mockRewardWithdrawal
+        (F.foldMap snd mockInputs) (fst <$> mockInputs)
 
     resultIsSelection :: MockSelectionResult -> Bool
     resultIsSelection = isRight
 
     resultHasMoreInputsThanOutputs :: MockSelectionResult -> Bool
     resultHasMoreInputsThanOutputs = matchRight $ \selection ->
-        F.length (inputs selection) > F.length (outputs selection)
+        F.length (inputIds selection) > F.length (outputs selection)
 
     resultHasMoreThanOneOutput :: MockSelectionResult -> Bool
     resultHasMoreThanOneOutput = matchRight $ \selection ->
@@ -277,7 +278,7 @@ prop_coalesceOutputs mockArgs =
         { mockConstraints
         , mockOutputs
         } = mockArgs
-    result = coalesceOutputs constraints mockOutputs
+    result = coalesceOutputs constraints (F.fold mockOutputs)
     constraints = unMockTxConstraints mockConstraints
 
 --------------------------------------------------------------------------------
@@ -794,9 +795,9 @@ genTokenBundle mockConstraints =
     genInner :: Gen TokenBundle
     genInner = do
         coin <- genCoinRange (Coin 1) (Coin 1000)
-        assetCount <- oneof
-            [ pure 0
-            , choose (1, 4)
+        assetCount <- frequency
+            [ (999, pure 0)
+            , (  1, choose (1, 4))
             ]
         tokens <- TokenMap.fromFlatList <$>
             replicateM assetCount genAssetQuantity

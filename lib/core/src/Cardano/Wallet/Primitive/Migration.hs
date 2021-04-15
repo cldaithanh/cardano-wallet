@@ -104,7 +104,7 @@ createSelection constraints utxo rewardBalance =
     <&> extendSelection constraints
 
 initializeSelection
-    :: TxSize s
+    :: forall i s. TxSize s
     => TxConstraints s
     -> CategorizedUTxO i
     -> Coin
@@ -122,19 +122,28 @@ initializeSelection constraints utxoAtStart rewardBalance =
             Just r
   where
     initializeWith categories
-        | Just (supporter, utxo) <- utxoAtStart `selectWithPriority` categories =
-            run utxo (supporter :| [])
+        | Just ((inputId, inputValue), utxo) <-
+            utxoAtStart `selectWithPriority` categories =
+                run utxo inputValue [inputId]
         | otherwise =
             Nothing
       where
-        run utxo inputs =
-            case Selection.create constraints rewardBalance inputs of
+        run :: CategorizedUTxO i
+            -> TokenBundle
+            -> NonEmpty i
+            -> Maybe (CategorizedUTxO i, Selection i s)
+        run utxo inputBalance inputIds =
+            let selectionResult = Selection.create
+                    constraints rewardBalance inputBalance inputIds in
+            case selectionResult of
                 Right selection ->
                     Just (utxo, selection)
                 Left SelectionAdaInsufficient ->
                     case utxo `selectWithPriority` categories of
-                        Just (input, utxo') ->
-                            run utxo' (input `NE.cons` inputs)
+                        Just ((inputId, inputValue), utxo') ->
+                            run utxo'
+                                (inputValue <> inputBalance)
+                                (inputId `NE.cons` inputIds)
                         Nothing ->
                             Nothing
                 Left (SelectionFull _) ->
@@ -193,9 +202,10 @@ extendWith
     -> Either ExtendSelectionError (CategorizedUTxO i, Selection i s)
 extendWith category constraints (utxo, selection) =
     case utxo `select` category of
-        Just (input, utxo') ->
-            let inputs' = input `NE.cons` inputs selection in
-            case Selection.create constraints (Coin 0) inputs' of
+        Just ((inputId, inputValue), utxo') ->
+            let inputIds' = inputId `NE.cons` inputIds selection in
+            let inputBalance' = inputValue <> inputBalance selection in
+            case Selection.create constraints (Coin 0) inputBalance' inputIds' of
                 Right selection' ->
                     Right (utxo', selection')
                 Left SelectionAdaInsufficient ->
@@ -305,7 +315,7 @@ categorizeUTxOEntry constraints b
   where
     bundleIsInitiator :: TokenBundle -> Bool
     bundleIsInitiator b =
-        isRight $ Selection.create constraints (Coin 0) [((), b)]
+        isRight $ Selection.create constraints (Coin 0) b [()]
         --c >= mconcat
         --    [ txBaseCost constraints
         --    , txInputCost constraints

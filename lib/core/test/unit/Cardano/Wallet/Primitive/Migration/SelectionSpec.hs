@@ -85,7 +85,6 @@ import Test.QuickCheck
     , conjoin
     , counterexample
     , cover
-    , frequency
     , genericShrink
     , oneof
     , property

@@ -564,12 +564,10 @@ prop_txOutputSize mockArgs = conjoin
 --------------------------------------------------------------------------------
 
 data MockTxConstraints = MockTxConstraints
-    { mockTxBaseCost
-        :: MockTxBaseCost
+    { mockTxCostFunction
+        :: MockTxCostFunction
     , mockTxBaseSize
         :: MockTxBaseSize
-    , mockTxCostFactor
-        :: MockTxCostFactor
     , mockTxInputSize
         :: MockTxInputSize
     , mockTxOutputMaximumSize
@@ -586,7 +584,7 @@ data MockTxConstraints = MockTxConstraints
 unMockTxConstraints :: MockTxConstraints -> TxConstraints MockSize
 unMockTxConstraints MockTxConstraints {..} = TxConstraints
     { txBaseCost =
-        unMockTxBaseCost mockTxBaseCost
+        baseCost mockTxCostFunction
     , txBaseSize =
         unMockTxBaseSize mockTxBaseSize
     , txInputCost =
@@ -626,15 +624,14 @@ unMockTxConstraints MockTxConstraints {..} = TxConstraints
 
     mockSizeToCost :: MockSize -> Coin
     mockSizeToCost (MockSize s) =
-        Coin $ fromIntegral $ fromIntegral m * s
+        Coin $ fromIntegral $ fromIntegral a * s
       where
-        m = unMockTxCostFactor mockTxCostFactor
+        Coin a = sizeCost mockTxCostFunction
 
 genMockTxConstraints :: Gen MockTxConstraints
 genMockTxConstraints = MockTxConstraints
-    <$> genMockTxBaseCost
+    <$> genMockTxCostFunction
     <*> genMockTxBaseSize
-    <*> genMockTxCostFactor
     <*> genMockTxInputSize
     <*> genMockTxOutputMaximumSize
     <*> genMockTxOutputMaximumTokenQuantity
@@ -645,16 +642,19 @@ instance Arbitrary MockTxConstraints where
     arbitrary = genMockTxConstraints
 
 --------------------------------------------------------------------------------
--- Mock base transaction costs
+-- Mock transaction costs
 --------------------------------------------------------------------------------
 
-newtype MockTxBaseCost = MockTxBaseCost
-    { unMockTxBaseCost :: Coin }
-    deriving stock Eq
-    deriving Show via Coin
+data MockTxCostFunction = MockTxCostFunction
+    { baseCost :: Coin
+    , sizeCost :: Coin
+    }
+    deriving stock (Eq, Show)
 
-genMockTxBaseCost :: Gen MockTxBaseCost
-genMockTxBaseCost = MockTxBaseCost <$> genCoinRange (Coin 0) (Coin 1000)
+genMockTxCostFunction :: Gen MockTxCostFunction
+genMockTxCostFunction = MockTxCostFunction
+    <$> genCoinRange (Coin 0) (Coin 1000)
+    <*> genCoinRange (Coin 1) (Coin 4)
 
 --------------------------------------------------------------------------------
 -- Mock base transaction sizes
@@ -667,18 +667,6 @@ newtype MockTxBaseSize = MockTxBaseSize
 
 genMockTxBaseSize :: Gen MockTxBaseSize
 genMockTxBaseSize = MockTxBaseSize <$> genMockSizeRange 0 1000
-
---------------------------------------------------------------------------------
--- Mock transaction cost factors
---------------------------------------------------------------------------------
-
-newtype MockTxCostFactor = MockTxCostFactor
-    { unMockTxCostFactor :: Int }
-    deriving stock Eq
-    deriving Show via Int
-
-genMockTxCostFactor :: Gen MockTxCostFactor
-genMockTxCostFactor = MockTxCostFactor <$> choose (1, 4)
 
 --------------------------------------------------------------------------------
 -- Mock input sizes

@@ -83,6 +83,7 @@ library
     , persistent
     , persistent-sqlite
     , persistent-template
+    , pretty-simple
     , profunctors
     , quiet
     , random

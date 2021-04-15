@@ -105,7 +105,7 @@ instance Arbitrary MockCreatePlanArguments where
 genMockCreatePlanArguments :: Gen MockCreatePlanArguments
 genMockCreatePlanArguments = do
     mockConstraints <- genMockTxConstraints
-    mockInputCount <- choose (0, 50)
+    mockInputCount <- choose (0, 32)
     mockInputs <- replicateM mockInputCount genMockInput
     mockRewardBalance <- oneof
         [ pure (Coin 0)
@@ -128,8 +128,6 @@ prop_createPlan mockArgs =
         "selectionCount == 2" $
     cover 0.1 (selectionCount == 3)
         "selectionCount == 3" $
-    cover 0.1 (selectionCount == 4)
-        "selectionCount == 4" $
     conjoin
         [ inputIds === inputIdsSelected `Set.union` inputIdsNotSelected
         , totalFee result === totalFeeExpected

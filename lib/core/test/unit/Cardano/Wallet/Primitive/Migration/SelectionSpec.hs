@@ -62,7 +62,7 @@ import Data.List.NonEmpty
 import Data.Maybe
     ( fromMaybe )
 import Data.Semigroup
-    ( mtimesDefault )
+    ( mtimesDefault, stimes )
 import Fmt
     ( pretty )
 import GHC.Generics
@@ -182,7 +182,7 @@ prop_create args =
         "Success with zero fee excess" $
     cover 5 (resultHasInsufficientAda result)
         "Failure due to insufficient ada" $
-    cover 5 (resultIsFull result)
+    cover 2 (resultIsFull result)
         "Failure due to oversized selection" $
     case result of
         Left SelectionAdaInsufficient ->
@@ -629,14 +629,18 @@ unMockTxConstraints MockTxConstraints {..} = TxConstraints
         Coin a = sizeCost mockTxCostFunction
 
 genMockTxConstraints :: Gen MockTxConstraints
-genMockTxConstraints = MockTxConstraints
-    <$> genMockTxCostFunction
-    <*> genMockTxBaseSize
-    <*> genMockTxInputSize
-    <*> genMockTxOutputMaximumSize
-    <*> genMockTxOutputMaximumTokenQuantity
-    <*> genMockTxOutputMinimumAdaQuantity
-    <*> genMockTxMaximumSize
+genMockTxConstraints = do
+    mockTxCostFunction <- genMockTxCostFunction
+    mockTxBaseSize <- genMockTxBaseSize
+    mockTxInputSize <- genMockTxInputSize
+    mockTxOutputMaximumSize <- genMockTxOutputMaximumSize
+    mockTxOutputMaximumTokenQuantity <- genMockTxOutputMaximumTokenQuantity
+    mockTxOutputMinimumAdaQuantity <- genMockTxOutputMinimumAdaQuantity
+    mockTxMaximumSize <- genMockTxMaximumSize
+        mockTxBaseSize
+        mockTxInputSize
+        mockTxOutputMaximumSize
+    pure MockTxConstraints {..}
 
 instance Arbitrary MockTxConstraints where
     arbitrary = genMockTxConstraints
@@ -740,9 +744,20 @@ newtype MockTxMaximumSize = MockTxMaximumSize
     deriving stock Eq
     deriving Show via Natural
 
-genMockTxMaximumSize :: Gen MockTxMaximumSize
-genMockTxMaximumSize =
-    MockTxMaximumSize <$> genMockSizeRange 0 10_000
+genMockTxMaximumSize
+    :: MockTxBaseSize
+    -> MockTxInputSize
+    -> MockTxOutputMaximumSize
+    -> Gen MockTxMaximumSize
+genMockTxMaximumSize mockTxBaseSize mockTxInputSize mockTxOutputMaximumSize =
+    genInner <$> choose (4, 16)
+  where
+    genInner :: Int -> MockTxMaximumSize
+    genInner multiplier = MockTxMaximumSize $ mconcat
+        [ unMockTxBaseSize mockTxBaseSize
+        , stimes multiplier (unMockTxInputSize mockTxInputSize)
+        , stimes multiplier (unMockTxOutputMaximumSize mockTxOutputMaximumSize)
+        ]
 
 --------------------------------------------------------------------------------
 -- Generating inputs

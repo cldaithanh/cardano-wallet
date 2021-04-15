@@ -795,9 +795,9 @@ genTokenBundle mockConstraints =
     genInner :: Gen TokenBundle
     genInner = do
         coin <- genCoinRange (Coin 1) (Coin 1000)
-        assetCount <- frequency
-            [ (999, pure 0)
-            , (  1, choose (1, 4))
+        assetCount <- oneof
+            [ pure 0
+            , choose (1, 4)
             ]
         tokens <- TokenMap.fromFlatList <$>
             replicateM assetCount genAssetQuantity

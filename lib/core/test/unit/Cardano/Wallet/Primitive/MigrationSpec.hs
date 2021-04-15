@@ -105,7 +105,7 @@ instance Arbitrary MockCreatePlanArguments where
 genMockCreatePlanArguments :: Gen MockCreatePlanArguments
 genMockCreatePlanArguments = do
     mockConstraints <- genMockTxConstraints
-    mockInputCount <- choose (4096, 4096)
+    mockInputCount <- choose (32, 32)
     mockInputs <- replicateM mockInputCount (genMockInput mockConstraints)
     mockRewardBalance <- oneof
         [ pure (Coin 0)

@@ -24,7 +24,7 @@ module Cardano.Wallet.Primitive.Migration
 
       -- * Utility functions
     , addValueToOutputs
-
+    , splitOutputIfLimitsExceeded
     ) where
 
 import Prelude
@@ -346,29 +346,69 @@ uncategorizeUTxOEntries utxo = mconcat
 --------------------------------------------------------------------------------
 -- Adding value to outputs
 --------------------------------------------------------------------------------
-
+{-
 addValueToOutputs
     :: TxSize s
     => TxConstraints s
     -> TokenBundle
     -- ^ Value to add
-    -> NonEmpty TokenBundle
+    -> [TokenBundle]
     -- ^ Existing set of outputs
     -> NonEmpty TokenBundle
     -- ^ Set of outputs with the value added
-addValueToOutputs constraints valueUnchecked outputs =
-    F.foldl' (flip addToOutputs) outputs $
-        splitOutputIfLimitsExceeded constraints valueUnchecked
+addValueToOutputs constraints valueUnchecked outputs
+    | output : remainder <- outputs, value :| [] <- checkedValues =
+        -- Just one value to add: try to merge this to the output at the start:
+        case safeMergeOutputValue value output of
+            Nothing -> value :| outputs
+            Just mergedValue -> mergedValue :| remainder
+    | output : remainder <- outputs =
+        -- Multiple values to add: put these at the end:
+        (output :| remainder) <> checkedValues
+    | [output] <- outputs =
+        output `NE.cons` checkedValues
+    | otherwise =
+        checkedValues
+
   where
-    addToOutputs :: TokenBundle -> NonEmpty TokenBundle -> NonEmpty TokenBundle
-    addToOutputs value = NE.fromList . add [] . NE.toList
+    checkedValues :: NonEmpty TokenBundle
+    checkedValues = splitOutputIfLimitsExceeded constraints valueUnchecked
+
+    safeMergeOutputValue :: TokenBundle -> TokenBundle -> Maybe TokenBundle
+    safeMergeOutputValue a b
+        | txOutputIsValid constraints valueWithMaxAda =
+            Just value
+        | otherwise =
+            Nothing
+      where
+        value = a <> b
+        valueWithMaxAda = TokenBundle.setCoin value maxBound
+-}
+
+addValueToOutputs
+    :: TxSize s
+    => TxConstraints s
+    -> [TokenBundle]
+    -- ^ Existing set of outputs
+    -> TokenBundle
+    -- ^ Value to add
+    -> NonEmpty TokenBundle
+    -- ^ Set of outputs with the value added
+addValueToOutputs constraints outputs =
+    NE.fromList
+        . F.foldl' (flip addToOutputs) outputs
+        . NE.toList
+        . splitOutputIfLimitsExceeded constraints
+  where
+    addToOutputs :: TokenBundle -> [TokenBundle] -> [TokenBundle]
+    addToOutputs value = add []
       where
         add considered (candidate : unconsidered) =
             case safeMergeOutputValue value candidate of
                 Just merged ->
                     merged : (considered <> unconsidered)
                 Nothing ->
-                    add unconsidered (candidate : considered)
+                    add (candidate : considered) unconsidered
         add considered [] =
             value : considered
 

@@ -20,6 +20,7 @@ import Cardano.Wallet.Primitive.Migration
     , categorizeUTxOEntry
     , createPlan
     --, uncategorizeUTxOEntries
+    , addValueToOutputs
     )
 import Cardano.Wallet.Primitive.Migration.Selection
     ( Selection (..) )
@@ -37,6 +38,11 @@ import Cardano.Wallet.Primitive.Types.Coin
     ( Coin (..) )
 import Cardano.Wallet.Primitive.Types.TokenBundle
     ( TokenBundle (..) )
+import Cardano.Wallet.Primitive.Types.Tx
+    ( TxConstraints
+    , txOutputHasValidSize
+    , txOutputHasValidTokenQuantities
+    )
 import Control.Monad
     ( replicateM )
 import Data.Either
@@ -45,6 +51,8 @@ import Data.Either
 --    ( view )
 import Data.Generics.Labels
     ()
+import Data.List.NonEmpty
+    ( NonEmpty (..) )
 --import Data.Set
 --    ( Set )
 import Test.Hspec
@@ -69,14 +77,15 @@ import Test.QuickCheck
     )
 
 import qualified Cardano.Wallet.Primitive.Migration.Selection as Selection
+import qualified Cardano.Wallet.Primitive.Types.TokenBundle as TokenBundle
 import qualified Data.Foldable as F
---import qualified Data.List.NonEmpty as NE
+import qualified Data.List.NonEmpty as NE
 --import qualified Data.Set as Set
 
 spec :: Spec
 spec = describe "Cardano.Wallet.Primitive.MigrationSpec" $
 
-    modifyMaxSuccess (const 1000) $ do
+    modifyMaxSuccess (const 100) $ do
 
     parallel $ describe "Creating migration plans" $ do
 
@@ -87,6 +96,11 @@ spec = describe "Cardano.Wallet.Primitive.MigrationSpec" $
 
         it "prop_categorizeUTxOEntry" $
             property prop_categorizeUTxOEntry
+
+    parallel $ describe "Adding value to outputs" $ do
+
+        it "prop_addValueToOutputs" $
+            property prop_addValueToOutputs
 
 --------------------------------------------------------------------------------
 -- Creating migration plans
@@ -227,6 +241,51 @@ prop_categorizeUTxOEntry mockArgs =
         Supporter -> isLeft
         Freerider -> isLeft
         Ignorable -> isLeft
+
+--------------------------------------------------------------------------------
+-- Adding value to outputs
+--------------------------------------------------------------------------------
+
+data MockAddValueToOutputsArguments = MockAddValueToOutputsArguments
+    { mockConstraints :: MockTxConstraints
+    , mockOutputs :: NonEmpty TokenBundle
+    }
+
+instance Arbitrary MockAddValueToOutputsArguments where
+    arbitrary = genMockAddValueToOutputsArguments
+
+genMockAddValueToOutputsArguments :: Gen MockAddValueToOutputsArguments
+genMockAddValueToOutputsArguments = do
+    mockConstraints <- genMockTxConstraints
+    mockOutputCount <- choose (1, 128)
+    mockOutputs <- (:|)
+        <$> genTokenBundle mockConstraints
+        <*> replicateM (mockOutputCount - 1) (genTokenBundle mockConstraints)
+    pure MockAddValueToOutputsArguments {..}
+
+prop_addValueToOutputs :: Blind MockAddValueToOutputsArguments -> Property
+prop_addValueToOutputs mockArgs =
+    conjoin
+        [ F.fold result == F.fold mockOutputs
+        , all (txOutputHasValidSizeIfAdaMaximized constraints) result
+        , all (txOutputHasValidTokenQuantities constraints) result
+        ]
+  where
+    Blind MockAddValueToOutputsArguments
+        { mockConstraints
+        , mockOutputs
+        } = mockArgs
+    constraints = unMockTxConstraints mockConstraints
+    result :: NonEmpty TokenBundle
+    result = F.foldl'
+        (addValueToOutputs constraints . NE.toList)
+        [NE.head mockOutputs]
+        (NE.tail mockOutputs)
+
+txOutputHasValidSizeIfAdaMaximized
+    :: Ord s => TxConstraints s -> TokenBundle -> Bool
+txOutputHasValidSizeIfAdaMaximized constraints b =
+    txOutputHasValidSize constraints $ TokenBundle.setCoin b maxBound
 
 --------------------------------------------------------------------------------
 -- Miscellaneous types and functions

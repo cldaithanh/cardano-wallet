@@ -728,8 +728,8 @@ unMockTxOutputMinimumAdaQuantity mock = \m ->
 
 genMockTxOutputMinimumAdaQuantity :: Gen MockTxOutputMinimumAdaQuantity
 genMockTxOutputMinimumAdaQuantity = MockTxOutputMinimumAdaQuantity
-    <$> genCoinRange (Coin 0) (Coin 10)
-    <*> genCoinRange (Coin 0) (Coin 10)
+    <$> genCoinRange (Coin 1) (Coin 10)
+    <*> genCoinRange (Coin 1) (Coin 10)
 
 --------------------------------------------------------------------------------
 -- Mock maximum transaction sizes

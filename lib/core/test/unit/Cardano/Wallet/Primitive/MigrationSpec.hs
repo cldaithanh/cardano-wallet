@@ -221,10 +221,10 @@ genMockCategorizeUTxOEntryArguments = do
 prop_categorizeUTxOEntry :: MockCategorizeUTxOEntryArguments -> Property
 prop_categorizeUTxOEntry mockArgs =
     checkCoverage $
-    cover 1 (result == Initiator) "Initiator" $
-    cover 1 (result == Supporter) "Supporter" $
-    cover 1 (result == Freerider) "Freerider" $
-    cover 0 (result == Ignorable) "Ignorable" $
+    cover 8.0 (result == Initiator) "Initiator" $
+    cover 8.0 (result == Supporter) "Supporter" $
+    cover 8.0 (result == Freerider) "Freerider" $
+    cover 0.4 (result == Ignorable) "Ignorable" $
     property $ case result of
         Initiator ->
             isRight $ Selection.create constraints (Coin 0) [mockEntry]

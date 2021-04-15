@@ -361,30 +361,25 @@ addValueToOutputs
     -- ^ Value to add
     -> NonEmpty TokenBundle
     -- ^ Outputs with the value added
-addValueToOutputs constraints outputs =
-    NE.fromList
-        . F.foldl' (flip addToOutputs) outputs
-        . NE.toList
-        . splitOutputIfLimitsExceeded constraints
+addValueToOutputs constraints outputs = NE.fromList
+    . F.foldl' (flip add) outputs
+    . splitOutputIfLimitsExceeded constraints
   where
-    addToOutputs :: TokenBundle -> [TokenBundle] -> [TokenBundle]
-    addToOutputs value = add []
+    add :: TokenBundle -> [TokenBundle] -> [TokenBundle]
+    add value = run []
       where
-        add considered (candidate : unconsidered) =
-            case safeMergeOutputValue value candidate of
-                Just merged ->
-                    merged : (considered <> unconsidered)
-                Nothing ->
-                    add (candidate : considered) unconsidered
-        add considered [] =
+        run :: [TokenBundle] -> [TokenBundle] -> [TokenBundle]
+        run considered (candidate : unconsidered) =
+            case safeMerge value candidate of
+                Just merged -> merged : (considered <> unconsidered)
+                Nothing -> run (candidate : considered) unconsidered
+        run considered [] =
             value : considered
 
-    safeMergeOutputValue :: TokenBundle -> TokenBundle -> Maybe TokenBundle
-    safeMergeOutputValue a b
-        | isSafe =
-            Just value
-        | otherwise =
-            Nothing
+    safeMerge :: TokenBundle -> TokenBundle -> Maybe TokenBundle
+    safeMerge a b
+        | isSafe = Just value
+        | otherwise = Nothing
       where
         isSafe = (&&)
             (txOutputHasValidSize constraints valueWithMaxAda)

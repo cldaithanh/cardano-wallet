@@ -117,10 +117,11 @@ initializeSelection
     -- ^ Reward balance
     -> Maybe (CategorizedUTxO i, Selection i s)
 initializeSelection constraints utxoAtStart rewardBalance =
-    maybesToMaybe $ tryWith <$> L.tails [Freerider, Supporter, Initiator]
+    maybesToMaybe $ tryWith <$> tails [Freerider, Supporter, Initiator]
   where
-    tryWith :: [UTxOEntryCategory] -> Maybe (CategorizedUTxO i, Selection i s)
-    tryWith [] = Nothing
+    tryWith
+        :: NonEmpty UTxOEntryCategory
+        -> Maybe (CategorizedUTxO i, Selection i s)
     tryWith categories
         | Just ((inputId, inputValue), utxo) <-
             utxoAtStart `selectWithPriority` categories =
@@ -217,7 +218,7 @@ extendWith category constraints (utxo, selection) =
 
 selectWithPriority
     :: CategorizedUTxO i
-    -> [UTxOEntryCategory]
+    -> NonEmpty UTxOEntryCategory
     -> Maybe ((i, TokenBundle), CategorizedUTxO i)
 selectWithPriority utxo = maybesToMaybe . fmap (select utxo)
 
@@ -425,3 +426,7 @@ splitOutputIfTokenQuantityExceedsLimit
 
 maybesToMaybe :: Foldable f => f (Maybe a) -> Maybe a
 maybesToMaybe = listToMaybe . catMaybes . F.toList
+
+tails :: NonEmpty a -> NonEmpty (NonEmpty a)
+tails (x :| (y : zs)) = (x :| (y : zs)) `NE.cons` tails (y :| zs)
+tails (x :| []) = (x :| []) :| []

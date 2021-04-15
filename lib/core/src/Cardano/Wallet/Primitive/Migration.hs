@@ -98,6 +98,51 @@ createPlan constraints =
                 , totalFee = F.foldMap (view #fee) selections
                 }
 
+{-
+data SelectionState i s = SelectionState
+    { inputIds :: !(NonEmpty i)
+    , inputBalance :: !Coin
+    , outputs :: !(NonEmpty TokenMap)
+    , rewardWithdrawal :: !Coin
+    , utxoRemaining :: !(CategorizedUTxO i)
+    }
+
+data Selection i s = Selection
+    { fee :: !Coin
+    , feeExcess :: !Coin
+    , inputIds :: !(NonEmpty i)
+    , inputBalance :: !Coin
+    , outputs :: !(NonEmpty TokenBundle)
+    , rewardWithdrawal :: !Coin
+    }
+
+createState
+    :: CategorizedUTxO i
+    -> Coin
+    -- ^ Reward withdrawal
+    -> SelectionState i s
+createState utxoRemaining rewardWithdrawal =
+    emptyState
+        { rewardWithdrawal
+        , utxoRemaining
+        }
+
+updateState
+    :: SelectionState i s
+    -> (i, TokenBundle)
+    -> (SelectionState i s)
+
+updateStateWith
+    :: SelectionState i s
+    -> UTxOEntryCategory
+    -> Maybe (SelectionState i s)
+
+selectionFromState
+    :: SelectionState i s -> Either (SelectionError s) (Selection i s)
+selectionFromState
+
+-}
+
 createSelection
     :: TxSize s
     => TxConstraints s

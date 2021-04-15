@@ -27,6 +27,7 @@ import Cardano.Wallet.Primitive.Migration.Selection
 import Cardano.Wallet.Primitive.Migration.SelectionSpec
     ( MockInputId
     , MockTxConstraints (..)
+    , conjoinMap
     , counterexampleMap
     , genCoinRange
     , genMockInput
@@ -85,7 +86,7 @@ import qualified Data.List.NonEmpty as NE
 spec :: Spec
 spec = describe "Cardano.Wallet.Primitive.MigrationSpec" $
 
-    modifyMaxSuccess (const 100) $ do
+    modifyMaxSuccess (const 1000) $ do
 
     parallel $ describe "Creating migration plans" $ do
 
@@ -265,10 +266,13 @@ genMockAddValueToOutputsArguments = do
 
 prop_addValueToOutputs :: Blind MockAddValueToOutputsArguments -> Property
 prop_addValueToOutputs mockArgs =
-    conjoin
-        [ F.fold result == F.fold mockOutputs
-        , all (txOutputHasValidSizeIfAdaMaximized constraints) result
-        , all (txOutputHasValidTokenQuantities constraints) result
+    conjoinMap
+        [ ( "Value is preserved"
+          , F.fold result == F.fold mockOutputs )
+        , ( "All outputs have valid sizes (if ada maximized)"
+          , all (txOutputHasValidSizeIfAdaMaximized constraints) result )
+        , ( "All outputs have valid token quantities"
+          , all (txOutputHasValidTokenQuantities constraints) result )
         ]
   where
     Blind MockAddValueToOutputsArguments
@@ -279,7 +283,7 @@ prop_addValueToOutputs mockArgs =
     result :: NonEmpty TokenBundle
     result = F.foldl'
         (addValueToOutputs constraints . NE.toList)
-        [NE.head mockOutputs]
+        (addValueToOutputs constraints [] (NE.head mockOutputs))
         (NE.tail mockOutputs)
 
 txOutputHasValidSizeIfAdaMaximized

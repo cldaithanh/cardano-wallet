@@ -88,6 +88,7 @@ import Test.QuickCheck
     , genericShrink
     , oneof
     , property
+    , suchThat
     , vector
     , (===)
     )
@@ -154,10 +155,10 @@ genMockCreateArguments = do
         [ pure (Coin 0)
         , genCoinRange (Coin 1) (Coin 1_000_000)
         ]
-    inputCount <- choose (1, 10)
+    inputCount <- choose (1, 32)
     mockInputs <- (:|)
-        <$> genMockInput
-        <*> replicateM (inputCount - 1) genMockInput
+        <$> genMockInput mockConstraints
+        <*> replicateM (inputCount - 1) (genMockInput mockConstraints)
     pure MockCreateArguments
         { mockConstraints
         , mockInputs
@@ -182,7 +183,7 @@ prop_create args =
         "Success with zero fee excess" $
     cover 5 (resultHasInsufficientAda result)
         "Failure due to insufficient ada" $
-    cover 2 (resultIsFull result)
+    cover 1 (resultIsFull result)
         "Failure due to oversized selection" $
     case result of
         Left SelectionAdaInsufficient ->
@@ -248,8 +249,8 @@ genMockCoalesceOutputsArguments = do
     mockConstraints <- genMockTxConstraints
     mockOutputCount <- choose (1, 10)
     mockOutputs <- (:|)
-        <$> genTokenBundle
-        <*> replicateM (mockOutputCount - 1) genTokenBundle
+        <$> genTokenBundle mockConstraints
+        <*> replicateM (mockOutputCount - 1) (genTokenBundle mockConstraints)
     pure MockCoalesceOutputsArguments
         { mockConstraints
         , mockOutputs
@@ -295,8 +296,8 @@ genMockMinimizeFeeArguments = do
     mockConstraints <- genMockTxConstraints
     mockOutputCount <- choose (1, 10)
     mockOutputs <- (:|)
-        <$> genTokenBundle
-        <*> replicateM (mockOutputCount - 1) genTokenBundle
+        <$> genTokenBundle mockConstraints
+        <*> replicateM (mockOutputCount - 1) (genTokenBundle mockConstraints)
     mockFeeExcessToMinimize <- genCoinRange (Coin 0) (Coin 10_000)
     pure MockMinimizeFeeArguments
         { mockConstraints
@@ -365,7 +366,7 @@ data MockMinimizeFeeForOutputArguments = MockMinimizeFeeForOutputArguments
 genMockMinimizeFeeForOutputArguments :: Gen MockMinimizeFeeForOutputArguments
 genMockMinimizeFeeForOutputArguments = do
     mockConstraints <- genMockTxConstraints
-    mockOutput <- genTokenBundle
+    mockOutput <- genTokenBundle mockConstraints
     mockFeeExcessToMinimize <- genCoinRange (Coin 0) (Coin 1000)
     pure MockMinimizeFeeForOutputArguments
         { mockConstraints
@@ -477,9 +478,10 @@ data MockTxOutputCostArguments = MockTxOutputCostArguments
     } deriving (Eq, Show)
 
 genMockTxOutputCostArguments :: Gen MockTxOutputCostArguments
-genMockTxOutputCostArguments = MockTxOutputCostArguments
-    <$> genMockTxConstraints
-    <*> genTokenBundle
+genMockTxOutputCostArguments = do
+    mockConstraints <- genMockTxConstraints
+    mockOutput <- genTokenBundle mockConstraints
+    pure MockTxOutputCostArguments {..}
 
 instance Arbitrary MockTxOutputCostArguments where
     arbitrary = genMockTxOutputCostArguments
@@ -523,9 +525,10 @@ data MockTxOutputSizeArguments = MockTxOutputSizeArguments
     } deriving (Eq, Show)
 
 genMockTxOutputSizeArguments :: Gen MockTxOutputSizeArguments
-genMockTxOutputSizeArguments = MockTxOutputSizeArguments
-    <$> genMockTxConstraints
-    <*> genTokenBundle
+genMockTxOutputSizeArguments = do
+    mockConstraints <- genMockTxConstraints
+    mockOutput <- genTokenBundle mockConstraints
+    pure MockTxOutputSizeArguments {..}
 
 instance Arbitrary MockTxOutputSizeArguments where
     arbitrary = genMockTxOutputSizeArguments
@@ -770,10 +773,10 @@ newtype MockInputId = MockInputId
 instance Show MockInputId where
     show = T.unpack . T.decodeUtf8 . convertToBase Base16 . unMockInputId
 
-genMockInput :: Gen (MockInputId, TokenBundle)
-genMockInput = (,)
+genMockInput :: MockTxConstraints -> Gen (MockInputId, TokenBundle)
+genMockInput mockConstraints = (,)
     <$> genMockInputId
-    <*> genTokenBundle
+    <*> genTokenBundle mockConstraints
 
 genMockInputId :: Gen MockInputId
 genMockInputId = MockInputId . BS.pack <$> vector 8
@@ -782,20 +785,29 @@ genMockInputId = MockInputId . BS.pack <$> vector 8
 -- Generating token bundles
 --------------------------------------------------------------------------------
 
-genTokenBundle :: Gen TokenBundle
-genTokenBundle = do
-    assetCount <- oneof
-        [ pure 0
-        , choose (1, 4)
-        ]
-    tokens <- TokenMap.fromFlatList <$> replicateM assetCount genAssetQuantity
-    coin <- genCoinRange (Coin 1) (Coin 1000)
-    pure TokenBundle {coin, tokens}
+genTokenBundle :: MockTxConstraints -> Gen TokenBundle
+genTokenBundle mockConstraints =
+    genInner `suchThat` txOutputHasValidSize constraints
   where
+    constraints = unMockTxConstraints mockConstraints
+
+    genInner :: Gen TokenBundle
+    genInner = do
+        coin <- genCoinRange (Coin 1) (Coin 1000)
+        assetCount <- oneof
+            [ pure 0
+            , choose (1, 4)
+            ]
+        tokens <- TokenMap.fromFlatList <$>
+            replicateM assetCount genAssetQuantity
+        pure TokenBundle {coin, tokens}
+
     genAssetQuantity :: Gen (AssetId, TokenQuantity)
     genAssetQuantity = (,)
         <$> genAssetIdLargeRange
-        <*> genTokenQuantityRange (TokenQuantity 0) (TokenQuantity 1000)
+        <*> genTokenQuantityRange
+            (TokenQuantity 0)
+            (txOutputMaximumTokenQuantity constraints)
 
 --------------------------------------------------------------------------------
 -- Generating coins

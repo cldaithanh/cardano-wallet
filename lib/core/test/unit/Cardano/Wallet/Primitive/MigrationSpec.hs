@@ -4,6 +4,7 @@
 {-# LANGUAGE OverloadedLabels #-}
 {-# LANGUAGE OverloadedLists #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE TypeApplications #-}
 
 module Cardano.Wallet.Primitive.MigrationSpec
@@ -35,8 +36,6 @@ import Cardano.Wallet.Primitive.Types.Coin
     ( Coin (..) )
 import Cardano.Wallet.Primitive.Types.TokenBundle
     ( TokenBundle (..) )
-import Cardano.Wallet.Primitive.Types.Tx
-    ( txOutputHasValidSize, txOutputHasValidTokenQuantities )
 import Control.Monad
     ( replicateM )
 import Data.Either
@@ -63,12 +62,10 @@ import Test.QuickCheck
     , cover
     , oneof
     , property
-    , suchThat
     , (===)
     )
 
 import qualified Cardano.Wallet.Primitive.Migration.Selection as Selection
-import qualified Cardano.Wallet.Primitive.Types.TokenBundle as TokenBundle
 import qualified Data.Foldable as F
 import qualified Data.List.NonEmpty as NE
 import qualified Data.Set as Set
@@ -106,7 +103,7 @@ genMockCreatePlanArguments :: Gen MockCreatePlanArguments
 genMockCreatePlanArguments = do
     mockConstraints <- genMockTxConstraints
     mockInputCount <- choose (0, 32)
-    mockInputs <- replicateM mockInputCount genMockInput
+    mockInputs <- replicateM mockInputCount (genMockInput mockConstraints)
     mockRewardBalance <- oneof
         [ pure (Coin 0)
         , genCoinRange (Coin 1) (Coin 1_000_000)
@@ -202,19 +199,8 @@ instance Arbitrary MockCategorizeUTxOEntryArguments where
 genMockCategorizeUTxOEntryArguments :: Gen MockCategorizeUTxOEntryArguments
 genMockCategorizeUTxOEntryArguments = do
     mockConstraints <- genMockTxConstraints
-    mockEntry <- genMockInput `suchThat`
-        (bundleIsAcceptable mockConstraints . snd)
-    pure MockCategorizeUTxOEntryArguments
-        { mockConstraints
-        , mockEntry
-        }
-  where
-    bundleIsAcceptable :: MockTxConstraints -> TokenBundle -> Bool
-    bundleIsAcceptable mockConstraints b =
-        txOutputHasValidSize constraints (TokenBundle.setCoin b maxBound) &&
-        txOutputHasValidTokenQuantities constraints b
-      where
-        constraints = unMockTxConstraints mockConstraints
+    mockEntry <- genMockInput mockConstraints
+    pure MockCategorizeUTxOEntryArguments {..}
 
 prop_categorizeUTxOEntry :: MockCategorizeUTxOEntryArguments -> Property
 prop_categorizeUTxOEntry mockArgs =

@@ -9,21 +9,21 @@
 
 module Cardano.Wallet.Primitive.Migration
     (
-      -- * UTxO entry category
-      categorizeUTxO
+      -- * Migration planning
+      MigrationPlan (..)
+    , createPlan
+
+      -- * UTxO entry categorization
+    , CategorizedUTxO (..)
+    , UTxOEntryCategory (..)
+    , categorizeUTxO
     , categorizeUTxOEntries
     , categorizeUTxOEntry
-    , CategorizedUTxO (..)
+    , uncategorizeUTxO
     , uncategorizeUTxOEntries
-    , UTxOEntryCategory (..)
-
-      -- * Migration plans
-    , createPlan
-    , MigrationPlan (..)
 
       -- * Utility functions
     , addValueToOutputs
-    , selectWithPriority
 
     ) where
 
@@ -238,6 +238,20 @@ select utxo = \case
 -- Categorization of UTxO entries
 --------------------------------------------------------------------------------
 
+data UTxOEntryCategory
+    = Initiator
+    -- ^ A coin or bundle that is capable of paying for its own marginal fee
+    -- and the base transaction fee.
+    | Supporter
+    -- ^ A coin or bundle that is capable of paying for its own marginal fee,
+    -- but not the base transaction fee.
+    | Freerider
+    -- ^ A bundle that is not capable of paying for its own marginal fee.
+    | Ignorable
+    -- ^ A coin that should not be added to a selection, because its value is
+    -- lower than the marginal fee for an input.
+    deriving (Eq, Show)
+
 data CategorizedUTxO i = CategorizedUTxO
     { initiators :: [(i, TokenBundle)]
     , supporters :: [(i, TokenBundle)]
@@ -274,20 +288,6 @@ categorizeUTxOEntries constraints uncategorizedEntries = CategorizedUTxO
     entriesMatching category =
         fmap fst <$> L.filter ((== category) . snd . snd) categorizedEntries
 
-data UTxOEntryCategory
-    = Initiator
-    -- ^ A coin or bundle that is capable of paying for its own marginal fee
-    -- and the base transaction fee.
-    | Supporter
-    -- ^ A coin or bundle that is capable of paying for its own marginal fee,
-    -- but not the base transaction fee.
-    | Freerider
-    -- ^ A bundle that is not capable of paying for its own marginal fee.
-    | Ignorable
-    -- ^ A coin that should not be added to a selection, because its value is
-    -- lower than the marginal fee for an input.
-    deriving (Eq, Show)
-
 categorizeUTxOEntry
     :: TxSize s
     => TxConstraints s
@@ -321,6 +321,9 @@ categorizeUTxOEntry constraints b
 
     coinIsIgnorable :: Coin -> Bool
     coinIsIgnorable c = c <= txInputCost constraints
+
+uncategorizeUTxO :: CategorizedUTxO (TxIn, TxOut) -> UTxO
+uncategorizeUTxO = UTxO . Map.fromList . fmap fst . uncategorizeUTxOEntries
 
 uncategorizeUTxOEntries :: CategorizedUTxO i -> [(i, TokenBundle)]
 uncategorizeUTxOEntries utxo = mconcat

@@ -499,8 +499,11 @@ create
     -> TokenBundle
     -- ^ Input balance
     -> NonEmpty i
+    -- ^ Inputs
+    -> NonEmpty TokenMap
+    -- ^ Outputs
     -> Either (SelectionError s) (Selection i s)
-create constraints rewardWithdrawal inputBalance inputIds = do
+create constraints rewardWithdrawal inputBalance inputIds _outputMaps = do
     let minimizedOutputs =
             NE.sortBy (comparing (view #coin)) $
             minimizeOutput constraints <$>

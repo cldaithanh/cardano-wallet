@@ -234,7 +234,7 @@ prop_categorizeUTxOEntry mockArgs =
     cover 0.4 (result == Ignorable) "Ignorable" $
     property
         $ selectionCreateExpectation
-        $ Selection.create constraints (Coin 0) mockEntry [()]
+        $ Selection.create constraints (Coin 0) mockEntry [()] undefined
   where
     MockCategorizeUTxOEntryArguments
         { mockConstraints

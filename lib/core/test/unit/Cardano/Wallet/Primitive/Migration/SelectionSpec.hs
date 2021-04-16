@@ -203,7 +203,7 @@ prop_create args =
         } = args
     constraints = unMockTxConstraints mockConstraints
     result = create constraints mockRewardWithdrawal
-        (F.foldMap snd mockInputs) (fst <$> mockInputs)
+        (F.foldMap snd mockInputs) (fst <$> mockInputs) undefined
 
     resultIsSelection :: MockSelectionResult -> Bool
     resultIsSelection = isRight

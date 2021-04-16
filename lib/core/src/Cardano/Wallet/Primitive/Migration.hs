@@ -139,7 +139,7 @@ initializeSelection constraints utxoAtStart (RewardBalance reward) =
             -> Maybe (CategorizedUTxO i, Selection i s)
         run utxo inputBalance inputIds =
             let selectionResult = Selection.create
-                    constraints reward inputBalance inputIds in
+                    constraints reward inputBalance inputIds undefined in
             case selectionResult of
                 Right selection ->
                     Just (utxo, selection)
@@ -210,7 +210,7 @@ extendWith category constraints (utxo, selection) =
         Just ((inputId, inputValue), utxo') ->
             let inputIds' = inputId `NE.cons` inputIds selection in
             let inputBalance' = inputValue <> inputBalance selection in
-            case Selection.create constraints (Coin 0) inputBalance' inputIds' of
+            case Selection.create constraints (Coin 0) inputBalance' inputIds' undefined of
                 Right selection' ->
                     Right (utxo', selection')
                 Left SelectionAdaInsufficient ->
@@ -320,7 +320,7 @@ categorizeUTxOEntry constraints b
   where
     bundleIsInitiator :: TokenBundle -> Bool
     bundleIsInitiator b =
-        isRight $ Selection.create constraints (Coin 0) b [()]
+        isRight $ Selection.create constraints (Coin 0) b [()] undefined
         --c >= mconcat
         --    [ txBaseCost constraints
         --    , txInputCost constraints

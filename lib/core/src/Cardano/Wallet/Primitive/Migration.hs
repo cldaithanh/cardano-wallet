@@ -36,6 +36,8 @@ import Cardano.Wallet.Primitive.Types.Coin
     ( Coin (..) )
 import Cardano.Wallet.Primitive.Types.TokenBundle
     ( TokenBundle (..) )
+import Cardano.Wallet.Primitive.Types.TokenMap
+    ( TokenMap )
 import Cardano.Wallet.Primitive.Types.Tx
     ( TxConstraints (..)
     , TxIn
@@ -62,6 +64,7 @@ import Data.Maybe
 
 import qualified Cardano.Wallet.Primitive.Migration.Selection as Selection
 import qualified Cardano.Wallet.Primitive.Types.TokenBundle as TokenBundle
+import qualified Cardano.Wallet.Primitive.Types.TokenMap as TokenMap
 import qualified Data.Foldable as F
 import qualified Data.List as L
 import qualified Data.List.NonEmpty as NE
@@ -396,20 +399,20 @@ uncategorizeUTxOEntries utxo = mconcat
 addValueToOutputs
     :: TxSize s
     => TxConstraints s
-    -> [TokenBundle]
+    -> [TokenMap]
     -- ^ Outputs
-    -> TokenBundle
+    -> TokenMap
     -- ^ Value to add
-    -> NonEmpty TokenBundle
+    -> NonEmpty TokenMap
     -- ^ Outputs with the value added
 addValueToOutputs constraints outputs = NE.fromList
     . F.foldl' (flip add) outputs
     . splitOutputIfLimitsExceeded constraints
   where
-    add :: TokenBundle -> [TokenBundle] -> [TokenBundle]
+    add :: TokenMap -> [TokenMap] -> [TokenMap]
     add value = run []
       where
-        run :: [TokenBundle] -> [TokenBundle] -> [TokenBundle]
+        run :: [TokenMap] -> [TokenMap] -> [TokenMap]
         run considered (candidate : unconsidered) =
             case safeMerge value candidate of
                 Just merged -> merged : (considered <> unconsidered)
@@ -417,16 +420,15 @@ addValueToOutputs constraints outputs = NE.fromList
         run considered [] =
             value : considered
 
-    safeMerge :: TokenBundle -> TokenBundle -> Maybe TokenBundle
+    safeMerge :: TokenMap -> TokenMap -> Maybe TokenMap
     safeMerge a b
         | isSafe = Just value
         | otherwise = Nothing
       where
         isSafe = (&&)
-            (txOutputHasValidSize constraints valueWithMaxAda)
+            (txOutputHasValidSize constraints (TokenBundle maxBound value))
             (txOutputHasValidTokenQuantities constraints value)
         value = a <> b
-        valueWithMaxAda = TokenBundle.setCoin value maxBound
 
 --------------------------------------------------------------------------------
 -- Splitting output values
@@ -435,8 +437,8 @@ addValueToOutputs constraints outputs = NE.fromList
 splitOutputIfLimitsExceeded
     :: TxSize s
     => TxConstraints s
-    -> TokenBundle
-    -> NonEmpty TokenBundle
+    -> TokenMap
+    -> NonEmpty TokenMap
 splitOutputIfLimitsExceeded constraints =
     splitOutputIfSizeExceedsLimit constraints >=>
     splitOutputIfTokenQuantityExceedsLimit constraints
@@ -444,25 +446,24 @@ splitOutputIfLimitsExceeded constraints =
 splitOutputIfSizeExceedsLimit
     :: TxSize s
     => TxConstraints s
-    -> TokenBundle
-    -> NonEmpty TokenBundle
-splitOutputIfSizeExceedsLimit constraints bundle
-    | txOutputHasValidSize constraints bundleWithMaxAda =
-        pure bundle
+    -> TokenMap
+    -> NonEmpty TokenMap
+splitOutputIfSizeExceedsLimit constraints value
+    | txOutputHasValidSize constraints (TokenBundle maxBound value) =
+        pure value
     | otherwise =
-        splitInHalf bundle >>= splitOutputIfSizeExceedsLimit constraints
+        splitInHalf value >>= splitOutputIfSizeExceedsLimit constraints
     | otherwise =
-        pure bundle
+        pure value
   where
-    bundleWithMaxAda = TokenBundle.setCoin bundle maxBound
-    splitInHalf = flip TokenBundle.equipartitionAssets (() :| [()])
+    splitInHalf = flip TokenMap.equipartitionAssets (() :| [()])
 
 splitOutputIfTokenQuantityExceedsLimit
     :: TxConstraints s
-    -> TokenBundle
-    -> NonEmpty TokenBundle
+    -> TokenMap
+    -> NonEmpty TokenMap
 splitOutputIfTokenQuantityExceedsLimit
-    = flip TokenBundle.equipartitionQuantitiesWithUpperBound
+    = flip TokenMap.equipartitionQuantitiesWithUpperBound
     . txOutputMaximumTokenQuantity
 
 --------------------------------------------------------------------------------

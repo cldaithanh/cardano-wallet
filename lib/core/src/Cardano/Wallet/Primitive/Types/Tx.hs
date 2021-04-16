@@ -544,7 +544,7 @@ txOutputIsValid :: Ord s => TxConstraints s -> TokenBundle -> Bool
 txOutputIsValid constraints b = and
     [ constraints `txOutputHasValidAdaQuantity` b
     , constraints `txOutputHasValidSize` b
-    , constraints `txOutputHasValidTokenQuantities` b
+    , constraints `txOutputHasValidTokenQuantities` (view #tokens b)
     ]
 
 txOutputHasValidAdaQuantity :: TxConstraints s -> TokenBundle -> Bool
@@ -555,7 +555,6 @@ txOutputHasValidSize :: Ord s => TxConstraints s -> TokenBundle -> Bool
 txOutputHasValidSize constraints b =
     txOutputSize constraints b <= txOutputMaximumSize constraints
 
--- TODO: This should take TokenMap.
-txOutputHasValidTokenQuantities :: TxConstraints s -> TokenBundle -> Bool
-txOutputHasValidTokenQuantities constraints (TokenBundle _ b) =
-    TokenMap.maximumQuantity b <= txOutputMaximumTokenQuantity constraints
+txOutputHasValidTokenQuantities :: TxConstraints s -> TokenMap -> Bool
+txOutputHasValidTokenQuantities constraints m =
+    TokenMap.maximumQuantity m <= txOutputMaximumTokenQuantity constraints

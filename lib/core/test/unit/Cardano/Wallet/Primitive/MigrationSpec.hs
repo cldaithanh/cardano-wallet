@@ -33,12 +33,15 @@ import Cardano.Wallet.Primitive.Migration.SelectionSpec
     , genMockInput
     , genMockTxConstraints
     , genTokenBundle
+    , genTokenMap
     , unMockTxConstraints
     )
 import Cardano.Wallet.Primitive.Types.Coin
     ( Coin (..) )
 import Cardano.Wallet.Primitive.Types.TokenBundle
     ( TokenBundle (..) )
+import Cardano.Wallet.Primitive.Types.TokenMap
+    ( TokenMap )
 import Cardano.Wallet.Primitive.Types.Tx
     ( TxConstraints
     , txOutputHasValidSize
@@ -74,11 +77,11 @@ import Test.QuickCheck
     , cover
     , oneof
     , property
+    , withMaxSuccess
     , (===)
     )
 
 import qualified Cardano.Wallet.Primitive.Migration.Selection as Selection
-import qualified Cardano.Wallet.Primitive.Types.TokenBundle as TokenBundle
 import qualified Data.Foldable as F
 import qualified Data.List.NonEmpty as NE
 --import qualified Data.Set as Set
@@ -249,7 +252,7 @@ prop_categorizeUTxOEntry mockArgs =
 
 data MockAddValueToOutputsArguments = MockAddValueToOutputsArguments
     { mockConstraints :: MockTxConstraints
-    , mockOutputs :: NonEmpty TokenBundle
+    , mockOutputs :: NonEmpty TokenMap
     }
 
 instance Arbitrary MockAddValueToOutputsArguments where
@@ -258,19 +261,22 @@ instance Arbitrary MockAddValueToOutputsArguments where
 genMockAddValueToOutputsArguments :: Gen MockAddValueToOutputsArguments
 genMockAddValueToOutputsArguments = do
     mockConstraints <- genMockTxConstraints
-    mockOutputCount <- choose (1, 128)
+    -- The upper limit is chosen to be comfortably greater than the maximum
+    -- number of inputs we can typically fit into a transaction:
+    mockOutputCount <- choose (128, 128)
     mockOutputs <- (:|)
-        <$> genTokenBundle mockConstraints
-        <*> replicateM (mockOutputCount - 1) (genTokenBundle mockConstraints)
+        <$> genTokenMap mockConstraints
+        <*> replicateM (mockOutputCount - 1) (genTokenMap mockConstraints)
     pure MockAddValueToOutputsArguments {..}
 
 prop_addValueToOutputs :: Blind MockAddValueToOutputsArguments -> Property
 prop_addValueToOutputs mockArgs =
+    withMaxSuccess 100 $
     conjoinMap
         [ ( "Value is preserved"
           , F.fold result == F.fold mockOutputs )
         , ( "All outputs have valid sizes (if ada maximized)"
-          , all (txOutputHasValidSizeIfAdaMaximized constraints) result )
+          , all (txOutputHasValidSizeWithMaxAda constraints) result )
         , ( "All outputs have valid token quantities"
           , all (txOutputHasValidTokenQuantities constraints) result )
         ]
@@ -280,16 +286,16 @@ prop_addValueToOutputs mockArgs =
         , mockOutputs
         } = mockArgs
     constraints = unMockTxConstraints mockConstraints
-    result :: NonEmpty TokenBundle
+    result :: NonEmpty TokenMap
     result = F.foldl'
         (addValueToOutputs constraints . NE.toList)
         (addValueToOutputs constraints [] (NE.head mockOutputs))
         (NE.tail mockOutputs)
 
-txOutputHasValidSizeIfAdaMaximized
-    :: Ord s => TxConstraints s -> TokenBundle -> Bool
-txOutputHasValidSizeIfAdaMaximized constraints b =
-    txOutputHasValidSize constraints $ TokenBundle.setCoin b maxBound
+txOutputHasValidSizeWithMaxAda
+    :: Ord s => TxConstraints s -> TokenMap -> Bool
+txOutputHasValidSizeWithMaxAda constraints b =
+    txOutputHasValidSize constraints $ TokenBundle maxBound b
 
 --------------------------------------------------------------------------------
 -- Miscellaneous types and functions

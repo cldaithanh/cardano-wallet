@@ -792,21 +792,30 @@ genTokenBundle mockConstraints =
     constraints = unMockTxConstraints mockConstraints
 
     genInner :: Gen TokenBundle
+    genInner = TokenBundle
+        <$> genCoinRange (Coin 1) (Coin 1000)
+        <*> genTokenMap mockConstraints
+
+genTokenMap :: MockTxConstraints -> Gen TokenMap
+genTokenMap mockConstraints =
+    genInner `suchThat`
+        (txOutputHasValidSize constraints . (TokenBundle maxBound))
+  where
+    constraints = unMockTxConstraints mockConstraints
+
+    genInner :: Gen TokenMap
     genInner = do
-        coin <- genCoinRange (Coin 1) (Coin 1000)
         assetCount <- oneof
             [ pure 0
             , choose (1, 4)
             ]
-        tokens <- TokenMap.fromFlatList <$>
-            replicateM assetCount genAssetQuantity
-        pure TokenBundle {coin, tokens}
+        TokenMap.fromFlatList <$> replicateM assetCount genAssetQuantity
 
     genAssetQuantity :: Gen (AssetId, TokenQuantity)
     genAssetQuantity = (,)
         <$> genAssetIdLargeRange
         <*> genTokenQuantityRange
-            (TokenQuantity 0)
+            (TokenQuantity 1)
             (txOutputMaximumTokenQuantity constraints)
 
 --------------------------------------------------------------------------------

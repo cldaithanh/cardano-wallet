@@ -40,9 +40,6 @@ module Cardano.Wallet.Primitive.Migration.Selection
     -- * Selection queries
     , outputOrdering
 
-    -- * Coalescing token bundles
-    , coalesceOutputs
-
     -- * Minimizing fees
     , minimizeFee
     , minimizeFeeForOutput
@@ -59,8 +56,6 @@ import Cardano.Wallet.Primitive.Types.TokenMap
     ( TokenMap )
 import Cardano.Wallet.Primitive.Types.Tx
     ( TxConstraints (..), txOutputCoinCost, txOutputHasValidSize )
-import Control.Monad
-    ( (>=>) )
 import Data.Bifunctor
     ( first )
 import Data.Either.Extra
@@ -503,11 +498,8 @@ create
     -> NonEmpty TokenMap
     -- ^ Outputs
     -> Either (SelectionError s) (Selection i s)
-create constraints rewardWithdrawal inputBalance inputIds _outputMaps = do
-    let minimizedOutputs =
-            NE.sortBy (comparing (view #coin)) $
-            minimizeOutput constraints <$>
-                (coalesceOutputs constraints inputBalance)
+create constraints rewardWithdrawal inputBalance inputIds outputMaps = do
+    let minimizedOutputs = assignMinimumAdaQuantity constraints <$> outputMaps
     let unbalancedSelection = Selection
             { inputIds
             , inputBalance
@@ -544,21 +536,11 @@ create constraints rewardWithdrawal inputBalance inputIds _outputMaps = do
     totalCoinCost :: NonEmpty TokenBundle -> Coin
     totalCoinCost = F.foldMap (txOutputCoinCost constraints . view #coin)
 
---------------------------------------------------------------------------------
--- Coalescing outputs
---------------------------------------------------------------------------------
-
-coalesceOutputs
-    :: TxSize s
-    => TxConstraints s
-    -> TokenBundle
-    -> NonEmpty TokenBundle
-coalesceOutputs = splitBundleIfLimitsExceeded
-
-minimizeOutput :: TxConstraints s -> TokenBundle -> TokenBundle
-minimizeOutput constraints output
-    = TokenBundle.setCoin output
-    $ txOutputMinimumAdaQuantity constraints (view #tokens output)
+    assignMinimumAdaQuantity :: TxConstraints s -> TokenMap -> TokenBundle
+    assignMinimumAdaQuantity constraints m =
+        TokenBundle c m
+      where
+        c = txOutputMinimumAdaQuantity constraints m
 
 --------------------------------------------------------------------------------
 -- Minimizing fees
@@ -618,43 +600,6 @@ minimizeFeeForOutput constraints =
             $ unCoin feeExcess
             - unCoin outputCoinFinalIncrease
             - unCoin outputCoinFinalCostIncrease
-
---------------------------------------------------------------------------------
--- Splitting bundles
---------------------------------------------------------------------------------
-
-splitBundleIfLimitsExceeded
-    :: TxSize s
-    => TxConstraints s
-    -> TokenBundle
-    -> NonEmpty TokenBundle
-splitBundleIfLimitsExceeded constraints =
-    splitBundleIfSizeExceedsLimit constraints >=>
-    splitBundleIfTokenQuantityExceedsLimit constraints
-
-splitBundleIfTokenQuantityExceedsLimit
-    :: TxConstraints s
-    -> TokenBundle
-    -> NonEmpty TokenBundle
-splitBundleIfTokenQuantityExceedsLimit
-    = flip TokenBundle.equipartitionQuantitiesWithUpperBound
-    . txOutputMaximumTokenQuantity
-
-splitBundleIfSizeExceedsLimit
-    :: TxSize s
-    => TxConstraints s
-    -> TokenBundle
-    -> NonEmpty TokenBundle
-splitBundleIfSizeExceedsLimit constraints bundle
-    | txOutputHasValidSize constraints bundleWithMaxAda =
-        pure bundle
-    | otherwise =
-        splitInHalf bundle >>= splitBundleIfSizeExceedsLimit constraints
-    | otherwise =
-        pure bundle
-  where
-    bundleWithMaxAda = TokenBundle.setCoin bundle maxBound
-    splitInHalf = flip TokenBundle.equipartitionAssets (() :| [()])
 
 --------------------------------------------------------------------------------
 -- Miscellaneous types and functions

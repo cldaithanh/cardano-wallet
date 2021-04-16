@@ -24,7 +24,6 @@ import Cardano.Wallet.Primitive.Migration.Selection
     , SelectionFullError (..)
     , TxSize (..)
     , check
-    , coalesceOutputs
     , create
     , minimizeFee
     , minimizeFeeForOutput
@@ -111,11 +110,6 @@ spec = describe "Cardano.Wallet.Primitive.Migration.SelectionSpec" $
 
         it "prop_create" $
             property prop_create
-
-    parallel $ describe "Coalescing outputs" $ do
-
-        it "prop_coalesceOutputs" $
-            property prop_coalesceOutputs
 
     parallel $ describe "Minimizing fees" $ do
 
@@ -233,52 +227,6 @@ prop_create args =
     resultIsFull = matchLeft $ \case
         SelectionFull _ -> True
         _ -> False
-
---------------------------------------------------------------------------------
--- Coalescing outputs
---------------------------------------------------------------------------------
-
-data MockCoalesceOutputsArguments = MockCoalesceOutputsArguments
-    { mockConstraints :: MockTxConstraints
-    , mockOutputs :: NonEmpty TokenBundle
-    }
-    deriving (Eq, Show)
-
-genMockCoalesceOutputsArguments :: Gen MockCoalesceOutputsArguments
-genMockCoalesceOutputsArguments = do
-    mockConstraints <- genMockTxConstraints
-    mockOutputCount <- choose (1, 10)
-    mockOutputs <- (:|)
-        <$> genTokenBundle mockConstraints
-        <*> replicateM (mockOutputCount - 1) (genTokenBundle mockConstraints)
-    pure MockCoalesceOutputsArguments
-        { mockConstraints
-        , mockOutputs
-        }
-
-instance Arbitrary MockCoalesceOutputsArguments where
-    arbitrary = genMockCoalesceOutputsArguments
-
-prop_coalesceOutputs :: Blind MockCoalesceOutputsArguments -> Property
-prop_coalesceOutputs mockArgs =
-    checkCoverage $
-    cover 10 (length result < length mockOutputs)
-        "length result < length mockOutputs" $
-    cover 2 (length result == 1)
-        "length result == 1" $
-    cover 2 (length result == 2)
-        "length result == 2" $
-    conjoin
-        [ all (txOutputHasValidSize constraints) result
-        , F.fold result == F.fold mockOutputs
-        ]
-  where
-    Blind MockCoalesceOutputsArguments
-        { mockConstraints
-        , mockOutputs
-        } = mockArgs
-    result = coalesceOutputs constraints (F.fold mockOutputs)
-    constraints = unMockTxConstraints mockConstraints
 
 --------------------------------------------------------------------------------
 -- Minimizing fees

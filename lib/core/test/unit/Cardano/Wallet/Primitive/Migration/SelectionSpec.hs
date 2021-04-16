@@ -167,12 +167,6 @@ prop_create args =
     checkCoverage $
     cover 40 (resultIsSelection result)
         "Success" $
-    cover 10 (resultHasMoreInputsThanOutputs result)
-        "Success with more inputs than outputs" $
-    cover 10 (resultHasMoreThanOneOutput result)
-        "Success with more than one output" $
-    cover 10 (resultHasOneOutput result)
-        "Success with one output" $
     cover 10 (resultHasZeroFeeExcess result)
         "Success with zero fee excess" $
     cover 5 (resultHasInsufficientAda result)
@@ -197,22 +191,12 @@ prop_create args =
         } = args
     constraints = unMockTxConstraints mockConstraints
     result = create constraints mockRewardWithdrawal
-        (F.foldMap snd mockInputs) (fst <$> mockInputs) undefined
+        (F.foldMap snd mockInputs)
+        (fst <$> mockInputs)
+        (view #tokens . snd <$> mockInputs)
 
     resultIsSelection :: MockSelectionResult -> Bool
     resultIsSelection = isRight
-
-    resultHasMoreInputsThanOutputs :: MockSelectionResult -> Bool
-    resultHasMoreInputsThanOutputs = matchRight $ \selection ->
-        F.length (inputIds selection) > F.length (outputs selection)
-
-    resultHasMoreThanOneOutput :: MockSelectionResult -> Bool
-    resultHasMoreThanOneOutput = matchRight $ \selection ->
-        F.length (outputs selection) > 1
-
-    resultHasOneOutput :: MockSelectionResult -> Bool
-    resultHasOneOutput = matchRight $ \selection ->
-        F.length (outputs selection) == 1
 
     resultHasZeroFeeExcess :: MockSelectionResult -> Bool
     resultHasZeroFeeExcess = matchRight $ \selection ->

@@ -37,9 +37,6 @@ module Cardano.Wallet.Primitive.Migration.Selection
     , computeCurrentSize
     , computeMinimumFee
 
-    -- * Selection queries
-    , outputOrdering
-
     -- * Minimizing fees
     , minimizeFee
     , minimizeFeeForOutput
@@ -68,8 +65,6 @@ import Data.List.NonEmpty
     ( NonEmpty (..) )
 import Data.Maybe
     ( catMaybes, listToMaybe )
-import Data.Ord
-    ( comparing )
 import GHC.Generics
     ( Generic )
 
@@ -119,8 +114,6 @@ data SelectionCorrectness s
       SelectionOutputBelowMinimumAdaQuantityError
     | SelectionOutputSizeExceedsLimit
       SelectionOutputSizeExceedsLimitError
-    | SelectionOutputOrderIncorrect
-      SelectionOutputOrderIncorrectError
     | SelectionSizeExceedsLimit
      (SelectionSizeExceedsLimitError s)
     | SelectionSizeIncorrect
@@ -145,8 +138,6 @@ check constraints selection
         SelectionOutputBelowMinimumAdaQuantity e
     | Just e <- checkOutputSizes constraints selection =
         SelectionOutputSizeExceedsLimit e
-    | Just e <- checkOutputOrder constraints selection =
-        SelectionOutputOrderIncorrect e
     | Just e <- checkSizeWithinLimit constraints selection =
         SelectionSizeExceedsLimit e
     | Just e <- checkSizeCorrectness constraints selection =
@@ -338,29 +329,6 @@ checkOutputSizes constraints selection =
                 { selectionOutput }
 
 --------------------------------------------------------------------------------
--- Selection correctness: output ordering
---------------------------------------------------------------------------------
-
-data SelectionOutputOrderIncorrectError =
-    SelectionOutputOrderIncorrectError
-    deriving (Eq, Show)
-
-checkOutputOrder
-    :: TxConstraints s
-    -> Selection i s
-    -> Maybe SelectionOutputOrderIncorrectError
-checkOutputOrder constraints selection
-    | orderActual == orderExpected =
-        Nothing
-    | otherwise =
-        Just SelectionOutputOrderIncorrectError
-  where
-    orderActual =
-        outputs selection
-    orderExpected =
-        NE.sortBy (outputOrdering constraints) (outputs selection)
-
---------------------------------------------------------------------------------
 -- Selection correctness: selection size (in comparison to the stored value)
 --------------------------------------------------------------------------------
 
@@ -456,16 +424,6 @@ computeMinimumFee constraints selection = mconcat
     , txRewardWithdrawalCost constraints (rewardWithdrawal selection)
     ]
 
--- | Defines the correct ordering of outputs in a selection.
---
-outputOrdering
-    :: TxConstraints s
-    -> TokenBundle
-    -> TokenBundle
-    -> Ordering
-outputOrdering constraints =
-    comparing (txOutputMinimumAdaQuantity constraints . view #tokens)
-
 --------------------------------------------------------------------------------
 -- Selection errors
 --------------------------------------------------------------------------------
@@ -498,8 +456,8 @@ create
     -> NonEmpty TokenMap
     -- ^ Outputs
     -> Either (SelectionError s) (Selection i s)
-create constraints rewardWithdrawal inputBalance inputIds outputMaps = do
-    let minimizedOutputs = assignMinimumAdaQuantity constraints <$> outputMaps
+create constraints rewardWithdrawal inputBalance inputIds outputs = do
+    let minimizedOutputs = assignMinimumAdaQuantity constraints <$> outputs
     let unbalancedSelection = Selection
             { inputIds
             , inputBalance

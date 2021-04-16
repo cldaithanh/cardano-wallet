@@ -12,6 +12,8 @@ module Cardano.Wallet.Primitive.MigrationSpec
 
 import Prelude
 
+import Fmt
+    ( padLeftF, pretty )
 import Cardano.Wallet.Primitive.Migration
     ( CategorizedUTxO (..)
     , MigrationPlan (..)
@@ -20,7 +22,7 @@ import Cardano.Wallet.Primitive.Migration
     , categorizeUTxOEntries
     , categorizeUTxOEntry
     , createPlan
-    --, uncategorizeUTxOEntries
+    , uncategorizeUTxOEntries
     , addValueToOutputs
     )
 import Cardano.Wallet.Primitive.Migration.Selection
@@ -52,14 +54,14 @@ import Control.Monad
     ( replicateM )
 import Data.Either
     ( isLeft, isRight )
---import Data.Generics.Internal.VL.Lens
---    ( view )
+import Data.Generics.Internal.VL.Lens
+    ( view )
 import Data.Generics.Labels
     ()
 import Data.List.NonEmpty
     ( NonEmpty (..) )
---import Data.Set
---    ( Set )
+import Data.Set
+    ( Set )
 import Test.Hspec
     ( Spec, describe, it )
 import Test.Hspec.Core.QuickCheck
@@ -73,19 +75,19 @@ import Test.QuickCheck
     , Property
     , checkCoverage
     , choose
-    , conjoin
     , counterexample
     , cover
     , oneof
     , property
+    , label
     , withMaxSuccess
-    , (===)
     )
 
 import qualified Cardano.Wallet.Primitive.Migration.Selection as Selection
 import qualified Data.Foldable as F
+import qualified Data.List as L
 import qualified Data.List.NonEmpty as NE
---import qualified Data.Set as Set
+import qualified Data.Set as Set
 
 spec :: Spec
 spec = describe "Cardano.Wallet.Primitive.MigrationSpec" $
@@ -124,7 +126,8 @@ instance Arbitrary MockCreatePlanArguments where
 genMockCreatePlanArguments :: Gen MockCreatePlanArguments
 genMockCreatePlanArguments = do
     mockConstraints <- genMockTxConstraints
-    mockInputCount <- choose (32, 32)
+    -- TODO: support different ranges
+    mockInputCount <- choose (512, 1024)
     mockInputs <- replicateM mockInputCount (genMockInput mockConstraints)
     mockRewardBalance <- oneof
         [ pure (Coin 0)
@@ -138,32 +141,111 @@ genMockCreatePlanArguments = do
 
 prop_createPlan :: Blind MockCreatePlanArguments -> Property
 prop_createPlan mockArgs =
-    -- TODO: check how many different types of entries are unselected.
-    checkCoverage $
+    withMaxSuccess 100 $
+
+    label labelTransactionCount $
+    label labelMeanTransactionInputCount $
+    label labelMeanTransactionOutputCount $
+    label (labelNotSelectedPercentage "freeriders" freeriders) $
+    label (labelNotSelectedPercentage "supporters" supporters) $
+    label (labelNotSelectedPercentage "initiators" initiators) $
+    label (labelNotSelectedPercentage "ignorables" ignorables) $
+
     counterexample counterexampleText $
-    cover 0.1 (selectionCount == 1)
-        "selectionCount == 1" $
-    cover 0 (selectionCount == 2)
-        "selectionCount == 2" $
-    cover 0 (selectionCount == 3)
-        "selectionCount == 3" $
-    conjoin
-        [ --inputIds === inputIdsSelected `Set.union` inputIdsNotSelected
-          totalFee result === totalFeeExpected
-        , initiators (unselected result) === []
+    conjoinMap
+        [ ( "inputs are not preserved"
+          , inputIds == inputIdsSelected `Set.union` inputIdsNotSelected )
+        , ( "total fee is incorrect"
+          , totalFee result == totalFeeExpected )
+        , ( "more than one transaction has reward withdrawal"
+            -- TODO
+          , True )
+        , ( "reward withdrawal amount incorrect"
+            -- TODO
+          , True )
+        , ( "reward withdrawal missing"
+            -- TODO
+          , True )
+        , ( "asset balance not preserved"
+            -- TODO
+          , True )
+        , ( "one or more initiators not selected"
+          , initiators (unselected result) == [] )
         ]
   where
+    labelTransactionCount = pretty $ mconcat
+        [ "number of transactions required: "
+        , padLeftF 3 ' ' (10 * selectionCountDiv10)
+        , " – "
+        , padLeftF 3 ' ' (10 * (selectionCountDiv10 + 1) - 1)
+        ]
+      where
+        selectionCountDiv10 = selectionCount `div` 10
+
+    labelMeanTransactionInputCount = pretty $ mconcat
+        [ "mean number of inputs per transaction: "
+        , padLeftF 3 ' ' (10 * meanTxInputCountDiv10)
+        , " – "
+        , padLeftF 3 ' ' (10 * (meanTxInputCountDiv10 + 1) - 1)
+        ]
+      where
+        meanTxInputCountDiv10 = meanTxInputCount `div` 10
+        meanTxInputCount :: Int
+        meanTxInputCount
+            | selectionCount == 0 =
+                0
+            | otherwise =
+                totalSelectedInputCount `div` selectionCount
+        totalSelectedInputCount :: Int
+        totalSelectedInputCount =
+            L.sum $ L.length . view #inputIds <$> selections result
+
+    labelMeanTransactionOutputCount = pretty $ mconcat
+        [ "mean number of outputs per transaction: "
+        , padLeftF 3 ' ' meanTxOutputCount
+        ]
+      where
+        meanTxOutputCount :: Int
+        meanTxOutputCount
+            | selectionCount == 0 =
+                0
+            | otherwise =
+                totalSelectedOutputCount `div` selectionCount
+        totalSelectedOutputCount :: Int
+        totalSelectedOutputCount =
+            L.sum $ L.length . view #outputs <$> selections result
+
+    labelNotSelectedPercentage categoryName category = pretty $ mconcat
+        [ categoryName
+        , " not selected: "
+        , padLeftF 3 ' ' percentage
+        , "%"
+        ]
+      where
+        percentage
+            | entriesAvailable == 0 =
+                0
+            | otherwise =
+                (entriesNotSelected * 100) `div` entriesAvailable
+
+        entriesAvailable :: Int
+        entriesAvailable = length $ category categorizedUTxO
+        entriesNotSelected :: Int
+        entriesNotSelected = length $ category $ unselected result
+
+
     Blind MockCreatePlanArguments
         { mockConstraints
         , mockInputs
         , mockRewardBalance
         } = mockArgs
+
     constraints = unMockTxConstraints mockConstraints
     result = createPlan constraints categorizedUTxO
         (RewardBalance mockRewardBalance)
 
     categorizedUTxO = categorizeUTxOEntries constraints mockInputs
-{-
+
     inputIds :: Set MockInputId
     inputIds = Set.fromList (fst <$> mockInputs)
 
@@ -179,7 +261,7 @@ prop_createPlan mockArgs =
         $ fmap fst
         $ uncategorizeUTxOEntries
         $ unselected result
--}
+
     selectionCount = length (selections result)
 
     totalFeeExpected :: Coin
@@ -228,13 +310,14 @@ genMockCategorizeUTxOEntryArguments = do
 prop_categorizeUTxOEntry :: MockCategorizeUTxOEntryArguments -> Property
 prop_categorizeUTxOEntry mockArgs =
     checkCoverage $
-    cover 8.0 (result == Initiator) "Initiator" $
-    cover 8.0 (result == Supporter) "Supporter" $
-    cover 8.0 (result == Freerider) "Freerider" $
-    cover 0.4 (result == Ignorable) "Ignorable" $
+    cover 5 (result == Initiator) "Initiator" $
+    cover 5 (result == Supporter) "Supporter" $
+    cover 5 (result == Freerider) "Freerider" $
+    cover 5 (result == Ignorable) "Ignorable" $
     property
         $ selectionCreateExpectation
-        $ Selection.create constraints (Coin 0) mockEntry [()] undefined
+        $ Selection.create
+            constraints (Coin 0) mockEntry [()] [view #tokens mockEntry]
   where
     MockCategorizeUTxOEntryArguments
         { mockConstraints

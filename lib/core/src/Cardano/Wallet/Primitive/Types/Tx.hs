@@ -49,6 +49,7 @@ module Cardano.Wallet.Primitive.Types.Tx
     , TxConstraints (..)
     , txOutputCoinCost
     , txOutputCoinSize
+    , txOutputCoinMinimum
     , txOutputIsValid
     , txOutputHasValidAdaQuantity
     , txOutputHasValidSize
@@ -539,6 +540,9 @@ txOutputCoinCost constraints = txOutputCost constraints . TokenBundle.fromCoin
 
 txOutputCoinSize :: TxConstraints s -> Coin -> s
 txOutputCoinSize constraints = txOutputSize constraints . TokenBundle.fromCoin
+
+txOutputCoinMinimum :: TxConstraints s -> Coin
+txOutputCoinMinimum constraints = txOutputMinimumAdaQuantity constraints mempty
 
 txOutputIsValid :: Ord s => TxConstraints s -> TokenBundle -> Bool
 txOutputIsValid constraints b = and

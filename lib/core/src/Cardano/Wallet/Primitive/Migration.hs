@@ -1,3 +1,4 @@
+{-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE DuplicateRecordFields #-}
 {-# LANGUAGE LambdaCase #-}
@@ -23,8 +24,10 @@ module Cardano.Wallet.Primitive.Migration
     , uncategorizeUTxO
     , uncategorizeUTxOEntries
 
-      -- * Utility functions
+      -- * Adding value to outputs
     , addValueToOutputs
+
+      -- * Splitting outputs
     , splitOutputIfLimitsExceeded
 
     ) where
@@ -60,8 +63,6 @@ import Data.Generics.Labels
     ()
 import Data.List.NonEmpty
     ( NonEmpty (..) )
-import Data.Maybe
-    ( catMaybes, listToMaybe )
 
 import qualified Cardano.Wallet.Primitive.Migration.Selection as Selection
 import qualified Cardano.Wallet.Primitive.Types.TokenBundle as TokenBundle
@@ -76,9 +77,9 @@ import qualified Data.Map.Strict as Map
 --------------------------------------------------------------------------------
 
 data MigrationPlan i s = MigrationPlan
-    { selections :: [Selection i s]
-    , unselected :: CategorizedUTxO i
-    , totalFee :: Coin
+    { selections :: ![Selection i s]
+    , unselected :: !(CategorizedUTxO i)
+    , totalFee :: !Coin
     }
     deriving (Eq, Show)
 
@@ -94,7 +95,7 @@ createPlan
 createPlan constraints =
     run []
   where
-    run selections utxo reward =
+    run !selections !utxo !reward =
         case createSelection constraints utxo reward of
             Just (utxo', selection) ->
                 run (selection : selections) utxo' (RewardBalance $ Coin 0)
@@ -121,38 +122,17 @@ initializeSelection
     -> RewardBalance
     -> Maybe (CategorizedUTxO i, Selection i s)
 initializeSelection constraints utxoAtStart (RewardBalance reward) =
-    maybesToMaybe $ tryWith <$> suffixes [Freerider, Supporter, Initiator]
+    initializeWith =<< utxoAtStart `select` Initiator
   where
-    tryWith
-        :: NonEmpty UTxOEntryCategory
-        -> Maybe (CategorizedUTxO i, Selection i s)
-    tryWith categories
-        | Just ((inputId, inputValue), utxo) <-
-            utxoAtStart `selectWithPriority` categories =
-                run utxo inputValue [inputId]
-        | otherwise =
-            Nothing
+    initializeWith ((inputId, inputValue), utxo) =
+        case selectionResult of
+            Right selection -> Just (utxo, selection)
+            Left _ -> Nothing
       where
-        run :: CategorizedUTxO i
-            -> TokenBundle
-            -> NonEmpty i
-            -> Maybe (CategorizedUTxO i, Selection i s)
-        run utxo inputBalance inputIds =
-            let selectionResult = Selection.create
-                    constraints reward inputBalance inputIds undefined in
-            case selectionResult of
-                Right selection ->
-                    Just (utxo, selection)
-                Left SelectionAdaInsufficient ->
-                    case utxo `selectWithPriority` categories of
-                        Just ((inputId, inputValue), utxo') ->
-                            run utxo'
-                                (inputValue <> inputBalance)
-                                (inputId `NE.cons` inputIds)
-                        Nothing ->
-                            Nothing
-                Left (SelectionFull _) ->
-                    Nothing
+        selectionResult =
+            Selection.create constraints reward inputValue [inputId] outputs
+        outputs =
+            addValueToOutputs constraints [] (view #tokens inputValue)
 
 extendSelection
     :: TxSize s
@@ -161,7 +141,7 @@ extendSelection
     -> (CategorizedUTxO i, Selection i s)
 extendSelection constraints = extendWithFreerider
   where
-    extendWithFreerider (utxo, selection) =
+    extendWithFreerider (!utxo, !selection) =
         case extendWith Freerider constraints (utxo, selection) of
             Right (utxo', selection') ->
                 extendWithFreerider (utxo', selection')
@@ -172,7 +152,7 @@ extendSelection constraints = extendWithFreerider
             Left ExtendSelectionFull ->
                 (utxo, selection)
 
-    extendWithSupporter (utxo, selection) =
+    extendWithSupporter (!utxo, !selection) =
         case extendWith Supporter constraints (utxo, selection) of
             Right (utxo', selection') ->
                 extendWithFreerider (utxo', selection')
@@ -183,7 +163,7 @@ extendSelection constraints = extendWithFreerider
             Left ExtendSelectionFull ->
                 (utxo, selection)
 
-    extendWithInitiator (utxo, selection) =
+    extendWithInitiator (!utxo, !selection) =
         case extendWith Initiator constraints (utxo, selection) of
             Right (utxo', selection') ->
                 extendWithFreerider (utxo', selection')
@@ -210,7 +190,12 @@ extendWith category constraints (utxo, selection) =
         Just ((inputId, inputValue), utxo') ->
             let inputIds' = inputId `NE.cons` inputIds selection in
             let inputBalance' = inputValue <> inputBalance selection in
-            case Selection.create constraints (Coin 0) inputBalance' inputIds' undefined of
+            let outputs' = addValueToOutputs constraints
+                  (view #tokens <$> F.toList (outputs selection))
+                  (view #tokens inputValue) in
+            let selectionResult = Selection.create
+                    constraints (Coin 0) inputBalance' inputIds' outputs'
+            case selectionResult of
                 Right selection' ->
                     Right (utxo', selection')
                 Left SelectionAdaInsufficient ->
@@ -219,12 +204,6 @@ extendWith category constraints (utxo, selection) =
                     Left ExtendSelectionFull
         Nothing ->
             Left ExtendSelectionEntriesExhausted
-
-selectWithPriority
-    :: CategorizedUTxO i
-    -> NonEmpty UTxOEntryCategory
-    -> Maybe ((i, TokenBundle), CategorizedUTxO i)
-selectWithPriority utxo = maybesToMaybe . fmap (select utxo)
 
 select
     :: CategorizedUTxO i
@@ -268,10 +247,10 @@ data UTxOEntryCategory
     deriving (Eq, Show)
 
 data CategorizedUTxO i = CategorizedUTxO
-    { initiators :: [(i, TokenBundle)]
-    , supporters :: [(i, TokenBundle)]
-    , freeriders :: [(i, TokenBundle)]
-    , ignorables :: [(i, TokenBundle)]
+    { initiators :: ![(i, TokenBundle)]
+    , supporters :: ![(i, TokenBundle)]
+    , freeriders :: ![(i, TokenBundle)]
+    , ignorables :: ![(i, TokenBundle)]
     }
     deriving (Eq, Show)
 
@@ -320,13 +299,16 @@ categorizeUTxOEntry constraints b
   where
     bundleIsInitiator :: TokenBundle -> Bool
     bundleIsInitiator b =
-        isRight $ Selection.create constraints (Coin 0) b [()] undefined
-        --c >= mconcat
-        --    [ txBaseCost constraints
-        --    , txInputCost constraints
-        --    , txOutputCost constraints b
-        --    , txOutputMinimumAdaQuantity constraints m
-        --    ]
+        isRight $ Selection.create constraints (Coin 0) b [()] [view #tokens b]
+        -- Note: this should be equivalent to:
+        --
+        -- c >= mconcat
+        --     [ txBaseCost constraints
+        --     , txInputCost constraints
+        --     , txOutputCost constraints b
+        --     , txOutputMinimumAdaQuantity constraints m
+        --     ]
+
     bundleIsSupporter :: TokenBundle -> Bool
     bundleIsSupporter b@(TokenBundle c m) = c >= mconcat
         [ txInputCost constraints
@@ -396,8 +378,8 @@ splitOutputIfLimitsExceeded
     -> TokenMap
     -> NonEmpty TokenMap
 splitOutputIfLimitsExceeded constraints =
-    splitOutputIfSizeExceedsLimit constraints >=>
-    splitOutputIfTokenQuantityExceedsLimit constraints
+    splitOutputIfTokenQuantityExceedsLimit constraints >=>
+    splitOutputIfSizeExceedsLimit constraints
 
 splitOutputIfSizeExceedsLimit
     :: TxSize s
@@ -421,14 +403,3 @@ splitOutputIfTokenQuantityExceedsLimit
 splitOutputIfTokenQuantityExceedsLimit
     = flip TokenMap.equipartitionQuantitiesWithUpperBound
     . txOutputMaximumTokenQuantity
-
---------------------------------------------------------------------------------
--- Miscellaneous types and functions
---------------------------------------------------------------------------------
-
-maybesToMaybe :: Foldable f => f (Maybe a) -> Maybe a
-maybesToMaybe = listToMaybe . catMaybes . F.toList
-
-suffixes :: NonEmpty a -> NonEmpty (NonEmpty a)
-suffixes (x :| (y : zs)) = (x :| (y : zs)) `NE.cons` suffixes (y :| zs)
-suffixes (x :| []) = (x :| []) :| []

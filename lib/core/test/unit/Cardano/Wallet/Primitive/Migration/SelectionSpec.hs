@@ -41,6 +41,7 @@ import Cardano.Wallet.Primitive.Types.TokenQuantity
 import Cardano.Wallet.Primitive.Types.Tx
     ( TxConstraints (..)
     , txOutputCoinCost
+    , txOutputCoinMinimum
     , txOutputCoinSize
     , txOutputHasValidSize
     )
@@ -84,6 +85,7 @@ import Test.QuickCheck
     , conjoin
     , counterexample
     , cover
+    , frequency
     , genericShrink
     , oneof
     , property
@@ -617,7 +619,7 @@ newtype MockTxInputSize = MockTxInputSize
     deriving Show via Natural
 
 genMockTxInputSize :: Gen MockTxInputSize
-genMockTxInputSize = MockTxInputSize <$> genMockSizeRange 0 10
+genMockTxInputSize = MockTxInputSize <$> genMockSizeRange 2 4
 
 --------------------------------------------------------------------------------
 -- Mock maximum output sizes
@@ -685,7 +687,7 @@ genMockTxMaximumSize
     -> MockTxOutputMaximumSize
     -> Gen MockTxMaximumSize
 genMockTxMaximumSize mockTxBaseSize mockTxInputSize mockTxOutputMaximumSize =
-    genInner <$> choose (4, 16)
+    genInner <$> choose (4, 4)
   where
     genInner :: Int -> MockTxMaximumSize
     genInner multiplier = MockTxMaximumSize $ mconcat
@@ -724,9 +726,47 @@ genTokenBundle mockConstraints =
     constraints = unMockTxConstraints mockConstraints
 
     genInner :: Gen TokenBundle
-    genInner = TokenBundle
-        <$> genCoinRange (Coin 1) (Coin 1000)
-        <*> genTokenMap mockConstraints
+    genInner = frequency
+        [ ( 5, genCoinBelowInputCost)
+        , (15, genCoinBelowMinimumAdaQuantity)
+        , (40, genCoinAboveMinimumAdaQuantity)
+        , (40, genBundleWithMinimumAdaQuantity)
+        , (10, genBundleAboveMinimumAdaQuantity)
+        ]
+
+    genCoinBelowInputCost :: Gen TokenBundle
+    genCoinBelowInputCost =
+        TokenBundle.fromCoin <$> genCoinRange
+            (Coin 1)
+            (Coin.distance (Coin 1) $ txInputCost constraints)
+
+    genCoinBelowMinimumAdaQuantity :: Gen TokenBundle
+    genCoinBelowMinimumAdaQuantity =
+        TokenBundle.fromCoin <$> genCoinRange
+            (txInputCost constraints)
+            (Coin.distance (Coin 1) $ txOutputCoinMinimum constraints)
+
+    genCoinAboveMinimumAdaQuantity :: Gen TokenBundle
+    genCoinAboveMinimumAdaQuantity =
+        TokenBundle.fromCoin <$> genCoinRange
+            (txOutputCoinMinimum constraints)
+            (txOutputCoinMinimum constraints `scaleCoin` 1000)
+
+    genBundleWithMinimumAdaQuantity :: Gen TokenBundle
+    genBundleWithMinimumAdaQuantity = do
+        m <- genTokenMap mockConstraints
+        let minAda = txOutputMinimumAdaQuantity constraints m
+        pure $ TokenBundle minAda m
+
+    genBundleAboveMinimumAdaQuantity :: Gen TokenBundle
+    genBundleAboveMinimumAdaQuantity = do
+        m <- genTokenMap mockConstraints
+        let minAda = txOutputMinimumAdaQuantity constraints m
+        c <- genCoinRange (minAda <> Coin 1) (minAda `scaleCoin` 1000)
+        pure $ TokenBundle c m
+
+    scaleCoin :: Coin -> Int -> Coin
+    scaleCoin (Coin c) s = Coin $ c * fromIntegral s
 
 genTokenMap :: MockTxConstraints -> Gen TokenMap
 genTokenMap mockConstraints =
@@ -737,10 +777,7 @@ genTokenMap mockConstraints =
 
     genInner :: Gen TokenMap
     genInner = do
-        assetCount <- oneof
-            [ pure 0
-            , choose (1, 4)
-            ]
+        assetCount <- choose (1, 4)
         TokenMap.fromFlatList <$> replicateM assetCount genAssetQuantity
 
     genAssetQuantity :: Gen (AssetId, TokenQuantity)

@@ -147,7 +147,6 @@ prop_createPlan mockArgs =
     label labelMeanTransactionInputCount $
     label labelMeanTransactionOutputCount $
     label (labelNotSelectedPercentage "freeriders" freeriders) $
-    label (labelNotSelectedPercentage "supporters" supporters) $
     label (labelNotSelectedPercentage "initiators" initiators) $
     label (labelNotSelectedPercentage "ignorables" ignorables) $
 
@@ -274,10 +273,6 @@ prop_createPlan mockArgs =
           , show (length $ initiators categorizedUTxO) )
         , ( "count of initiators not selected"
           , show (length $ initiators $ unselected result) )
-        , ( "count of supporters available"
-          , show (length $ supporters categorizedUTxO) )
-        , ( "count of supporters not selected"
-          , show (length $ supporters $ unselected result) )
         , ( "count of freeriders available"
           , show (length $ freeriders categorizedUTxO) )
         , ( "count of freeriders not selected"
@@ -311,7 +306,6 @@ prop_categorizeUTxOEntry :: MockCategorizeUTxOEntryArguments -> Property
 prop_categorizeUTxOEntry mockArgs =
     checkCoverage $
     cover 5 (result == Initiator) "Initiator" $
-    cover 5 (result == Supporter) "Supporter" $
     cover 5 (result == Freerider) "Freerider" $
     cover 5 (result == Ignorable) "Ignorable" $
     property
@@ -327,7 +321,6 @@ prop_categorizeUTxOEntry mockArgs =
     result = categorizeUTxOEntry constraints mockEntry
     selectionCreateExpectation = case result of
         Initiator -> isRight
-        Supporter -> isLeft
         Freerider -> isLeft
         Ignorable -> isLeft
 

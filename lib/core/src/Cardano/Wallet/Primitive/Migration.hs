@@ -122,7 +122,7 @@ initializeSelection
     -> RewardBalance
     -> Maybe (CategorizedUTxO i, Selection i s)
 initializeSelection constraints utxoAtStart (RewardBalance reward) =
-    initializeWith =<< utxoAtStart `select` Initiator
+    initializeWith =<< utxoAtStart `select` Supporter
   where
     initializeWith ((inputId, inputValue), utxo) =
         case selectionResult of
@@ -146,14 +146,14 @@ extendSelection constraints = extendWithFreerider
             Right (utxo', selection') ->
                 extendWithFreerider (utxo', selection')
             Left ExtendSelectionAdaInsufficient ->
-                extendWithInitiator (utxo, selection)
+                extendWithSupporter (utxo, selection)
             Left ExtendSelectionEntriesExhausted ->
-                extendWithInitiator (utxo, selection)
+                extendWithSupporter (utxo, selection)
             Left ExtendSelectionFull ->
                 (utxo, selection)
 
-    extendWithInitiator (!utxo, !selection) =
-        case extendWith Initiator constraints (utxo, selection) of
+    extendWithSupporter (!utxo, !selection) =
+        case extendWith Supporter constraints (utxo, selection) of
             Right (utxo', selection') ->
                 extendWithFreerider (utxo', selection')
             Left ExtendSelectionAdaInsufficient ->
@@ -199,12 +199,12 @@ select
     -> UTxOEntryCategory
     -> Maybe ((i, TokenBundle), CategorizedUTxO i)
 select utxo = \case
-    Initiator -> selectInitiator
+    Supporter -> selectSupporter
     Freerider -> selectFreerider
     Ignorable -> selectIgnorable
   where
-    selectInitiator = case initiators utxo of
-        entry : remaining -> Just (entry, utxo {initiators = remaining})
+    selectSupporter = case supporters utxo of
+        entry : remaining -> Just (entry, utxo {supporters = remaining})
         [] -> Nothing
     selectFreerider = case freeriders utxo of
         entry : remaining -> Just (entry, utxo {freeriders = remaining})
@@ -218,7 +218,7 @@ select utxo = \case
 --------------------------------------------------------------------------------
 
 data UTxOEntryCategory
-    = Initiator
+    = Supporter
     -- ^ A coin or bundle that is capable of paying for its own marginal fee
     -- and the base transaction fee.
     | Freerider
@@ -229,7 +229,7 @@ data UTxOEntryCategory
     deriving (Eq, Show)
 
 data CategorizedUTxO i = CategorizedUTxO
-    { initiators :: ![(i, TokenBundle)]
+    { supporters :: ![(i, TokenBundle)]
     , freeriders :: ![(i, TokenBundle)]
     , ignorables :: ![(i, TokenBundle)]
     }
@@ -249,7 +249,7 @@ categorizeUTxOEntries
     -> [(i, TokenBundle)]
     -> CategorizedUTxO i
 categorizeUTxOEntries constraints uncategorizedEntries = CategorizedUTxO
-    { initiators = entriesMatching Initiator
+    { supporters = entriesMatching Supporter
     , freeriders = entriesMatching Freerider
     , ignorables = entriesMatching Ignorable
     }
@@ -270,13 +270,13 @@ categorizeUTxOEntry
 categorizeUTxOEntry constraints b
     | Just c <- TokenBundle.toCoin b, coinIsIgnorable c =
         Ignorable
-    | bundleIsInitiator b =
-        Initiator
+    | bundleIsSupporter b =
+        Supporter
     | otherwise =
         Freerider
   where
-    bundleIsInitiator :: TokenBundle -> Bool
-    bundleIsInitiator b =
+    bundleIsSupporter :: TokenBundle -> Bool
+    bundleIsSupporter b =
         isRight $ Selection.create constraints (Coin 0) b [()] [view #tokens b]
         -- Note: this should be equivalent to:
         --
@@ -295,7 +295,7 @@ uncategorizeUTxO = UTxO . Map.fromList . fmap fst . uncategorizeUTxOEntries
 
 uncategorizeUTxOEntries :: CategorizedUTxO i -> [(i, TokenBundle)]
 uncategorizeUTxOEntries utxo = mconcat
-    [ initiators utxo
+    [ supporters utxo
     , freeriders utxo
     , ignorables utxo
     ]

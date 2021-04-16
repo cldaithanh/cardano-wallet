@@ -147,7 +147,7 @@ prop_createPlan mockArgs =
     label labelMeanTransactionInputCount $
     label labelMeanTransactionOutputCount $
     label (labelNotSelectedPercentage "freeriders" freeriders) $
-    label (labelNotSelectedPercentage "initiators" initiators) $
+    label (labelNotSelectedPercentage "supporters" supporters) $
     label (labelNotSelectedPercentage "ignorables" ignorables) $
 
     counterexample counterexampleText $
@@ -168,8 +168,8 @@ prop_createPlan mockArgs =
         , ( "asset balance not preserved"
             -- TODO
           , True )
-        , ( "one or more initiators not selected"
-          , initiators (unselected result) == [] )
+        , ( "one or more supporters not selected"
+          , supporters (unselected result) == [] )
         ]
   where
     labelTransactionCount = pretty $ mconcat
@@ -269,10 +269,10 @@ prop_createPlan mockArgs =
     counterexampleText = counterexampleMap
         [ ( "mockConstraints"
           , show mockConstraints )
-        , ( "count of initiators available"
-          , show (length $ initiators categorizedUTxO) )
-        , ( "count of initiators not selected"
-          , show (length $ initiators $ unselected result) )
+        , ( "count of supporters available"
+          , show (length $ supporters categorizedUTxO) )
+        , ( "count of supporters not selected"
+          , show (length $ supporters $ unselected result) )
         , ( "count of freeriders available"
           , show (length $ freeriders categorizedUTxO) )
         , ( "count of freeriders not selected"
@@ -305,7 +305,7 @@ genMockCategorizeUTxOEntryArguments = do
 prop_categorizeUTxOEntry :: MockCategorizeUTxOEntryArguments -> Property
 prop_categorizeUTxOEntry mockArgs =
     checkCoverage $
-    cover 5 (result == Initiator) "Initiator" $
+    cover 5 (result == Supporter) "Supporter" $
     cover 5 (result == Freerider) "Freerider" $
     cover 5 (result == Ignorable) "Ignorable" $
     property
@@ -320,7 +320,7 @@ prop_categorizeUTxOEntry mockArgs =
     constraints = unMockTxConstraints mockConstraints
     result = categorizeUTxOEntry constraints mockEntry
     selectionCreateExpectation = case result of
-        Initiator -> isRight
+        Supporter -> isRight
         Freerider -> isLeft
         Ignorable -> isLeft
 

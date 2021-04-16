@@ -92,15 +92,15 @@ data Selection i s = Selection
     { inputIds :: !(NonEmpty i)
       -- ^ The selected inputs.
     , inputBalance :: !TokenBundle
-      -- ^ The total input balance.
+      -- ^ The total balance of value provided by the inputs.
     , outputs :: !(NonEmpty TokenBundle)
-      -- ^ The generated outputs, in descending order of excess ada.
+      -- ^ The outputs, adjusted to pay for the fee.
     , fee :: !Coin
       -- ^ The actual fee payable for this selection.
     , feeExcess :: !Coin
       -- ^ The excess over the minimum permissible fee for this selection.
     , size :: !s
-      -- ^ The current size of this selection.
+      -- ^ The size of this selection.
     , rewardWithdrawal :: !Coin
       -- ^ The reward withdrawal amount, if any.
     }

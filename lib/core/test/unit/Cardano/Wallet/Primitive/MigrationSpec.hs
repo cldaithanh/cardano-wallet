@@ -15,6 +15,7 @@ import Prelude
 import Cardano.Wallet.Primitive.Migration
     ( CategorizedUTxO (..)
     , MigrationPlan (..)
+    , RewardBalance (..)
     , UTxOEntryCategory (..)
     , categorizeUTxOEntries
     , categorizeUTxOEntry
@@ -158,7 +159,8 @@ prop_createPlan mockArgs =
         , mockRewardBalance
         } = mockArgs
     constraints = unMockTxConstraints mockConstraints
-    result = createPlan constraints categorizedUTxO mockRewardBalance
+    result = createPlan constraints categorizedUTxO
+        (RewardBalance mockRewardBalance)
 
     categorizedUTxO = categorizeUTxOEntries constraints mockInputs
 {-

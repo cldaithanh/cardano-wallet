@@ -10,8 +10,9 @@
 module Cardano.Wallet.Primitive.Migration
     (
       -- * Migration planning
-      MigrationPlan (..)
-    , createPlan
+      createPlan
+    , MigrationPlan (..)
+    , RewardBalance (..)
 
       -- * UTxO entry categorization
     , CategorizedUTxO (..)
@@ -81,91 +82,46 @@ data MigrationPlan i s = MigrationPlan
     }
     deriving (Eq, Show)
 
+newtype RewardBalance = RewardBalance
+    { unRewardBalance :: Coin }
+
 createPlan
     :: TxSize s
     => TxConstraints s
     -> CategorizedUTxO i
-    -> Coin
-    -- ^ Reward balance
+    -> RewardBalance
     -> MigrationPlan i s
 createPlan constraints =
     run []
   where
-    run selections utxo rewardBalance =
-        case createSelection constraints utxo rewardBalance of
+    run selections utxo reward =
+        case createSelection constraints utxo reward of
             Just (utxo', selection) ->
-                run (selection : selections) utxo' (Coin 0)
+                run (selection : selections) utxo' (RewardBalance $ Coin 0)
             Nothing -> MigrationPlan
                 { selections
                 , unselected = utxo
                 , totalFee = F.foldMap (view #fee) selections
                 }
 
-{-
-data SelectionState i s = SelectionState
-    { inputIds :: !(NonEmpty i)
-    , inputBalance :: !Coin
-    , outputs :: !(NonEmpty TokenMap)
-    , rewardWithdrawal :: !Coin
-    , utxoRemaining :: !(CategorizedUTxO i)
-    }
-
-data Selection i s = Selection
-    { fee :: !Coin
-    , feeExcess :: !Coin
-    , inputIds :: !(NonEmpty i)
-    , inputBalance :: !Coin
-    , outputs :: !(NonEmpty TokenBundle)
-    , rewardWithdrawal :: !Coin
-    }
-
-createState
-    :: CategorizedUTxO i
-    -> Coin
-    -- ^ Reward withdrawal
-    -> SelectionState i s
-createState utxoRemaining rewardWithdrawal =
-    emptyState
-        { rewardWithdrawal
-        , utxoRemaining
-        }
-
-updateState
-    :: SelectionState i s
-    -> (i, TokenBundle)
-    -> (SelectionState i s)
-
-updateStateWith
-    :: SelectionState i s
-    -> UTxOEntryCategory
-    -> Maybe (SelectionState i s)
-
-selectionFromState
-    :: SelectionState i s -> Either (SelectionError s) (Selection i s)
-selectionFromState
-
--}
-
 createSelection
     :: TxSize s
     => TxConstraints s
     -> CategorizedUTxO i
-    -> Coin
-    -- ^ Reward balance
+    -> RewardBalance
     -> Maybe (CategorizedUTxO i, Selection i s)
-createSelection constraints utxo rewardBalance =
-    initializeSelection constraints utxo rewardBalance
+createSelection constraints utxo rewardWithdrawal =
+    initializeSelection constraints utxo rewardWithdrawal
     <&> extendSelection constraints
 
 initializeSelection
     :: forall i s. TxSize s
     => TxConstraints s
     -> CategorizedUTxO i
-    -> Coin
-    -- ^ Reward balance
+    -> RewardBalance
     -> Maybe (CategorizedUTxO i, Selection i s)
-initializeSelection constraints utxoAtStart rewardBalance =
-    maybesToMaybe $ tryWith <$> tails [Freerider, Supporter, Initiator]
+initializeSelection constraints utxoAtStart (RewardBalance reward) =
+    maybesToMaybe $ tryWith <$> suffixes [Freerider, Supporter, Initiator]
   where
     tryWith
         :: NonEmpty UTxOEntryCategory
@@ -183,7 +139,7 @@ initializeSelection constraints utxoAtStart rewardBalance =
             -> Maybe (CategorizedUTxO i, Selection i s)
         run utxo inputBalance inputIds =
             let selectionResult = Selection.create
-                    constraints rewardBalance inputBalance inputIds in
+                    constraints reward inputBalance inputIds in
             case selectionResult of
                 Right selection ->
                     Just (utxo, selection)
@@ -473,6 +429,6 @@ splitOutputIfTokenQuantityExceedsLimit
 maybesToMaybe :: Foldable f => f (Maybe a) -> Maybe a
 maybesToMaybe = listToMaybe . catMaybes . F.toList
 
-tails :: NonEmpty a -> NonEmpty (NonEmpty a)
-tails (x :| (y : zs)) = (x :| (y : zs)) `NE.cons` tails (y :| zs)
-tails (x :| []) = (x :| []) :| []
+suffixes :: NonEmpty a -> NonEmpty (NonEmpty a)
+suffixes (x :| (y : zs)) = (x :| (y : zs)) `NE.cons` suffixes (y :| zs)
+suffixes (x :| []) = (x :| []) :| []

@@ -151,7 +151,7 @@ genMockCreateArguments = do
         [ pure (Coin 0)
         , genCoinRange (Coin 1) (Coin 1_000_000)
         ]
-    inputCount <- choose (1, 32)
+    inputCount <- choose (1, 16)
     mockInputs <- (:|)
         <$> genMockInput mockConstraints
         <*> replicateM (inputCount - 1) (genMockInput mockConstraints)
@@ -171,7 +171,7 @@ prop_create args =
         "Success" $
     cover 10 (resultHasZeroFeeExcess result)
         "Success with zero fee excess" $
-    cover 5 (resultHasInsufficientAda result)
+    cover 1 (resultHasInsufficientAda result)
         "Failure due to insufficient ada" $
     cover 1 (resultIsFull result)
         "Failure due to oversized selection" $
@@ -421,24 +421,27 @@ instance Arbitrary MockTxOutputCostArguments where
     arbitrary = genMockTxOutputCostArguments
 
 prop_txOutputCost :: MockTxOutputCostArguments -> Property
-prop_txOutputCost mockArgs = conjoin
-    [ txOutputCost constraints mockOutput <
-      txOutputCost constraints outputWithLargerCoin
-    , txOutputCost constraints mockOutput <
-      txOutputCost constraints outputWithMaxCoin
-    , Coin.distance
-        (txOutputCost constraints mockOutput)
-        (txOutputCost constraints outputWithLargerCoin)
-      ==
-      Coin.distance
-        (txOutputCoinCost constraints (view #coin mockOutput))
-        (txOutputCoinCost constraints (view #coin outputWithLargerCoin))
+prop_txOutputCost mockArgs = conjoinMap
+    [ ( "multiplying a coin by a factor of 10 increases its cost"
+      , txOutputCost constraints mockOutput <
+        txOutputCost constraints outputWithLargerCoin )
+    , ( "all coins cost less than the maximum ada quantity"
+      , txOutputCost constraints mockOutput <
+        txOutputCost constraints outputWithMaxCoin )
+    , ( "coin cost difference is independent of whether bundles are considered"
+      , Coin.distance
+            (txOutputCost constraints mockOutput)
+            (txOutputCost constraints outputWithLargerCoin)
+        ==
+        Coin.distance
+            (txOutputCoinCost constraints (view #coin mockOutput))
+            (txOutputCoinCost constraints (view #coin outputWithLargerCoin))
+      )
     ]
   where
-    outputWithLargerCoin =
-        TokenBundle.setCoin mockOutput
-            $ multiplyCoinByTen
-            $ TokenBundle.getCoin mockOutput
+    outputWithLargerCoin = TokenBundle.setCoin mockOutput
+        $ multiplyCoinByTen
+        $ TokenBundle.getCoin mockOutput
     outputWithMaxCoin =
         TokenBundle.setCoin mockOutput maxBound
     MockTxOutputCostArguments
@@ -468,24 +471,27 @@ instance Arbitrary MockTxOutputSizeArguments where
     arbitrary = genMockTxOutputSizeArguments
 
 prop_txOutputSize :: MockTxOutputSizeArguments -> Property
-prop_txOutputSize mockArgs = conjoin
-    [ txOutputSize constraints mockOutput <
-      txOutputSize constraints outputWithLargerCoin
-    , txOutputSize constraints mockOutput <
-      txOutputSize constraints outputWithMaxCoin
-    , txSizeDistance
-        (txOutputSize constraints mockOutput)
-        (txOutputSize constraints outputWithLargerCoin)
-      ==
-      txSizeDistance
-        (txOutputCoinSize constraints (view #coin mockOutput))
-        (txOutputCoinSize constraints (view #coin outputWithLargerCoin))
+prop_txOutputSize mockArgs = conjoinMap
+    [ ( "multiplying a coin by a factor of 10 increases its size"
+      , txOutputSize constraints mockOutput <
+        txOutputSize constraints outputWithLargerCoin )
+    , ( "all coins have sizes that are smaller than the maximum ada quantity"
+      , txOutputSize constraints mockOutput <
+        txOutputSize constraints outputWithMaxCoin )
+    , ( "coin size difference is independent of whether bundles are considered"
+      , txSizeDistance
+            (txOutputSize constraints mockOutput)
+            (txOutputSize constraints outputWithLargerCoin)
+        ==
+        txSizeDistance
+            (txOutputCoinSize constraints (view #coin mockOutput))
+            (txOutputCoinSize constraints (view #coin outputWithLargerCoin))
+      )
     ]
   where
-    outputWithLargerCoin =
-        TokenBundle.setCoin mockOutput
-            $ multiplyCoinByTen
-            $ TokenBundle.getCoin mockOutput
+    outputWithLargerCoin = TokenBundle.setCoin mockOutput
+        $ multiplyCoinByTen
+        $ TokenBundle.getCoin mockOutput
     outputWithMaxCoin =
         TokenBundle.setCoin mockOutput maxBound
     MockTxOutputSizeArguments
@@ -669,8 +675,8 @@ unMockTxOutputMinimumAdaQuantity mock = \m ->
 
 genMockTxOutputMinimumAdaQuantity :: Gen MockTxOutputMinimumAdaQuantity
 genMockTxOutputMinimumAdaQuantity = MockTxOutputMinimumAdaQuantity
-    <$> genCoinRange (Coin 1) (Coin 10)
-    <*> genCoinRange (Coin 1) (Coin 10)
+    <$> genCoinRange (Coin 4) (Coin 8)
+    <*> genCoinRange (Coin 1) (Coin 2)
 
 --------------------------------------------------------------------------------
 -- Mock maximum transaction sizes
@@ -727,24 +733,17 @@ genTokenBundle mockConstraints =
 
     genInner :: Gen TokenBundle
     genInner = frequency
-        [ ( 5, genCoinBelowInputCost)
-        , (15, genCoinBelowMinimumAdaQuantity)
+        [ (10, genCoinBelowMinimumAdaQuantity)
         , (40, genCoinAboveMinimumAdaQuantity)
         , (40, genBundleWithMinimumAdaQuantity)
         , (10, genBundleAboveMinimumAdaQuantity)
         ]
 
-    genCoinBelowInputCost :: Gen TokenBundle
-    genCoinBelowInputCost =
-        TokenBundle.fromCoin <$> genCoinRange
-            (Coin 1)
-            (Coin.distance (Coin 1) $ txInputCost constraints)
-
     genCoinBelowMinimumAdaQuantity :: Gen TokenBundle
     genCoinBelowMinimumAdaQuantity =
         TokenBundle.fromCoin <$> genCoinRange
-            (txInputCost constraints)
-            (Coin.distance (Coin 1) $ txOutputCoinMinimum constraints)
+            (Coin 1)
+            (Coin.distance (txOutputCoinMinimum constraints) (Coin 1))
 
     genCoinAboveMinimumAdaQuantity :: Gen TokenBundle
     genCoinAboveMinimumAdaQuantity =

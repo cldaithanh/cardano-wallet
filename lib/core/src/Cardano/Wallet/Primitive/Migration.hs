@@ -71,6 +71,7 @@ import qualified Data.Foldable as F
 import qualified Data.List as L
 import qualified Data.List.NonEmpty as NE
 import qualified Data.Map.Strict as Map
+import qualified Data.Set as Set
 
 --------------------------------------------------------------------------------
 -- Migration
@@ -310,23 +311,61 @@ addValueToOutputs
     -> [TokenMap]
     -- ^ Outputs
     -> TokenMap
-    -- ^ Value to add
+    -- ^ Output value to add
     -> NonEmpty TokenMap
-    -- ^ Outputs with the value added
-addValueToOutputs constraints outputs = NE.fromList
-    . F.foldl' (flip add) outputs
-    . splitOutputIfLimitsExceeded constraints
+    -- ^ Outputs with the additional value added
+addValueToOutputs constraints outputs outputUnchecked =
+    -- We need to be a bit careful with the output value to be added, as it may
+    -- itself be oversized. We split it up if any of the output size limits are
+    -- exceeded:
+    NE.fromList
+        $ F.foldl' (flip add) outputs
+        $ splitOutputIfLimitsExceeded constraints outputUnchecked
   where
+    -- Add an output value (whose size has been checked) to the existing
+    -- outputs, merging it into one of the existing outputs if possible.
     add :: TokenMap -> [TokenMap] -> [TokenMap]
-    add value = run []
+    add output outputs = run [] outputsSorted
       where
+        -- Attempt to merge the specified output value into one of the existing
+        -- outputs, by trying each existing output in turn, and terminating as
+        -- soon as a successful candidate for merging is found.
         run :: [TokenMap] -> [TokenMap] -> [TokenMap]
         run considered (candidate : unconsidered) =
-            case safeMerge value candidate of
+            case safeMerge output candidate of
                 Just merged -> merged : (considered <> unconsidered)
                 Nothing -> run (candidate : considered) unconsidered
         run considered [] =
-            value : considered
+            -- Merging with an existing output is not possible, so just make
+            -- a new output.
+            output : considered
+
+        -- To minimize both the number of merge attempts and the size increase
+        -- of the merged output compared to the original, we sort the existing
+        -- outputs into ascending order according to the number of assets that
+        -- would need to be added to each output.
+        --
+        -- In the absolute ideal case, where an existing output's assets are a
+        -- superset of the output value to be added, merging with that output
+        -- will not increase its asset count.
+        --
+        -- As a tie-breaker, we give priority to outputs with smaller numbers
+        -- of assets. Merging with a smaller output is more likely to succeed,
+        -- because merging with a larger ouput is more likely to fall foul of
+        -- the output size limit.
+        outputsSorted :: [TokenMap]
+        outputsSorted = L.sortOn sortOrder outputs
+          where
+            sortOrder targetOutput =
+                (targetOutputAssetCountIncrease, targetOutputAssetCount)
+              where
+                targetOutputAssetCount
+                    = Set.size targetOutputAssets
+                targetOutputAssetCountIncrease
+                    = Set.size
+                    $ Set.difference sourceOutputAssets targetOutputAssets
+                sourceOutputAssets = TokenMap.getAssets output
+                targetOutputAssets = TokenMap.getAssets targetOutput
 
     safeMerge :: TokenMap -> TokenMap -> Maybe TokenMap
     safeMerge a b

@@ -127,7 +127,7 @@ genMockCreatePlanArguments :: Gen MockCreatePlanArguments
 genMockCreatePlanArguments = do
     mockConstraints <- genMockTxConstraints
     -- TODO: support different ranges
-    mockInputCount <- choose (512, 1024)
+    mockInputCount <- choose (1000, 1000)
     mockInputs <- replicateM mockInputCount (genMockInput mockConstraints)
     mockRewardBalance <- oneof
         [ pure (Coin 0)

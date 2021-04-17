@@ -110,18 +110,18 @@ spec = describe "Cardano.Wallet.Primitive.MigrationSpec" $
 -- Creating migration plans
 --------------------------------------------------------------------------------
 
-data MockCreatePlanArguments = MockCreatePlanArguments
+data ArgsForCreatePlan = ArgsForCreatePlan
     { mockConstraints :: MockTxConstraints
     , mockInputs :: [(MockInputId, TokenBundle)]
     , mockRewardBalance :: Coin
     }
     deriving (Eq, Show)
 
-instance Arbitrary MockCreatePlanArguments where
-    arbitrary = genMockCreatePlanArguments
+instance Arbitrary ArgsForCreatePlan where
+    arbitrary = genArgsForCreatePlan
 
-genMockCreatePlanArguments :: Gen MockCreatePlanArguments
-genMockCreatePlanArguments = do
+genArgsForCreatePlan :: Gen ArgsForCreatePlan
+genArgsForCreatePlan = do
     mockConstraints <- genMockTxConstraints
     -- TODO: support different ranges
     mockInputCount <- choose (0, 1000)
@@ -130,13 +130,13 @@ genMockCreatePlanArguments = do
         [ pure (Coin 0)
         , genCoinRange (Coin 1) (Coin 1_000_000)
         ]
-    pure MockCreatePlanArguments
+    pure ArgsForCreatePlan
         { mockConstraints
         , mockInputs
         , mockRewardBalance
         }
 
-prop_createPlan :: Blind MockCreatePlanArguments -> Property
+prop_createPlan :: Blind ArgsForCreatePlan -> Property
 prop_createPlan mockArgs =
     withMaxSuccess 100 $
 
@@ -232,8 +232,7 @@ prop_createPlan mockArgs =
         entriesNotSelected :: Int
         entriesNotSelected = length $ category $ unselected result
 
-
-    Blind MockCreatePlanArguments
+    Blind ArgsForCreatePlan
         { mockConstraints
         , mockInputs
         , mockRewardBalance
@@ -287,22 +286,22 @@ prop_createPlan mockArgs =
 -- Categorizing UTxO entries
 --------------------------------------------------------------------------------
 
-data MockCategorizeUTxOEntryArguments = MockCategorizeUTxOEntryArguments
+data ArgsForCategorizeUTxOEntry = ArgsForCategorizeUTxOEntry
     { mockConstraints :: MockTxConstraints
     , mockEntry :: TokenBundle
     }
     deriving (Eq, Show)
 
-instance Arbitrary MockCategorizeUTxOEntryArguments where
-    arbitrary = genMockCategorizeUTxOEntryArguments
+instance Arbitrary ArgsForCategorizeUTxOEntry where
+    arbitrary = genArgsForCategorizeUTxOEntry
 
-genMockCategorizeUTxOEntryArguments :: Gen MockCategorizeUTxOEntryArguments
-genMockCategorizeUTxOEntryArguments = do
+genArgsForCategorizeUTxOEntry :: Gen ArgsForCategorizeUTxOEntry
+genArgsForCategorizeUTxOEntry = do
     mockConstraints <- genMockTxConstraints
     mockEntry <- genTokenBundle mockConstraints
-    pure MockCategorizeUTxOEntryArguments {..}
+    pure ArgsForCategorizeUTxOEntry {..}
 
-prop_categorizeUTxOEntry :: MockCategorizeUTxOEntryArguments -> Property
+prop_categorizeUTxOEntry :: ArgsForCategorizeUTxOEntry -> Property
 prop_categorizeUTxOEntry mockArgs =
     checkCoverage $
     cover 5 (result == Supporter) "Supporter" $
@@ -313,7 +312,7 @@ prop_categorizeUTxOEntry mockArgs =
         $ Selection.create
             constraints (Coin 0) mockEntry [()] [view #tokens mockEntry]
   where
-    MockCategorizeUTxOEntryArguments
+    ArgsForCategorizeUTxOEntry
         { mockConstraints
         , mockEntry
         } = mockArgs
@@ -328,16 +327,16 @@ prop_categorizeUTxOEntry mockArgs =
 -- Adding value to outputs
 --------------------------------------------------------------------------------
 
-data MockAddValueToOutputsArguments = MockAddValueToOutputsArguments
+data ArgsForAddValueToOutputs = ArgsForAddValueToOutputs
     { mockConstraints :: MockTxConstraints
     , mockOutputs :: NonEmpty TokenMap
     }
 
-instance Arbitrary MockAddValueToOutputsArguments where
-    arbitrary = genMockAddValueToOutputsArguments
+instance Arbitrary ArgsForAddValueToOutputs where
+    arbitrary = genArgsForAddValueToOutputs
 
-genMockAddValueToOutputsArguments :: Gen MockAddValueToOutputsArguments
-genMockAddValueToOutputsArguments = do
+genArgsForAddValueToOutputs :: Gen ArgsForAddValueToOutputs
+genArgsForAddValueToOutputs = do
     mockConstraints <- genMockTxConstraints
     -- The upper limit is chosen to be comfortably greater than the maximum
     -- number of inputs we can typically fit into a transaction:
@@ -345,9 +344,9 @@ genMockAddValueToOutputsArguments = do
     mockOutputs <- (:|)
         <$> genTokenMap mockConstraints
         <*> replicateM (mockOutputCount - 1) (genTokenMap mockConstraints)
-    pure MockAddValueToOutputsArguments {..}
+    pure ArgsForAddValueToOutputs {..}
 
-prop_addValueToOutputs :: Blind MockAddValueToOutputsArguments -> Property
+prop_addValueToOutputs :: Blind ArgsForAddValueToOutputs -> Property
 prop_addValueToOutputs mockArgs =
     withMaxSuccess 100 $
     conjoinMap
@@ -359,7 +358,7 @@ prop_addValueToOutputs mockArgs =
           , all (txOutputHasValidTokenQuantities constraints) result )
         ]
   where
-    Blind MockAddValueToOutputsArguments
+    Blind ArgsForAddValueToOutputs
         { mockConstraints
         , mockOutputs
         } = mockArgs

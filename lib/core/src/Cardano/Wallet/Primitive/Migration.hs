@@ -360,11 +360,11 @@ splitOutputIfSizeExceedsLimit constraints value
     | txOutputHasValidSize constraints (TokenBundle maxBound value) =
         pure value
     | otherwise =
-        splitInHalf value >>= splitOutputIfSizeExceedsLimit constraints
+        split value >>= splitOutputIfSizeExceedsLimit constraints
     | otherwise =
         pure value
   where
-    splitInHalf = flip TokenMap.equipartitionAssets (() :| [()])
+    split = flip TokenMap.equipartitionAssets (() :| [(), (), ()])
 
 splitOutputIfTokenQuantityExceedsLimit
     :: TxConstraints s

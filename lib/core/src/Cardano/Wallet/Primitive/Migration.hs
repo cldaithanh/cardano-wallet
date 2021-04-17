@@ -364,7 +364,7 @@ splitOutputIfSizeExceedsLimit constraints value
     | otherwise =
         pure value
   where
-    split = flip TokenMap.equipartitionAssets (() :| [(), (), ()])
+    split = flip TokenMap.equipartitionAssets (() :| [()])
 
 splitOutputIfTokenQuantityExceedsLimit
     :: TxConstraints s

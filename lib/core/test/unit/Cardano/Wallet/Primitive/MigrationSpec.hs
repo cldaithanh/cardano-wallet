@@ -3,8 +3,8 @@
 {-# LANGUAGE NumericUnderscores #-}
 {-# LANGUAGE OverloadedLabels #-}
 {-# LANGUAGE OverloadedLists #-}
-{-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
 
 module Cardano.Wallet.Primitive.MigrationSpec
@@ -12,18 +12,16 @@ module Cardano.Wallet.Primitive.MigrationSpec
 
 import Prelude
 
-import Fmt
-    ( padLeftF, pretty )
 import Cardano.Wallet.Primitive.Migration
     ( CategorizedUTxO (..)
     , MigrationPlan (..)
     , RewardBalance (..)
     , UTxOEntryCategory (..)
+    , addValueToOutputs
     , categorizeUTxOEntries
     , categorizeUTxOEntry
     , createPlan
     , uncategorizeUTxOEntries
-    , addValueToOutputs
     )
 import Cardano.Wallet.Primitive.Migration.Selection
     ( Selection (..) )
@@ -46,10 +44,7 @@ import Cardano.Wallet.Primitive.Types.TokenBundle
 import Cardano.Wallet.Primitive.Types.TokenMap
     ( TokenMap )
 import Cardano.Wallet.Primitive.Types.Tx
-    ( TxConstraints
-    , txOutputHasValidSize
-    , txOutputHasValidTokenQuantities
-    )
+    ( TxConstraints, txOutputHasValidSize, txOutputHasValidTokenQuantities )
 import Control.Monad
     ( replicateM )
 import Data.Either
@@ -62,6 +57,8 @@ import Data.List.NonEmpty
     ( NonEmpty (..) )
 import Data.Set
     ( Set )
+import Fmt
+    ( padLeftF, pretty )
 import Test.Hspec
     ( Spec, describe, it )
 import Test.Hspec.Core.QuickCheck
@@ -77,9 +74,9 @@ import Test.QuickCheck
     , choose
     , counterexample
     , cover
+    , label
     , oneof
     , property
-    , label
     , withMaxSuccess
     )
 

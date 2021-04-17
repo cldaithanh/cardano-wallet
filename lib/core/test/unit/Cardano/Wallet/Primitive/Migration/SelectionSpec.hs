@@ -35,10 +35,10 @@ import Cardano.Wallet.Primitive.Types.TokenBundle
     ( Flat (..), TokenBundle (..) )
 import Cardano.Wallet.Primitive.Types.TokenMap
     ( AssetId (..), TokenMap )
-import Cardano.Wallet.Primitive.Types.TokenQuantity
-    ( TokenQuantity (..) )
 import Cardano.Wallet.Primitive.Types.TokenPolicy
     ( TokenName (..), TokenPolicyId (..) )
+import Cardano.Wallet.Primitive.Types.TokenQuantity
+    ( TokenQuantity (..) )
 import Cardano.Wallet.Primitive.Types.Tx
     ( TxConstraints (..)
     , txOutputCoinCost

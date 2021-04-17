@@ -11,10 +11,6 @@
 
 module Cardano.Wallet.Primitive.Migration.Selection
     (
-    ----------------------------------------------------------------------------
-    -- Public interface
-    ----------------------------------------------------------------------------
-
     -- * Creating selections
       create
     , Selection (..)
@@ -25,13 +21,6 @@ module Cardano.Wallet.Primitive.Migration.Selection
     , SelectionCorrectness (..)
     , check
 
-    -- * Classes
-    , TxSize (..)
-
-    ----------------------------------------------------------------------------
-    -- Internal interface
-    ----------------------------------------------------------------------------
-
     -- * Computing bulk properties of selections
     , computeCurrentFee
     , computeCurrentSize
@@ -40,6 +29,9 @@ module Cardano.Wallet.Primitive.Migration.Selection
     -- * Minimizing fees
     , minimizeFee
     , minimizeFeeStep
+
+    -- * Classes
+    , TxSize (..)
 
     ) where
 

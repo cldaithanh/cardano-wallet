@@ -234,8 +234,10 @@ genArgsForMinimizeFee = do
     mockConstraints <- genMockTxConstraints
     mockOutputCount <- choose (1, 10)
     mockOutputs <- (:|)
-        <$> genTokenBundle mockConstraints
-        <*> replicateM (mockOutputCount - 1) (genTokenBundle mockConstraints)
+        <$> genTokenBundleMixed mockConstraints
+        <*> replicateM
+            (mockOutputCount - 1)
+            (genTokenBundleMixed mockConstraints)
     mockFeeExcessToMinimize <- genCoinRange (Coin 0) (Coin 10_000)
     pure ArgsForMinimizeFee
         { mockConstraints
@@ -304,7 +306,7 @@ instance Arbitrary ArgsForMinimizeFeeStep where
 genArgsForMinimizeFeeStep :: Gen ArgsForMinimizeFeeStep
 genArgsForMinimizeFeeStep = do
     mockConstraints <- genMockTxConstraints
-    mockOutput <- genTokenBundle mockConstraints
+    mockOutput <- genTokenBundleMixed mockConstraints
     mockFeeExcessToMinimize <- genCoinRange (Coin 0) (Coin 1000)
     pure ArgsForMinimizeFeeStep
         { mockConstraints
@@ -418,7 +420,7 @@ instance Arbitrary ArgsForTxOutputCost where
 genArgsForTxOutputCost :: Gen ArgsForTxOutputCost
 genArgsForTxOutputCost = do
     mockConstraints <- genMockTxConstraints
-    mockOutput <- genTokenBundle mockConstraints
+    mockOutput <- genTokenBundleMixed mockConstraints
     pure ArgsForTxOutputCost {..}
 
 prop_txOutputCost :: ArgsForTxOutputCost -> Property
@@ -468,7 +470,7 @@ instance Arbitrary ArgsForTxOutputSize where
 genArgsForTxOutputSize :: Gen ArgsForTxOutputSize
 genArgsForTxOutputSize = do
     mockConstraints <- genMockTxConstraints
-    mockOutput <- genTokenBundle mockConstraints
+    mockOutput <- genTokenBundleMixed mockConstraints
     pure ArgsForTxOutputSize {..}
 
 prop_txOutputSize :: ArgsForTxOutputSize -> Property
@@ -717,7 +719,12 @@ instance Show MockInputId where
 genMockInput :: MockTxConstraints -> Gen (MockInputId, TokenBundle)
 genMockInput mockConstraints = (,)
     <$> genMockInputId
-    <*> genTokenBundle mockConstraints
+    <*> genTokenBundleMixed mockConstraints
+
+genMockInputAdaOnly :: MockTxConstraints -> Gen (MockInputId, TokenBundle)
+genMockInputAdaOnly mockConstraints = (,)
+    <$> genMockInputId
+    <*> (TokenBundle.fromCoin <$> genCoinMixed mockConstraints)
 
 genMockInputId :: Gen MockInputId
 genMockInputId = MockInputId . BS.pack <$> vector 8
@@ -725,6 +732,12 @@ genMockInputId = MockInputId . BS.pack <$> vector 8
 --------------------------------------------------------------------------------
 -- Generating coins, token bundles, token maps, and token quantities
 --------------------------------------------------------------------------------
+
+genCoinMixed :: MockTxConstraints -> Gen Coin
+genCoinMixed mockConstraints = frequency
+    [ (10, genCoinBelowMinimumAdaQuantity mockConstraints)
+    , (40, genCoinAboveMinimumAdaQuantity mockConstraints)
+    ]
 
 genCoinAboveMinimumAdaQuantity :: MockTxConstraints -> Gen Coin
 genCoinAboveMinimumAdaQuantity mockConstraints =
@@ -746,8 +759,8 @@ genCoinRange :: Coin -> Coin -> Gen Coin
 genCoinRange (Coin minCoin) (Coin maxCoin) =
     Coin . fromIntegral <$> choose (minCoin, maxCoin)
 
-genTokenBundle :: MockTxConstraints -> Gen TokenBundle
-genTokenBundle mockConstraints =
+genTokenBundleMixed :: MockTxConstraints -> Gen TokenBundle
+genTokenBundleMixed mockConstraints =
     genInner `suchThat` txOutputHasValidSize constraints
   where
     constraints = unMockTxConstraints mockConstraints

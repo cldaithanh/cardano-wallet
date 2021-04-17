@@ -1,4 +1,5 @@
 {-# LANGUAGE DuplicateRecordFields #-}
+{-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE NumericUnderscores #-}
 {-# LANGUAGE OverloadedLabels #-}
@@ -32,8 +33,9 @@ import Cardano.Wallet.Primitive.Migration.SelectionSpec
     , counterexampleMap
     , genCoinRange
     , genMockInput
+    , genMockInputAdaOnly
     , genMockTxConstraints
-    , genTokenBundle
+    , genTokenBundleMixed
     , genTokenMap
     , unMockTxConstraints
     )
@@ -93,8 +95,12 @@ spec = describe "Cardano.Wallet.Primitive.MigrationSpec" $
 
     parallel $ describe "Creating migration plans" $ do
 
-        it "prop_createPlan" $
-            property prop_createPlan
+        it "prop_createPlan_small" $
+            property prop_createPlan_small
+        it "prop_createPlan_large" $
+            property prop_createPlan_large
+        it "prop_createPlan_giant" $
+            property prop_createPlan_giant
 
     parallel $ describe "Categorizing UTxO entries" $ do
 
@@ -117,15 +123,52 @@ data ArgsForCreatePlan = ArgsForCreatePlan
     }
     deriving (Eq, Show)
 
-instance Arbitrary ArgsForCreatePlan where
-    arbitrary = genArgsForCreatePlan
+newtype Small a = Small { unSmall :: a }
+    deriving (Eq, Show)
 
-genArgsForCreatePlan :: Gen ArgsForCreatePlan
-genArgsForCreatePlan = do
+newtype Large a = Large { unLarge :: a }
+    deriving (Eq, Show)
+
+newtype Giant a = Giant { unGiant :: a }
+    deriving (Eq, Show)
+
+instance Arbitrary (Small ArgsForCreatePlan) where
+    arbitrary = Small <$> genArgsForCreatePlan
+        (0, 100) genMockInput
+
+instance Arbitrary (Large ArgsForCreatePlan) where
+    arbitrary = Large <$> genArgsForCreatePlan
+        (1_000, 1_000) genMockInput
+
+instance Arbitrary (Giant ArgsForCreatePlan) where
+    arbitrary = Giant <$> genArgsForCreatePlan
+        (100_000, 100_000) genMockInputAdaOnly
+
+prop_createPlan_small :: Blind (Small ArgsForCreatePlan) -> Property
+prop_createPlan_small (Blind (Small args)) =
+    withMaxSuccess 1000 $
+    prop_createPlan args
+
+prop_createPlan_large :: Blind (Large ArgsForCreatePlan) -> Property
+prop_createPlan_large (Blind (Large args)) =
+    withMaxSuccess 100 $
+    prop_createPlan args
+
+prop_createPlan_giant :: Blind (Giant ArgsForCreatePlan) -> Property
+prop_createPlan_giant (Blind (Giant args)) =
+    withMaxSuccess 1 $
+    prop_createPlan args
+
+genArgsForCreatePlan
+    :: (Int, Int)
+    -- ^ Input count range
+    -> (MockTxConstraints -> Gen (MockInputId, TokenBundle))
+    -- ^ Genenator for inputs
+    -> Gen ArgsForCreatePlan
+genArgsForCreatePlan (inputCountMin, inputCountMax) genInput = do
     mockConstraints <- genMockTxConstraints
-    -- TODO: support different ranges
-    mockInputCount <- choose (0, 1000)
-    mockInputs <- replicateM mockInputCount (genMockInput mockConstraints)
+    mockInputCount <- choose (inputCountMin, inputCountMax)
+    mockInputs <- replicateM mockInputCount (genInput mockConstraints)
     mockRewardBalance <- oneof
         [ pure (Coin 0)
         , genCoinRange (Coin 1) (Coin 1_000_000)
@@ -136,10 +179,8 @@ genArgsForCreatePlan = do
         , mockRewardBalance
         }
 
-prop_createPlan :: Blind ArgsForCreatePlan -> Property
+prop_createPlan :: ArgsForCreatePlan -> Property
 prop_createPlan mockArgs =
-    withMaxSuccess 100 $
-
     label labelTransactionCount $
     label labelMeanTransactionInputCount $
     label labelMeanTransactionOutputCount $
@@ -232,7 +273,7 @@ prop_createPlan mockArgs =
         entriesNotSelected :: Int
         entriesNotSelected = length $ category $ unselected result
 
-    Blind ArgsForCreatePlan
+    ArgsForCreatePlan
         { mockConstraints
         , mockInputs
         , mockRewardBalance
@@ -298,7 +339,7 @@ instance Arbitrary ArgsForCategorizeUTxOEntry where
 genArgsForCategorizeUTxOEntry :: Gen ArgsForCategorizeUTxOEntry
 genArgsForCategorizeUTxOEntry = do
     mockConstraints <- genMockTxConstraints
-    mockEntry <- genTokenBundle mockConstraints
+    mockEntry <- genTokenBundleMixed mockConstraints
     pure ArgsForCategorizeUTxOEntry {..}
 
 prop_categorizeUTxOEntry :: ArgsForCategorizeUTxOEntry -> Property

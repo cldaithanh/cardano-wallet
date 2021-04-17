@@ -127,7 +127,7 @@ genMockCreatePlanArguments :: Gen MockCreatePlanArguments
 genMockCreatePlanArguments = do
     mockConstraints <- genMockTxConstraints
     -- TODO: support different ranges
-    mockInputCount <- choose (1000, 1000)
+    mockInputCount <- choose (0, 1000)
     mockInputs <- replicateM mockInputCount (genMockInput mockConstraints)
     mockRewardBalance <- oneof
         [ pure (Coin 0)
@@ -170,6 +170,9 @@ prop_createPlan mockArgs =
           , True )
         , ( "one or more supporters not selected"
           , supporters (unselected result) == [] )
+        , ( "one or more transactions is incorrect"
+            --TODO: check the SelectionCorrectness
+          , True )
         ]
   where
     labelTransactionCount = pretty $ mconcat
@@ -341,7 +344,7 @@ genMockAddValueToOutputsArguments = do
     mockConstraints <- genMockTxConstraints
     -- The upper limit is chosen to be comfortably greater than the maximum
     -- number of inputs we can typically fit into a transaction:
-    mockOutputCount <- choose (128, 128)
+    mockOutputCount <- choose (1, 128)
     mockOutputs <- (:|)
         <$> genTokenMap mockConstraints
         <*> replicateM (mockOutputCount - 1) (genTokenMap mockConstraints)

@@ -223,7 +223,7 @@ data UTxOEntryCategory
     -- ^ A coin or bundle that is capable of paying for its own marginal fee
     -- and the base transaction fee.
     | Freerider
-    -- ^ A bundle that is not capable of paying for its own marginal fee.
+    -- ^ A coin or bundle that is not capable of paying for itself.
     | Ignorable
     -- ^ A coin that should not be added to a selection, because its value is
     -- lower than the marginal fee for an input.

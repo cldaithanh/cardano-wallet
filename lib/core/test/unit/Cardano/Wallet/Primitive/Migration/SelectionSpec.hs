@@ -158,7 +158,7 @@ genMockCreateArguments = do
         [ pure (Coin 0)
         , genCoinRange (Coin 1) (Coin 1_000_000)
         ]
-    inputCount <- choose (1, 16)
+    inputCount <- choose (1, 32)
     mockInputs <- (:|)
         <$> genMockInput mockConstraints
         <*> replicateM (inputCount - 1) (genMockInput mockConstraints)

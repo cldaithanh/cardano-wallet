@@ -10,12 +10,18 @@
 
 module Cardano.Wallet.Primitive.Migration
     (
-      -- * Migration planning
+    -- * Migration planning
       createPlan
     , MigrationPlan (..)
     , RewardBalance (..)
 
-      -- * UTxO entry categorization
+    -- * Adding value to outputs
+    , addValueToOutputs
+
+    -- * Splitting outputs
+    , splitOutputIfLimitsExceeded
+
+    -- * UTxO entry categorization
     , CategorizedUTxO (..)
     , UTxOEntryCategory (..)
     , categorizeUTxO
@@ -23,12 +29,6 @@ module Cardano.Wallet.Primitive.Migration
     , categorizeUTxOEntry
     , uncategorizeUTxO
     , uncategorizeUTxOEntries
-
-      -- * Adding value to outputs
-    , addValueToOutputs
-
-      -- * Splitting outputs
-    , splitOutputIfLimitsExceeded
 
     ) where
 
@@ -74,7 +74,7 @@ import qualified Data.Map.Strict as Map
 import qualified Data.Set as Set
 
 --------------------------------------------------------------------------------
--- Migration
+-- Migration planning
 --------------------------------------------------------------------------------
 
 data MigrationPlan i s = MigrationPlan
@@ -215,93 +215,6 @@ select utxo = \case
         Nothing
 
 --------------------------------------------------------------------------------
--- Categorization of UTxO entries
---------------------------------------------------------------------------------
-
-data UTxOEntryCategory
-    = Supporter
-    -- ^ A coin or bundle that is capable of paying for its own marginal fee
-    -- and the base transaction fee.
-    | Freerider
-    -- ^ A coin or bundle that is not capable of paying for itself.
-    | Ignorable
-    -- ^ A coin that should not be added to a selection, because its value is
-    -- lower than the marginal fee for an input.
-    deriving (Eq, Show)
-
-data CategorizedUTxO i = CategorizedUTxO
-    { supporters :: ![(i, TokenBundle)]
-    , freeriders :: ![(i, TokenBundle)]
-    , ignorables :: ![(i, TokenBundle)]
-    }
-    deriving (Eq, Show)
-
-categorizeUTxO
-    :: TxSize s
-    => TxConstraints s
-    -> UTxO
-    -> CategorizedUTxO (TxIn, TxOut)
-categorizeUTxO constraints (UTxO u) = categorizeUTxOEntries constraints $
-    (\(i, o) -> ((i, o), view #tokens o)) <$> Map.toList u
-
-categorizeUTxOEntries
-    :: forall i s. TxSize s
-    => TxConstraints s
-    -> [(i, TokenBundle)]
-    -> CategorizedUTxO i
-categorizeUTxOEntries constraints uncategorizedEntries = CategorizedUTxO
-    { supporters = entriesMatching Supporter
-    , freeriders = entriesMatching Freerider
-    , ignorables = entriesMatching Ignorable
-    }
-  where
-    categorizedEntries :: [(i, (TokenBundle, UTxOEntryCategory))]
-    categorizedEntries = uncategorizedEntries
-        <&> (\(i, b) -> (i, (b, categorizeUTxOEntry constraints b)))
-
-    entriesMatching :: UTxOEntryCategory -> [(i, TokenBundle)]
-    entriesMatching category =
-        fmap fst <$> L.filter ((== category) . snd . snd) categorizedEntries
-
-categorizeUTxOEntry
-    :: TxSize s
-    => TxConstraints s
-    -> TokenBundle
-    -> UTxOEntryCategory
-categorizeUTxOEntry constraints b
-    | Just c <- TokenBundle.toCoin b, coinIsIgnorable c =
-        Ignorable
-    | bundleIsSupporter b =
-        Supporter
-    | otherwise =
-        Freerider
-  where
-    bundleIsSupporter :: TokenBundle -> Bool
-    bundleIsSupporter b =
-        isRight $ Selection.create constraints (Coin 0) b [()] [view #tokens b]
-        -- Note: this should be equivalent to:
-        --
-        -- c >= mconcat
-        --     [ txBaseCost constraints
-        --     , txInputCost constraints
-        --     , txOutputCost constraints b
-        --     , txOutputMinimumAdaQuantity constraints m
-        --     ]
-
-    coinIsIgnorable :: Coin -> Bool
-    coinIsIgnorable c = c <= txInputCost constraints
-
-uncategorizeUTxO :: CategorizedUTxO (TxIn, TxOut) -> UTxO
-uncategorizeUTxO = UTxO . Map.fromList . fmap fst . uncategorizeUTxOEntries
-
-uncategorizeUTxOEntries :: CategorizedUTxO i -> [(i, TokenBundle)]
-uncategorizeUTxOEntries utxo = mconcat
-    [ supporters utxo
-    , freeriders utxo
-    , ignorables utxo
-    ]
-
---------------------------------------------------------------------------------
 -- Adding value to outputs
 --------------------------------------------------------------------------------
 
@@ -412,3 +325,90 @@ splitOutputIfTokenQuantityExceedsLimit
 splitOutputIfTokenQuantityExceedsLimit
     = flip TokenMap.equipartitionQuantitiesWithUpperBound
     . txOutputMaximumTokenQuantity
+
+--------------------------------------------------------------------------------
+-- Categorization of UTxO entries
+--------------------------------------------------------------------------------
+
+data UTxOEntryCategory
+    = Supporter
+    -- ^ A coin or bundle that is capable of paying for its own marginal fee
+    -- and the base transaction fee.
+    | Freerider
+    -- ^ A coin or bundle that is not capable of paying for itself.
+    | Ignorable
+    -- ^ A coin that should not be added to a selection, because its value is
+    -- lower than the marginal fee for an input.
+    deriving (Eq, Show)
+
+data CategorizedUTxO i = CategorizedUTxO
+    { supporters :: ![(i, TokenBundle)]
+    , freeriders :: ![(i, TokenBundle)]
+    , ignorables :: ![(i, TokenBundle)]
+    }
+    deriving (Eq, Show)
+
+categorizeUTxO
+    :: TxSize s
+    => TxConstraints s
+    -> UTxO
+    -> CategorizedUTxO (TxIn, TxOut)
+categorizeUTxO constraints (UTxO u) = categorizeUTxOEntries constraints $
+    (\(i, o) -> ((i, o), view #tokens o)) <$> Map.toList u
+
+categorizeUTxOEntries
+    :: forall i s. TxSize s
+    => TxConstraints s
+    -> [(i, TokenBundle)]
+    -> CategorizedUTxO i
+categorizeUTxOEntries constraints uncategorizedEntries = CategorizedUTxO
+    { supporters = entriesMatching Supporter
+    , freeriders = entriesMatching Freerider
+    , ignorables = entriesMatching Ignorable
+    }
+  where
+    categorizedEntries :: [(i, (TokenBundle, UTxOEntryCategory))]
+    categorizedEntries = uncategorizedEntries
+        <&> (\(i, b) -> (i, (b, categorizeUTxOEntry constraints b)))
+
+    entriesMatching :: UTxOEntryCategory -> [(i, TokenBundle)]
+    entriesMatching category =
+        fmap fst <$> L.filter ((== category) . snd . snd) categorizedEntries
+
+categorizeUTxOEntry
+    :: TxSize s
+    => TxConstraints s
+    -> TokenBundle
+    -> UTxOEntryCategory
+categorizeUTxOEntry constraints b
+    | Just c <- TokenBundle.toCoin b, coinIsIgnorable c =
+        Ignorable
+    | bundleIsSupporter b =
+        Supporter
+    | otherwise =
+        Freerider
+  where
+    bundleIsSupporter :: TokenBundle -> Bool
+    bundleIsSupporter b =
+        isRight $ Selection.create constraints (Coin 0) b [()] [view #tokens b]
+        -- Note: this should be equivalent to:
+        --
+        -- c >= mconcat
+        --     [ txBaseCost constraints
+        --     , txInputCost constraints
+        --     , txOutputCost constraints b
+        --     , txOutputMinimumAdaQuantity constraints m
+        --     ]
+
+    coinIsIgnorable :: Coin -> Bool
+    coinIsIgnorable c = c <= txInputCost constraints
+
+uncategorizeUTxO :: CategorizedUTxO (TxIn, TxOut) -> UTxO
+uncategorizeUTxO = UTxO . Map.fromList . fmap fst . uncategorizeUTxOEntries
+
+uncategorizeUTxOEntries :: CategorizedUTxO i -> [(i, TokenBundle)]
+uncategorizeUTxOEntries utxo = mconcat
+    [ supporters utxo
+    , freeriders utxo
+    , ignorables utxo
+    ]

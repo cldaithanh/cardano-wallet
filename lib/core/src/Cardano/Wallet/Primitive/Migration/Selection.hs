@@ -39,7 +39,7 @@ module Cardano.Wallet.Primitive.Migration.Selection
 
     -- * Minimizing fees
     , minimizeFee
-    , minimizeFeeForOutput
+    , minimizeFeeStep
 
     ) where
 
@@ -522,15 +522,15 @@ minimizeFee constraints (currentFeeExcess, outputs) =
         run feeExcessRemaining' remaining (output' : processed)
       where
         (feeExcessRemaining', output') =
-            minimizeFeeForOutput constraints (feeExcessRemaining, output)
+            minimizeFeeStep constraints (feeExcessRemaining, output)
 
-minimizeFeeForOutput
+minimizeFeeStep
     :: TxConstraints s
     -> (Coin, TokenBundle)
     -- ^ Fee excess and output bundle.
     -> (Coin, TokenBundle)
     -- ^ Fee excess and output bundle after optimization.
-minimizeFeeForOutput constraints =
+minimizeFeeStep constraints =
     findFixedPoint reduceFee
   where
     reduceFee :: (Coin, TokenBundle) -> (Coin, TokenBundle)

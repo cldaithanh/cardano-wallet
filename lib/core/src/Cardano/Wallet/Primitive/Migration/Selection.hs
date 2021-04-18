@@ -456,6 +456,11 @@ data SelectionFullError s = SelectionFullError
 -- Creating selections
 --------------------------------------------------------------------------------
 
+-- | Creates a selection with the given inputs.
+--
+-- Guarantees that the resulting selection is valid if checked with the 'check'
+-- function.
+--
 create
     :: forall i s. TxSize s
     => TxConstraints s
@@ -483,6 +488,11 @@ create constraints reward inputs =
 -- Extending selections
 --------------------------------------------------------------------------------
 
+-- | Extends a selection with an additional input.
+--
+-- Guarantees that the resulting selection is valid if checked with the 'check'
+-- function.
+--
 extend
     :: forall i s. TxSize s
     => TxConstraints s

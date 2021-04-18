@@ -206,9 +206,9 @@ prop_createPlan mockArgs =
   where
     labelTransactionCount = pretty $ mconcat
         [ "number of transactions required: ["
-        , padLeftF 3 ' ' (10 * selectionCountDiv10)
+        , padLeftF 3 '0' (10 * selectionCountDiv10)
         , " – "
-        , padLeftF 3 ' ' (10 * (selectionCountDiv10 + 1) - 1)
+        , padLeftF 3 '0' (10 * (selectionCountDiv10 + 1) - 1)
         , "]"
         ]
       where
@@ -216,9 +216,9 @@ prop_createPlan mockArgs =
 
     labelMeanTransactionInputCount = pretty $ mconcat
         [ "mean number of inputs per transaction: ["
-        , padLeftF 3 ' ' (10 * meanTxInputCountDiv10)
+        , padLeftF 3 '0' (10 * meanTxInputCountDiv10)
         , " – "
-        , padLeftF 3 ' ' (10 * (meanTxInputCountDiv10 + 1) - 1)
+        , padLeftF 3 '0' (10 * (meanTxInputCountDiv10 + 1) - 1)
         , "]"
         ]
       where
@@ -235,7 +235,7 @@ prop_createPlan mockArgs =
 
     labelMeanTransactionOutputCount = pretty $ mconcat
         [ "mean number of outputs per transaction: "
-        , padLeftF 3 ' ' meanTxOutputCount
+        , padLeftF 3 '0' meanTxOutputCount
         ]
       where
         meanTxOutputCount :: Int
@@ -253,7 +253,7 @@ prop_createPlan mockArgs =
         , " not selected: "
         , maybe
             ("no entries available")
-            (\p -> padLeftF 3 ' ' p <> "%")
+            (\p -> padLeftF 3 '0' p <> "%")
             (percentage)
         ]
       where

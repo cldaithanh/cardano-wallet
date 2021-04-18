@@ -458,8 +458,9 @@ data SelectionFullError s = SelectionFullError
 
 -- | Creates a selection with the given inputs.
 --
--- Guarantees that the resulting selection is valid if checked with the 'check'
--- function.
+-- Guarantees the following property for a returned selection 's':
+--
+-- >>> check s == SelectionCorrect
 --
 create
     :: forall i s. TxSize s
@@ -490,8 +491,9 @@ create constraints reward inputs =
 
 -- | Extends a selection with an additional input.
 --
--- Guarantees that the resulting selection is valid if checked with the 'check'
--- function.
+-- Guarantees the following property for a returned selection 's':
+--
+-- >>> check s == SelectionCorrect
 --
 extend
     :: forall i s. TxSize s

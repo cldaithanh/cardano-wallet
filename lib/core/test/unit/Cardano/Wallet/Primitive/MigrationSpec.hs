@@ -182,26 +182,18 @@ prop_createPlan mockArgs =
     counterexample counterexampleText $
     conjoinMap
         [ ( "inputs are not preserved"
-          , inputIds == inputIdsSelected `Set.union` inputIdsNotSelected )
+          , inputIdsAll == Set.union inputIdsSelected inputIdsNotSelected )
         , ( "total fee is incorrect"
           , totalFee result == totalFeeExpected )
         , ( "more than one transaction has reward withdrawal"
-            -- TODO
-          , True )
+          , rewardWithdrawalCount <= 1 )
         , ( "reward withdrawal amount incorrect"
-            -- TODO
-          , True )
-        , ( "reward withdrawal missing"
-            -- TODO
-          , True )
+          , rewardWithdrawalAmount == rewardWithdrawalExpected )
         , ( "asset balance not preserved"
             -- TODO
           , True )
         , ( "one or more supporters not selected"
           , supporters (unselected result) == [] )
-        , ( "one or more transactions is incorrect"
-            --TODO: check the SelectionCorrectness
-          , True )
         ]
   where
     labelTransactionCount = pretty $ mconcat
@@ -280,8 +272,8 @@ prop_createPlan mockArgs =
 
     categorizedUTxO = categorizeUTxOEntries constraints mockInputs
 
-    inputIds :: Set MockInputId
-    inputIds = Set.fromList (fst <$> mockInputs)
+    inputIdsAll :: Set MockInputId
+    inputIdsAll = Set.fromList (fst <$> mockInputs)
 
     inputIdsSelected :: Set MockInputId
     inputIdsSelected = Set.fromList
@@ -295,6 +287,16 @@ prop_createPlan mockArgs =
         $ fmap fst
         $ uncategorizeUTxOEntries
         $ unselected result
+
+    rewardWithdrawalCount =
+        length $ filter (> Coin 0) (rewardWithdrawal <$> selections result)
+    rewardWithdrawalAmount =
+        F.foldMap rewardWithdrawal (selections result)
+    rewardWithdrawalExpected
+        | selectionCount == 0 =
+            Coin 0
+        | otherwise =
+            mockRewardWithdrawal
 
     selectionCount = length (selections result)
 
@@ -316,6 +318,8 @@ prop_createPlan mockArgs =
           , show (length $ ignorables categorizedUTxO) )
         , ( "count of ignorables not selected"
           , show (length $ ignorables $ unselected result) )
+        , ( "count of reward withdrawals"
+          , show rewardWithdrawalCount )
         ]
 
 --------------------------------------------------------------------------------

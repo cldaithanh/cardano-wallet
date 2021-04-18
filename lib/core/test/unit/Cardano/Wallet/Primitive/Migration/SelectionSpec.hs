@@ -26,6 +26,7 @@ import Cardano.Wallet.Primitive.Migration.Selection
     , addValueToOutputs
     , check
     , create
+    , extend
     , minimizeFee
     , minimizeFeeStep
     )
@@ -95,6 +96,7 @@ import Test.QuickCheck
     , oneof
     , property
     , suchThat
+    , suchThatMap
     , vector
     , withMaxSuccess
     , (===)
@@ -120,6 +122,11 @@ spec = describe "Cardano.Wallet.Primitive.Migration.SelectionSpec" $
 
         it "prop_create" $
             property prop_create
+
+    parallel $ describe "Extending selections" $ do
+
+        it "prop_extend" $
+            property prop_extend
 
     parallel $ describe "Adding value to outputs" $ do
 
@@ -187,14 +194,11 @@ prop_create args =
         "Failure due to oversized selection" $
     case result of
         Left SelectionAdaInsufficient ->
-            -- TODO: Check that the ada amount really is insufficient.
             property True
         Left (SelectionFull e) ->
             property (selectionSizeMaximum e < selectionSizeRequired e)
         Right selection ->
-            conjoin
-                [ check constraints selection === SelectionCorrect
-                ]
+            check constraints selection === SelectionCorrect
   where
     ArgsForCreate
         { mockConstraints
@@ -206,22 +210,89 @@ prop_create args =
         (RewardWithdrawal mockRewardWithdrawal)
         (mockInputs)
 
-    resultIsSelection :: MockSelectionResult -> Bool
-    resultIsSelection = isRight
+resultIsSelection :: MockSelectionResult -> Bool
+resultIsSelection = isRight
 
-    resultHasZeroFeeExcess :: MockSelectionResult -> Bool
-    resultHasZeroFeeExcess = matchRight $ \selection ->
-        feeExcess selection == Coin 0
+resultHasZeroFeeExcess :: MockSelectionResult -> Bool
+resultHasZeroFeeExcess = matchRight $ \selection ->
+    feeExcess selection == Coin 0
 
-    resultHasInsufficientAda :: MockSelectionResult -> Bool
-    resultHasInsufficientAda = matchLeft $ \case
-        SelectionAdaInsufficient -> True
-        _ -> False
+resultHasInsufficientAda :: MockSelectionResult -> Bool
+resultHasInsufficientAda = matchLeft $ \case
+    SelectionAdaInsufficient -> True
+    _ -> False
 
-    resultIsFull :: MockSelectionResult -> Bool
-    resultIsFull = matchLeft $ \case
-        SelectionFull _ -> True
-        _ -> False
+resultIsFull :: MockSelectionResult -> Bool
+resultIsFull = matchLeft $ \case
+    SelectionFull _ -> True
+    _ -> False
+
+--------------------------------------------------------------------------------
+-- Extending a selection
+--------------------------------------------------------------------------------
+
+data ArgsForExtend = ArgsForExtend
+    { mockConstraints :: MockTxConstraints
+    , mockSelection :: MockSelection
+    , mockInput :: (MockInputId, TokenBundle)
+    } deriving (Eq, Show)
+
+instance Arbitrary ArgsForExtend where
+    arbitrary = genArgsForExtend
+
+genArgsForExtend :: Gen ArgsForExtend
+genArgsForExtend = genInner `suchThatMap` id
+  where
+    genInner = do
+        ArgsForCreate {mockConstraints, mockInputs, mockRewardWithdrawal}
+            <- genArgsForCreate
+        let constraints = unMockTxConstraints mockConstraints
+        mockInput <- (,)
+            <$> genMockInputId
+            <*> oneof
+                [ genTokenBundleMixed mockConstraints
+                  -- In order to increase coverage of error conditions,
+                  -- deliberately include some large bundles whose ada
+                  -- quantities are below the minimum:
+                , TokenBundle (Coin 0) . F.fold <$>
+                    replicateM 4 (genTokenMap mockConstraints)
+                ]
+        let maybeSelection = create constraints
+                (RewardWithdrawal mockRewardWithdrawal) mockInputs
+        pure $ case maybeSelection of
+            Left _ -> Nothing
+            Right mockSelection -> Just ArgsForExtend
+                { mockConstraints
+                , mockSelection
+                , mockInput
+                }
+
+prop_extend :: ArgsForExtend -> Property
+prop_extend args =
+    checkCoverage $
+    cover 40 (resultIsSelection result)
+        "Success" $
+    cover 10 (resultHasZeroFeeExcess result)
+        "Success with zero fee excess" $
+    cover 0.1 (resultHasInsufficientAda result)
+        "Failure due to insufficient ada" $
+    cover 0.1 (resultIsFull result)
+        "Failure due to oversized selection" $
+    case result of
+        Left SelectionAdaInsufficient ->
+            property True
+        Left (SelectionFull e) ->
+            property (selectionSizeMaximum e < selectionSizeRequired e)
+        Right selection ->
+            check constraints selection === SelectionCorrect
+  where
+    ArgsForExtend
+        { mockConstraints
+        , mockSelection
+        , mockInput
+        } = args
+    constraints = unMockTxConstraints mockConstraints
+    result = extend constraints mockSelection mockInput
 
 --------------------------------------------------------------------------------
 -- Adding value to outputs

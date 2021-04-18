@@ -205,19 +205,21 @@ prop_createPlan mockArgs =
         ]
   where
     labelTransactionCount = pretty $ mconcat
-        [ "number of transactions required: "
+        [ "number of transactions required: ["
         , padLeftF 3 ' ' (10 * selectionCountDiv10)
         , " – "
         , padLeftF 3 ' ' (10 * (selectionCountDiv10 + 1) - 1)
+        , "]"
         ]
       where
         selectionCountDiv10 = selectionCount `div` 10
 
     labelMeanTransactionInputCount = pretty $ mconcat
-        [ "mean number of inputs per transaction: "
+        [ "mean number of inputs per transaction: ["
         , padLeftF 3 ' ' (10 * meanTxInputCountDiv10)
         , " – "
         , padLeftF 3 ' ' (10 * (meanTxInputCountDiv10 + 1) - 1)
+        , "]"
         ]
       where
         meanTxInputCountDiv10 = meanTxInputCount `div` 10

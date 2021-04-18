@@ -16,16 +16,14 @@ import Prelude
 import Cardano.Wallet.Primitive.Migration
     ( CategorizedUTxO (..)
     , MigrationPlan (..)
-    , RewardBalance (..)
+    , RewardWithdrawal (..)
+    , Selection (..)
     , UTxOEntryCategory (..)
-    , addValueToOutputs
     , categorizeUTxOEntries
     , categorizeUTxOEntry
     , createPlan
     , uncategorizeUTxOEntries
     )
-import Cardano.Wallet.Primitive.Migration.Selection
-    ( Selection (..) )
 import Cardano.Wallet.Primitive.Migration.SelectionSpec
     ( MockInputId
     , MockTxConstraints (..)
@@ -36,17 +34,12 @@ import Cardano.Wallet.Primitive.Migration.SelectionSpec
     , genMockInputAdaOnly
     , genMockTxConstraints
     , genTokenBundleMixed
-    , genTokenMap
     , unMockTxConstraints
     )
 import Cardano.Wallet.Primitive.Types.Coin
     ( Coin (..) )
 import Cardano.Wallet.Primitive.Types.TokenBundle
     ( TokenBundle (..) )
-import Cardano.Wallet.Primitive.Types.TokenMap
-    ( TokenMap )
-import Cardano.Wallet.Primitive.Types.Tx
-    ( TxConstraints, txOutputHasValidSize, txOutputHasValidTokenQuantities )
 import Control.Monad
     ( replicateM )
 import Data.Either
@@ -55,8 +48,6 @@ import Data.Generics.Internal.VL.Lens
     ( view )
 import Data.Generics.Labels
     ()
-import Data.List.NonEmpty
-    ( NonEmpty (..) )
 import Data.Set
     ( Set )
 import Fmt
@@ -107,11 +98,6 @@ spec = describe "Cardano.Wallet.Primitive.MigrationSpec" $
         it "prop_categorizeUTxOEntry" $
             property prop_categorizeUTxOEntry
 
-    parallel $ describe "Adding value to outputs" $ do
-
-        it "prop_addValueToOutputs" $
-            property prop_addValueToOutputs
-
 --------------------------------------------------------------------------------
 -- Creating migration plans
 --------------------------------------------------------------------------------
@@ -119,7 +105,7 @@ spec = describe "Cardano.Wallet.Primitive.MigrationSpec" $
 data ArgsForCreatePlan = ArgsForCreatePlan
     { mockConstraints :: MockTxConstraints
     , mockInputs :: [(MockInputId, TokenBundle)]
-    , mockRewardBalance :: Coin
+    , mockRewardWithdrawal :: Coin
     }
     deriving (Eq, Show)
 
@@ -169,14 +155,14 @@ genArgsForCreatePlan (inputCountMin, inputCountMax) genInput = do
     mockConstraints <- genMockTxConstraints
     mockInputCount <- choose (inputCountMin, inputCountMax)
     mockInputs <- replicateM mockInputCount (genInput mockConstraints)
-    mockRewardBalance <- oneof
+    mockRewardWithdrawal <- oneof
         [ pure (Coin 0)
         , genCoinRange (Coin 1) (Coin 1_000_000)
         ]
     pure ArgsForCreatePlan
         { mockConstraints
         , mockInputs
-        , mockRewardBalance
+        , mockRewardWithdrawal
         }
 
 prop_createPlan :: ArgsForCreatePlan -> Property
@@ -258,15 +244,17 @@ prop_createPlan mockArgs =
     labelNotSelectedPercentage categoryName category = pretty $ mconcat
         [ categoryName
         , " not selected: "
-        , padLeftF 3 ' ' percentage
-        , "%"
+        , maybe
+            ("no entries available")
+            (\p -> padLeftF 3 ' ' p <> "%")
+            (percentage)
         ]
       where
         percentage
             | entriesAvailable == 0 =
-                0
+                Nothing
             | otherwise =
-                (entriesNotSelected * 100) `div` entriesAvailable
+                Just $ (entriesNotSelected * 100) `div` entriesAvailable
 
         entriesAvailable :: Int
         entriesAvailable = length $ category categorizedUTxO
@@ -276,12 +264,12 @@ prop_createPlan mockArgs =
     ArgsForCreatePlan
         { mockConstraints
         , mockInputs
-        , mockRewardBalance
+        , mockRewardWithdrawal
         } = mockArgs
 
     constraints = unMockTxConstraints mockConstraints
     result = createPlan constraints categorizedUTxO
-        (RewardBalance mockRewardBalance)
+        (RewardWithdrawal mockRewardWithdrawal)
 
     categorizedUTxO = categorizeUTxOEntries constraints mockInputs
 
@@ -350,8 +338,8 @@ prop_categorizeUTxOEntry mockArgs =
     cover 5 (result == Ignorable) "Ignorable" $
     property
         $ selectionCreateExpectation
-        $ Selection.create
-            constraints (Coin 0) mockEntry [()] [view #tokens mockEntry]
+        $ Selection.create constraints
+            (RewardWithdrawal $ Coin 0) [((), mockEntry)]
   where
     ArgsForCategorizeUTxOEntry
         { mockConstraints
@@ -363,57 +351,6 @@ prop_categorizeUTxOEntry mockArgs =
         Supporter -> isRight
         Freerider -> isLeft
         Ignorable -> isLeft
-
---------------------------------------------------------------------------------
--- Adding value to outputs
---------------------------------------------------------------------------------
-
-data ArgsForAddValueToOutputs = ArgsForAddValueToOutputs
-    { mockConstraints :: MockTxConstraints
-    , mockOutputs :: NonEmpty TokenMap
-    }
-
-instance Arbitrary ArgsForAddValueToOutputs where
-    arbitrary = genArgsForAddValueToOutputs
-
-genArgsForAddValueToOutputs :: Gen ArgsForAddValueToOutputs
-genArgsForAddValueToOutputs = do
-    mockConstraints <- genMockTxConstraints
-    -- The upper limit is chosen to be comfortably greater than the maximum
-    -- number of inputs we can typically fit into a transaction:
-    mockOutputCount <- choose (1, 128)
-    mockOutputs <- (:|)
-        <$> genTokenMap mockConstraints
-        <*> replicateM (mockOutputCount - 1) (genTokenMap mockConstraints)
-    pure ArgsForAddValueToOutputs {..}
-
-prop_addValueToOutputs :: Blind ArgsForAddValueToOutputs -> Property
-prop_addValueToOutputs mockArgs =
-    withMaxSuccess 100 $
-    conjoinMap
-        [ ( "Value is preserved"
-          , F.fold result == F.fold mockOutputs )
-        , ( "All outputs have valid sizes (if ada maximized)"
-          , all (txOutputHasValidSizeWithMaxAda constraints) result )
-        , ( "All outputs have valid token quantities"
-          , all (txOutputHasValidTokenQuantities constraints) result )
-        ]
-  where
-    Blind ArgsForAddValueToOutputs
-        { mockConstraints
-        , mockOutputs
-        } = mockArgs
-    constraints = unMockTxConstraints mockConstraints
-    result :: NonEmpty TokenMap
-    result = F.foldl'
-        (addValueToOutputs constraints . NE.toList)
-        (addValueToOutputs constraints [] (NE.head mockOutputs))
-        (NE.tail mockOutputs)
-
-txOutputHasValidSizeWithMaxAda
-    :: Ord s => TxConstraints s -> TokenMap -> Bool
-txOutputHasValidSizeWithMaxAda constraints b =
-    txOutputHasValidSize constraints $ TokenBundle maxBound b
 
 --------------------------------------------------------------------------------
 -- Miscellaneous types and functions

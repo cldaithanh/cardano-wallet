@@ -17,11 +17,13 @@ module Cardano.Wallet.Primitive.Migration.SelectionSpec
 import Prelude
 
 import Cardano.Wallet.Primitive.Migration.Selection
-    ( Selection (..)
+    ( RewardWithdrawal (..)
+    , Selection (..)
     , SelectionCorrectness (..)
     , SelectionError (..)
     , SelectionFullError (..)
     , TxSize (..)
+    , addValueToOutputs
     , check
     , create
     , minimizeFee
@@ -94,6 +96,7 @@ import Test.QuickCheck
     , property
     , suchThat
     , vector
+    , withMaxSuccess
     , (===)
     )
 
@@ -103,6 +106,7 @@ import qualified Cardano.Wallet.Primitive.Types.TokenMap as TokenMap
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Char8 as B8
 import qualified Data.Foldable as F
+import qualified Data.List.NonEmpty as NE
 import qualified Data.Set as Set
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as T
@@ -116,6 +120,11 @@ spec = describe "Cardano.Wallet.Primitive.Migration.SelectionSpec" $
 
         it "prop_create" $
             property prop_create
+
+    parallel $ describe "Adding value to outputs" $ do
+
+        it "prop_addValueToOutputs" $
+            property prop_addValueToOutputs
 
     parallel $ describe "Minimizing fees" $ do
 
@@ -193,10 +202,9 @@ prop_create args =
         , mockRewardWithdrawal
         } = args
     constraints = unMockTxConstraints mockConstraints
-    result = create constraints mockRewardWithdrawal
-        (F.foldMap snd mockInputs)
-        (fst <$> mockInputs)
-        (view #tokens . snd <$> mockInputs)
+    result = create constraints
+        (RewardWithdrawal mockRewardWithdrawal)
+        (mockInputs)
 
     resultIsSelection :: MockSelectionResult -> Bool
     resultIsSelection = isRight
@@ -214,6 +222,57 @@ prop_create args =
     resultIsFull = matchLeft $ \case
         SelectionFull _ -> True
         _ -> False
+
+--------------------------------------------------------------------------------
+-- Adding value to outputs
+--------------------------------------------------------------------------------
+
+data ArgsForAddValueToOutputs = ArgsForAddValueToOutputs
+    { mockConstraints :: MockTxConstraints
+    , mockOutputs :: NonEmpty TokenMap
+    }
+
+instance Arbitrary ArgsForAddValueToOutputs where
+    arbitrary = genArgsForAddValueToOutputs
+
+genArgsForAddValueToOutputs :: Gen ArgsForAddValueToOutputs
+genArgsForAddValueToOutputs = do
+    mockConstraints <- genMockTxConstraints
+    -- The upper limit is chosen to be comfortably greater than the maximum
+    -- number of inputs we can typically fit into a transaction:
+    mockOutputCount <- choose (1, 128)
+    mockOutputs <- (:|)
+        <$> genTokenMap mockConstraints
+        <*> replicateM (mockOutputCount - 1) (genTokenMap mockConstraints)
+    pure ArgsForAddValueToOutputs {..}
+
+prop_addValueToOutputs :: Blind ArgsForAddValueToOutputs -> Property
+prop_addValueToOutputs mockArgs =
+    withMaxSuccess 100 $
+    conjoinMap
+        [ ( "Value is preserved"
+          , F.fold result == F.fold mockOutputs )
+        , ( "All outputs have valid sizes (if ada maximized)"
+          , all (txOutputHasValidSizeWithMaxAda constraints) result )
+        , ( "All outputs have valid token quantities"
+          , all (txOutputHasValidTokenQuantities constraints) result )
+        ]
+  where
+    Blind ArgsForAddValueToOutputs
+        { mockConstraints
+        , mockOutputs
+        } = mockArgs
+    constraints = unMockTxConstraints mockConstraints
+    result :: NonEmpty TokenMap
+    result = F.foldl'
+        (addValueToOutputs constraints . NE.toList)
+        (addValueToOutputs constraints [] (NE.head mockOutputs))
+        (NE.tail mockOutputs)
+
+txOutputHasValidSizeWithMaxAda
+    :: Ord s => TxConstraints s -> TokenMap -> Bool
+txOutputHasValidSizeWithMaxAda constraints b =
+    txOutputHasValidSize constraints $ TokenBundle maxBound b
 
 --------------------------------------------------------------------------------
 -- Minimizing fees

@@ -11,20 +11,29 @@
 
 module Cardano.Wallet.Primitive.Migration.Selection
     (
-    -- * Creating selections
-      create
-    , Selection (..)
+    -- * Types
+      Selection (..)
+    , SelectionCorrectness (..)
     , SelectionError (..)
     , SelectionFullError (..)
+    , RewardWithdrawal (..)
+
+    -- * Creating selections
+    , create
+
+    -- * Extending selections
+    , extend
 
     -- * Checking selections for correctness
-    , SelectionCorrectness (..)
     , check
 
     -- * Computing bulk properties of selections
     , computeCurrentFee
     , computeCurrentSize
     , computeMinimumFee
+
+    -- * Adding value to outputs
+    , addValueToOutputs
 
     -- * Minimizing fees
     , minimizeFee
@@ -44,7 +53,13 @@ import Cardano.Wallet.Primitive.Types.TokenBundle
 import Cardano.Wallet.Primitive.Types.TokenMap
     ( TokenMap )
 import Cardano.Wallet.Primitive.Types.Tx
-    ( TxConstraints (..), txOutputCoinCost, txOutputHasValidSize )
+    ( TxConstraints (..)
+    , txOutputCoinCost
+    , txOutputHasValidSize
+    , txOutputHasValidTokenQuantities
+    )
+import Control.Monad
+    ( (>=>) )
 import Data.Bifunctor
     ( first )
 import Data.Either.Extra
@@ -62,9 +77,11 @@ import GHC.Generics
 
 import qualified Cardano.Wallet.Primitive.Types.Coin as Coin
 import qualified Cardano.Wallet.Primitive.Types.TokenBundle as TokenBundle
+import qualified Cardano.Wallet.Primitive.Types.TokenMap as TokenMap
 import qualified Data.Foldable as F
 import qualified Data.List as L
 import qualified Data.List.NonEmpty as NE
+import qualified Data.Set as Set
 
 --------------------------------------------------------------------------------
 -- Selections
@@ -87,6 +104,9 @@ data Selection i s = Selection
       -- ^ The reward withdrawal amount, if any.
     }
     deriving (Eq, Generic, Show)
+
+newtype RewardWithdrawal = RewardWithdrawal
+    { unRewardWithdrawal :: Coin }
 
 --------------------------------------------------------------------------------
 -- Selection correctness
@@ -439,34 +459,69 @@ data SelectionFullError s = SelectionFullError
 create
     :: forall i s. TxSize s
     => TxConstraints s
-    -> Coin
-    -- ^ Reward balance
-    -> TokenBundle
-    -- ^ Input balance
-    -> NonEmpty i
-    -- ^ Inputs
-    -> NonEmpty TokenMap
-    -- ^ Outputs
+    -> RewardWithdrawal
+    -> NonEmpty (i, TokenBundle)
     -> Either (SelectionError s) (Selection i s)
-create constraints rewardWithdrawal inputBalance inputIds outputs = do
-    let minimizedOutputs = assignMinimumAdaQuantity constraints <$> outputs
-    let unbalancedSelection = Selection
-            { inputIds
-            , inputBalance
-            , outputs = minimizedOutputs
-            , fee = Coin 0
-            , feeExcess = Coin 0
-            , size = mempty
-            , rewardWithdrawal
-            }
+create constraints reward inputs =
+    balance constraints $ Selection
+        { inputBalance = F.foldMap snd inputs
+        , inputIds = fst <$> inputs
+        , outputs = assignMinimumAdaQuantity constraints <$>
+            F.foldl'
+                (addValueToOutputs constraints . NE.toList)
+                (addValueToOutputs constraints [] (NE.head inputMaps))
+                (NE.tail inputMaps)
+        , fee = Coin 0
+        , feeExcess = Coin 0
+        , size = mempty
+        , rewardWithdrawal = unRewardWithdrawal reward
+        }
+  where
+    inputMaps = view #tokens . snd <$> inputs
+
+--------------------------------------------------------------------------------
+-- Extending selections
+--------------------------------------------------------------------------------
+
+extend
+    :: forall i s. TxSize s
+    => TxConstraints s
+    -> Selection i s
+    -> (i, TokenBundle)
+    -> Either (SelectionError s) (Selection i s)
+extend constraints selection (inputId, inputBundle) =
+    balance constraints $ Selection
+        { inputBalance = inputBundle <> inputBalance selection
+        , inputIds = inputId `NE.cons` inputIds selection
+        , outputs = assignMinimumAdaQuantity constraints <$>
+            addValueToOutputs constraints
+                (view #tokens <$> NE.toList (outputs selection))
+                (view #tokens inputBundle)
+        , fee = Coin 0
+        , feeExcess = Coin 0
+        , size = mempty
+        , rewardWithdrawal = rewardWithdrawal selection
+        }
+
+--------------------------------------------------------------------------------
+-- Balancing selections
+--------------------------------------------------------------------------------
+
+balance
+    :: forall i s. TxSize s
+    => TxConstraints s
+    -> Selection i s
+    -> Either (SelectionError s) (Selection i s)
+balance constraints unbalancedSelection = do
+    let minimizedOutputs = outputs unbalancedSelection
     unbalancedFee <- first (const SelectionAdaInsufficient) $
         computeCurrentFee unbalancedSelection
     let minimumFeeForUnbalancedSelection =
             computeMinimumFee constraints unbalancedSelection
     unbalancedFeeExcess <- maybeToEither SelectionAdaInsufficient $
             Coin.subtractCoin unbalancedFee minimumFeeForUnbalancedSelection
-    let (minimizedFeeExcess, maximizedOutputs) =
-            minimizeFee constraints (unbalancedFeeExcess, minimizedOutputs)
+    let (minimizedFeeExcess, maximizedOutputs) = minimizeFee constraints
+            (unbalancedFeeExcess, minimizedOutputs)
     let costIncrease = Coin.distance
             (totalCoinCost minimizedOutputs)
             (totalCoinCost maximizedOutputs)
@@ -486,11 +541,123 @@ create constraints rewardWithdrawal inputBalance inputIds outputs = do
     totalCoinCost :: NonEmpty TokenBundle -> Coin
     totalCoinCost = F.foldMap (txOutputCoinCost constraints . view #coin)
 
-    assignMinimumAdaQuantity :: TxConstraints s -> TokenMap -> TokenBundle
-    assignMinimumAdaQuantity constraints m =
-        TokenBundle c m
+assignMinimumAdaQuantity :: TxConstraints s -> TokenMap -> TokenBundle
+assignMinimumAdaQuantity constraints m =
+    TokenBundle c m
+  where
+    c = txOutputMinimumAdaQuantity constraints m
+
+--------------------------------------------------------------------------------
+-- Adding value to outputs
+--------------------------------------------------------------------------------
+
+addValueToOutputs
+    :: TxSize s
+    => TxConstraints s
+    -> [TokenMap]
+    -- ^ Outputs
+    -> TokenMap
+    -- ^ Output value to add
+    -> NonEmpty TokenMap
+    -- ^ Outputs with the additional value added
+addValueToOutputs constraints outputs outputUnchecked =
+    -- We need to be a bit careful with the output value to be added, as it may
+    -- itself be oversized. We split it up if any of the output size limits are
+    -- exceeded:
+    NE.fromList
+        $ F.foldl' (flip add) outputs
+        $ splitOutputIfLimitsExceeded constraints outputUnchecked
+  where
+    -- Add an output value (whose size has been checked) to the existing
+    -- outputs, merging it into one of the existing outputs if possible.
+    add :: TokenMap -> [TokenMap] -> [TokenMap]
+    add output outputs = run [] outputsSorted
       where
-        c = txOutputMinimumAdaQuantity constraints m
+        -- Attempt to merge the specified output value into one of the existing
+        -- outputs, by trying each existing output in turn, and terminating as
+        -- soon as a successful candidate for merging is found.
+        run :: [TokenMap] -> [TokenMap] -> [TokenMap]
+        run considered (candidate : unconsidered) =
+            case safeMerge output candidate of
+                Just merged -> merged : (considered <> unconsidered)
+                Nothing -> run (candidate : considered) unconsidered
+        run considered [] =
+            -- Merging with an existing output is not possible, so just make
+            -- a new output.
+            output : considered
+
+        -- To minimize both the number of merge attempts and the size increase
+        -- of the merged output compared to the original, we sort the existing
+        -- outputs into ascending order according to the number of assets that
+        -- would need to be added to each output.
+        --
+        -- In the absolute ideal case, where an existing output's assets are a
+        -- superset of the output value to be added, merging with that output
+        -- will not increase its asset count.
+        --
+        -- As a tie-breaker, we give priority to outputs with smaller numbers
+        -- of assets. Merging with a smaller output is more likely to succeed,
+        -- because merging with a larger ouput is more likely to fall foul of
+        -- the output size limit.
+        outputsSorted :: [TokenMap]
+        outputsSorted = L.sortOn sortOrder outputs
+          where
+            sortOrder targetOutput =
+                (targetOutputAssetCountIncrease, targetOutputAssetCount)
+              where
+                targetOutputAssetCount
+                    = Set.size targetOutputAssets
+                targetOutputAssetCountIncrease
+                    = Set.size
+                    $ Set.difference sourceOutputAssets targetOutputAssets
+                sourceOutputAssets = TokenMap.getAssets output
+                targetOutputAssets = TokenMap.getAssets targetOutput
+
+    safeMerge :: TokenMap -> TokenMap -> Maybe TokenMap
+    safeMerge a b
+        | isSafe = Just value
+        | otherwise = Nothing
+      where
+        isSafe = (&&)
+            (txOutputHasValidSize constraints (TokenBundle maxBound value))
+            (txOutputHasValidTokenQuantities constraints value)
+        value = a <> b
+
+--------------------------------------------------------------------------------
+-- Splitting output values
+--------------------------------------------------------------------------------
+
+splitOutputIfLimitsExceeded
+    :: TxSize s
+    => TxConstraints s
+    -> TokenMap
+    -> NonEmpty TokenMap
+splitOutputIfLimitsExceeded constraints =
+    splitOutputIfTokenQuantityExceedsLimit constraints >=>
+    splitOutputIfSizeExceedsLimit constraints
+
+splitOutputIfSizeExceedsLimit
+    :: TxSize s
+    => TxConstraints s
+    -> TokenMap
+    -> NonEmpty TokenMap
+splitOutputIfSizeExceedsLimit constraints value
+    | txOutputHasValidSize constraints (TokenBundle maxBound value) =
+        pure value
+    | otherwise =
+        split value >>= splitOutputIfSizeExceedsLimit constraints
+    | otherwise =
+        pure value
+  where
+    split = flip TokenMap.equipartitionAssets (() :| [()])
+
+splitOutputIfTokenQuantityExceedsLimit
+    :: TxConstraints s
+    -> TokenMap
+    -> NonEmpty TokenMap
+splitOutputIfTokenQuantityExceedsLimit
+    = flip TokenMap.equipartitionQuantitiesWithUpperBound
+    . txOutputMaximumTokenQuantity
 
 --------------------------------------------------------------------------------
 -- Minimizing fees

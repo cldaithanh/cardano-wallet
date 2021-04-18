@@ -13,13 +13,8 @@ module Cardano.Wallet.Primitive.Migration
     -- * Migration planning
       createPlan
     , MigrationPlan (..)
-    , RewardBalance (..)
-
-    -- * Adding value to outputs
-    , addValueToOutputs
-
-    -- * Splitting outputs
-    , splitOutputIfLimitsExceeded
+    , RewardWithdrawal (..)
+    , Selection (..)
 
     -- * UTxO entry categorization
     , CategorizedUTxO (..)
@@ -35,24 +30,15 @@ module Cardano.Wallet.Primitive.Migration
 import Prelude
 
 import Cardano.Wallet.Primitive.Migration.Selection
-    ( Selection (..), SelectionError (..), TxSize (..) )
+    ( RewardWithdrawal (..), Selection (..), SelectionError (..), TxSize (..) )
 import Cardano.Wallet.Primitive.Types.Coin
     ( Coin (..) )
 import Cardano.Wallet.Primitive.Types.TokenBundle
     ( TokenBundle (..) )
-import Cardano.Wallet.Primitive.Types.TokenMap
-    ( TokenMap )
 import Cardano.Wallet.Primitive.Types.Tx
-    ( TxConstraints (..)
-    , TxIn
-    , TxOut
-    , txOutputHasValidSize
-    , txOutputHasValidTokenQuantities
-    )
+    ( TxConstraints (..), TxIn, TxOut )
 import Cardano.Wallet.Primitive.Types.UTxO
     ( UTxO (..) )
-import Control.Monad
-    ( (>=>) )
 import Data.Either
     ( isRight )
 import Data.Functor
@@ -61,17 +47,12 @@ import Data.Generics.Internal.VL.Lens
     ( view )
 import Data.Generics.Labels
     ()
-import Data.List.NonEmpty
-    ( NonEmpty (..) )
 
 import qualified Cardano.Wallet.Primitive.Migration.Selection as Selection
 import qualified Cardano.Wallet.Primitive.Types.TokenBundle as TokenBundle
-import qualified Cardano.Wallet.Primitive.Types.TokenMap as TokenMap
 import qualified Data.Foldable as F
 import qualified Data.List as L
-import qualified Data.List.NonEmpty as NE
 import qualified Data.Map.Strict as Map
-import qualified Data.Set as Set
 
 --------------------------------------------------------------------------------
 -- Migration planning
@@ -84,14 +65,11 @@ data MigrationPlan i s = MigrationPlan
     }
     deriving (Eq, Show)
 
-newtype RewardBalance = RewardBalance
-    { unRewardBalance :: Coin }
-
 createPlan
     :: TxSize s
     => TxConstraints s
     -> CategorizedUTxO i
-    -> RewardBalance
+    -> RewardWithdrawal
     -> MigrationPlan i s
 createPlan constraints =
     run []
@@ -99,7 +77,7 @@ createPlan constraints =
     run !selections !utxo !reward =
         case createSelection constraints utxo reward of
             Just (utxo', selection) ->
-                run (selection : selections) utxo' (RewardBalance $ Coin 0)
+                run (selection : selections) utxo' (RewardWithdrawal $ Coin 0)
             Nothing -> MigrationPlan
                 { selections
                 , unselected = utxo
@@ -110,7 +88,7 @@ createSelection
     :: TxSize s
     => TxConstraints s
     -> CategorizedUTxO i
-    -> RewardBalance
+    -> RewardWithdrawal
     -> Maybe (CategorizedUTxO i, Selection i s)
 createSelection constraints utxo rewardWithdrawal =
     initializeSelection constraints utxo rewardWithdrawal
@@ -120,20 +98,15 @@ initializeSelection
     :: forall i s. TxSize s
     => TxConstraints s
     -> CategorizedUTxO i
-    -> RewardBalance
+    -> RewardWithdrawal
     -> Maybe (CategorizedUTxO i, Selection i s)
-initializeSelection constraints utxoAtStart (RewardBalance reward) =
+initializeSelection constraints utxoAtStart reward =
     initializeWith =<< utxoAtStart `select` Supporter
   where
-    initializeWith ((inputId, inputValue), utxo) =
-        case selectionResult of
+    initializeWith (entry, utxo) =
+        case Selection.create constraints reward [entry] of
             Right selection -> Just (utxo, selection)
             Left _ -> Nothing
-      where
-        selectionResult =
-            Selection.create constraints reward inputValue [inputId] outputs
-        outputs =
-            addValueToOutputs constraints [] (view #tokens inputValue)
 
 extendSelection
     :: TxSize s
@@ -177,15 +150,8 @@ extendWith
     -> Either ExtendSelectionError (CategorizedUTxO i, Selection i s)
 extendWith category constraints (utxo, selection) =
     case utxo `select` category of
-        Just ((inputId, inputValue), utxo') ->
-            let inputIds' = inputId `NE.cons` inputIds selection in
-            let inputBalance' = inputValue <> inputBalance selection in
-            let outputs' = addValueToOutputs constraints
-                  (view #tokens <$> F.toList (outputs selection))
-                  (view #tokens inputValue) in
-            let selectionResult = Selection.create
-                    constraints (Coin 0) inputBalance' inputIds' outputs' in
-            case selectionResult of
+        Just (entry, utxo') ->
+            case Selection.extend constraints selection entry of
                 Right selection' ->
                     Right (utxo', selection')
                 Left SelectionAdaInsufficient ->
@@ -213,118 +179,6 @@ select utxo = \case
     selectIgnorable =
         -- We never select an entry that should be ignored:
         Nothing
-
---------------------------------------------------------------------------------
--- Adding value to outputs
---------------------------------------------------------------------------------
-
-addValueToOutputs
-    :: TxSize s
-    => TxConstraints s
-    -> [TokenMap]
-    -- ^ Outputs
-    -> TokenMap
-    -- ^ Output value to add
-    -> NonEmpty TokenMap
-    -- ^ Outputs with the additional value added
-addValueToOutputs constraints outputs outputUnchecked =
-    -- We need to be a bit careful with the output value to be added, as it may
-    -- itself be oversized. We split it up if any of the output size limits are
-    -- exceeded:
-    NE.fromList
-        $ F.foldl' (flip add) outputs
-        $ splitOutputIfLimitsExceeded constraints outputUnchecked
-  where
-    -- Add an output value (whose size has been checked) to the existing
-    -- outputs, merging it into one of the existing outputs if possible.
-    add :: TokenMap -> [TokenMap] -> [TokenMap]
-    add output outputs = run [] outputsSorted
-      where
-        -- Attempt to merge the specified output value into one of the existing
-        -- outputs, by trying each existing output in turn, and terminating as
-        -- soon as a successful candidate for merging is found.
-        run :: [TokenMap] -> [TokenMap] -> [TokenMap]
-        run considered (candidate : unconsidered) =
-            case safeMerge output candidate of
-                Just merged -> merged : (considered <> unconsidered)
-                Nothing -> run (candidate : considered) unconsidered
-        run considered [] =
-            -- Merging with an existing output is not possible, so just make
-            -- a new output.
-            output : considered
-
-        -- To minimize both the number of merge attempts and the size increase
-        -- of the merged output compared to the original, we sort the existing
-        -- outputs into ascending order according to the number of assets that
-        -- would need to be added to each output.
-        --
-        -- In the absolute ideal case, where an existing output's assets are a
-        -- superset of the output value to be added, merging with that output
-        -- will not increase its asset count.
-        --
-        -- As a tie-breaker, we give priority to outputs with smaller numbers
-        -- of assets. Merging with a smaller output is more likely to succeed,
-        -- because merging with a larger ouput is more likely to fall foul of
-        -- the output size limit.
-        outputsSorted :: [TokenMap]
-        outputsSorted = L.sortOn sortOrder outputs
-          where
-            sortOrder targetOutput =
-                (targetOutputAssetCountIncrease, targetOutputAssetCount)
-              where
-                targetOutputAssetCount
-                    = Set.size targetOutputAssets
-                targetOutputAssetCountIncrease
-                    = Set.size
-                    $ Set.difference sourceOutputAssets targetOutputAssets
-                sourceOutputAssets = TokenMap.getAssets output
-                targetOutputAssets = TokenMap.getAssets targetOutput
-
-    safeMerge :: TokenMap -> TokenMap -> Maybe TokenMap
-    safeMerge a b
-        | isSafe = Just value
-        | otherwise = Nothing
-      where
-        isSafe = (&&)
-            (txOutputHasValidSize constraints (TokenBundle maxBound value))
-            (txOutputHasValidTokenQuantities constraints value)
-        value = a <> b
-
---------------------------------------------------------------------------------
--- Splitting output values
---------------------------------------------------------------------------------
-
-splitOutputIfLimitsExceeded
-    :: TxSize s
-    => TxConstraints s
-    -> TokenMap
-    -> NonEmpty TokenMap
-splitOutputIfLimitsExceeded constraints =
-    splitOutputIfTokenQuantityExceedsLimit constraints >=>
-    splitOutputIfSizeExceedsLimit constraints
-
-splitOutputIfSizeExceedsLimit
-    :: TxSize s
-    => TxConstraints s
-    -> TokenMap
-    -> NonEmpty TokenMap
-splitOutputIfSizeExceedsLimit constraints value
-    | txOutputHasValidSize constraints (TokenBundle maxBound value) =
-        pure value
-    | otherwise =
-        split value >>= splitOutputIfSizeExceedsLimit constraints
-    | otherwise =
-        pure value
-  where
-    split = flip TokenMap.equipartitionAssets (() :| [()])
-
-splitOutputIfTokenQuantityExceedsLimit
-    :: TxConstraints s
-    -> TokenMap
-    -> NonEmpty TokenMap
-splitOutputIfTokenQuantityExceedsLimit
-    = flip TokenMap.equipartitionQuantitiesWithUpperBound
-    . txOutputMaximumTokenQuantity
 
 --------------------------------------------------------------------------------
 -- Categorization of UTxO entries
@@ -389,16 +243,8 @@ categorizeUTxOEntry constraints b
         Freerider
   where
     bundleIsSupporter :: TokenBundle -> Bool
-    bundleIsSupporter b =
-        isRight $ Selection.create constraints (Coin 0) b [()] [view #tokens b]
-        -- Note: this should be equivalent to:
-        --
-        -- c >= mconcat
-        --     [ txBaseCost constraints
-        --     , txInputCost constraints
-        --     , txOutputCost constraints b
-        --     , txOutputMinimumAdaQuantity constraints m
-        --     ]
+    bundleIsSupporter b = isRight $
+        Selection.create constraints (RewardWithdrawal $ Coin 0) [((), b)]
 
     coinIsIgnorable :: Coin -> Bool
     coinIsIgnorable c = c <= txInputCost constraints

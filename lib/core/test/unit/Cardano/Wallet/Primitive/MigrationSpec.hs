@@ -189,9 +189,6 @@ prop_createPlan mockArgs =
           , rewardWithdrawalCount <= 1 )
         , ( "reward withdrawal amount incorrect"
           , rewardWithdrawalAmount == rewardWithdrawalExpected )
-        , ( "asset balance not preserved"
-            -- TODO
-          , True )
         , ( "one or more supporters not selected"
           , supporters (unselected result) == [] )
         ]

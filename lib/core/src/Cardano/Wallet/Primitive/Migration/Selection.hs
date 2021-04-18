@@ -720,7 +720,7 @@ minimizeFeeStep constraints =
     reduceFee (feeExcess, outputBundle)
         | outputCoinFinal > outputCoin &&
           outputCoinFinalCostIncrease < outputCoinFinalIncrease =
-             (feeExcessFinal, outputBundleFinal)
+            (feeExcessFinal, outputBundleFinal)
         | otherwise =
             (feeExcess, outputBundle)
       where

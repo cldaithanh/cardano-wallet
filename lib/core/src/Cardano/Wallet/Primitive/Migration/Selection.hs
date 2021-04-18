@@ -229,10 +229,10 @@ checkFeeExcess
     -> Selection i s
     -> Maybe SelectionFeeExcessIncorrectError
 checkFeeExcess constraints selection =
-    check =<< eitherToMaybe (computeCurrentFee selection)
+    checkInner =<< eitherToMaybe (computeCurrentFee selection)
   where
-    check :: Coin -> Maybe SelectionFeeExcessIncorrectError
-    check currentSelectionFee
+    checkInner :: Coin -> Maybe SelectionFeeExcessIncorrectError
+    checkInner currentSelectionFee
         | selectionFeeExcessExpected == selectionFeeExcessActual =
             Nothing
         | otherwise =

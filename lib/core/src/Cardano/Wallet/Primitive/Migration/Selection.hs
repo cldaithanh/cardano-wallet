@@ -619,7 +619,7 @@ addValueToOutputs constraints outputs outputUnchecked =
         | otherwise = Nothing
       where
         isSafe = (&&)
-            (txOutputHasValidSize constraints (TokenBundle maxBound value))
+            (txOutputHasValidSizeIfAdaMaximized constraints value)
             (txOutputHasValidTokenQuantities constraints value)
         value = a <> b
 
@@ -642,7 +642,7 @@ splitOutputIfSizeExceedsLimit
     -> TokenMap
     -> NonEmpty TokenMap
 splitOutputIfSizeExceedsLimit constraints value
-    | txOutputHasValidSize constraints (TokenBundle maxBound value) =
+    | txOutputHasValidSizeIfAdaMaximized constraints value =
         pure value
     | otherwise =
         split value >>= splitOutputIfSizeExceedsLimit constraints
@@ -658,6 +658,18 @@ splitOutputIfTokenQuantityExceedsLimit
 splitOutputIfTokenQuantityExceedsLimit
     = flip TokenMap.equipartitionQuantitiesWithUpperBound
     . txOutputMaximumTokenQuantity
+
+-- | Checks that an output has a valid size even if it is assigned the maximum
+--   possible ada quantity.
+--
+-- Using this function to check all outputs provided to 'balance' will ensure
+-- that it has complete freedom to adjust the ada quantities of those outputs,
+-- without exceeding the output size limit.
+--
+txOutputHasValidSizeIfAdaMaximized
+    :: TxSize s => TxConstraints s -> TokenMap -> Bool
+txOutputHasValidSizeIfAdaMaximized constraints output =
+    txOutputHasValidSize constraints (TokenBundle maxBound output)
 
 --------------------------------------------------------------------------------
 -- Minimizing fees

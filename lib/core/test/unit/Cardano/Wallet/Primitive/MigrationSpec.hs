@@ -86,12 +86,17 @@ spec = describe "Cardano.Wallet.Primitive.MigrationSpec" $
 
     parallel $ describe "Creating migration plans" $ do
 
-        it "prop_createPlan_small" $
-            property prop_createPlan_small
-        it "prop_createPlan_large" $
-            property prop_createPlan_large
-        it "prop_createPlan_giant" $
-            property prop_createPlan_giant
+        describe "Small migrations" $
+            it "prop_createPlan_small" $
+                property prop_createPlan_small
+
+        describe "Large migrations" $
+            it "prop_createPlan_large" $
+                property prop_createPlan_large
+
+        describe "Giant migrations" $
+            it "prop_createPlan_giant" $
+                property prop_createPlan_giant
 
     parallel $ describe "Categorizing UTxO entries" $ do
 

@@ -302,6 +302,7 @@ data ArgsForAddValueToOutputs = ArgsForAddValueToOutputs
     { mockConstraints :: MockTxConstraints
     , mockOutputs :: NonEmpty TokenMap
     }
+    deriving (Eq, Show)
 
 instance Arbitrary ArgsForAddValueToOutputs where
     arbitrary = genArgsForAddValueToOutputs
@@ -311,7 +312,7 @@ genArgsForAddValueToOutputs = do
     mockConstraints <- genMockTxConstraints
     -- The upper limit is chosen to be comfortably greater than the maximum
     -- number of inputs we can typically fit into a transaction:
-    mockOutputCount <- choose (1, 128)
+    mockOutputCount <- choose (1, 2)
     mockOutputs <- (:|)
         <$> genTokenMap mockConstraints
         <*> replicateM (mockOutputCount - 1) (genTokenMap mockConstraints)
@@ -320,13 +321,18 @@ genArgsForAddValueToOutputs = do
 prop_addValueToOutputs :: Blind ArgsForAddValueToOutputs -> Property
 prop_addValueToOutputs mockArgs =
     withMaxSuccess 100 $
+    counterexample counterexampleText $
     conjoinMap
         [ ( "Value is preserved"
-          , F.fold result == F.fold mockOutputs )
+          , F.fold outputsFinal == F.fold mockOutputs )
         , ( "All outputs have valid sizes (if ada maximized)"
-          , all (txOutputHasValidSizeWithMaxAda constraints) result )
+          , all (txOutputHasValidSizeWithMaxAda constraints) outputsFinal )
         , ( "All outputs have valid token quantities"
-          , all (txOutputHasValidTokenQuantities constraints) result )
+          , all (txOutputHasValidTokenQuantities constraints) outputsFinal )
+        , ( "Cost increase is correct"
+          , costIncrease == costIncreaseExpected )
+        , ( "Size increase is correct"
+          , sizeIncrease == sizeIncreaseExpected )
         ]
   where
     Blind ArgsForAddValueToOutputs
@@ -334,11 +340,29 @@ prop_addValueToOutputs mockArgs =
         , mockOutputs
         } = mockArgs
     constraints = unMockTxConstraints mockConstraints
-    result :: NonEmpty TokenMap
-    result = F.foldl'
-        (addValueToOutputs constraints . NE.toList)
+    (outputsFinal, costIncrease, sizeIncrease) = F.foldl'
+        (acc)
         (addValueToOutputs constraints [] (NE.head mockOutputs))
         (NE.tail mockOutputs)
+      where
+        acc (outs, cost, size) out =
+            let (outs', costIncrease, sizeIncrease) =
+                    addValueToOutputs constraints (NE.toList outs) out in
+            (outs', cost <> costIncrease, size <> sizeIncrease)
+    costIncreaseExpected = F.foldMap txOutputMapCost outputsFinal
+    sizeIncreaseExpected = F.foldMap txOutputMapSize outputsFinal
+    txOutputMapCost = txOutputCost constraints . TokenBundle mempty
+    txOutputMapSize = txOutputSize constraints . TokenBundle mempty
+    counterexampleText = counterexampleMap
+        [ ("costIncrease"
+          , show costIncrease )
+        , ("costIncreaseExpected"
+          , show costIncreaseExpected )
+        , ("sizeIncrease"
+          , show sizeIncrease )
+        , ("sizeIncreaseExpected"
+          , show sizeIncreaseExpected )
+        ]
 
 txOutputHasValidSizeWithMaxAda
     :: Ord s => TxConstraints s -> TokenMap -> Bool

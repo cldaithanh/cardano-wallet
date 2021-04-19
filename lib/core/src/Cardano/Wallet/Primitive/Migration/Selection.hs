@@ -64,6 +64,8 @@ import Data.Bifunctor
     ( first )
 import Data.Either.Extra
     ( eitherToMaybe, maybeToEither )
+import Data.Function
+    ( (&) )
 import Data.Generics.Internal.VL.Lens
     ( view )
 import Data.Generics.Labels
@@ -474,8 +476,8 @@ create constraints reward inputs =
         , inputIds = fst <$> inputs
         , outputs = assignMinimumAdaQuantity constraints <$>
             F.foldl'
-                (addValueToOutputs constraints . NE.toList)
-                (addValueToOutputs constraints [] (NE.head inputMaps))
+                (addValueToOutputs_ constraints . NE.toList)
+                (addValueToOutputs_ constraints [] (NE.head inputMaps))
                 (NE.tail inputMaps)
         , fee = Coin 0
         , feeExcess = Coin 0
@@ -506,7 +508,7 @@ extend constraints selection (inputId, inputBundle) =
         { inputBalance = inputBundle <> inputBalance selection
         , inputIds = inputId `NE.cons` inputIds selection
         , outputs = assignMinimumAdaQuantity constraints <$>
-            addValueToOutputs constraints
+            addValueToOutputs_ constraints
                 (view #tokens <$> NE.toList (outputs selection))
                 (view #tokens inputBundle)
         , fee = Coin 0
@@ -563,40 +565,70 @@ assignMinimumAdaQuantity constraints m =
 -- Adding value to outputs
 --------------------------------------------------------------------------------
 
-addValueToOutputs
+addValueToOutputs_
     :: TxSize s
     => TxConstraints s
     -> [TokenMap]
     -- ^ Outputs
     -> TokenMap
     -- ^ Output value to add
-    -> NonEmpty TokenMap
+    -> (NonEmpty TokenMap)
+    -- ^ Outputs with the additional value added
+addValueToOutputs_ constraints outputs outputUnchecked =
+    addValueToOutputs constraints outputs outputUnchecked
+        & (\(os, _, _) -> os)
+
+addValueToOutputs
+    :: forall s. TxSize s
+    => TxConstraints s
+    -> [TokenMap]
+    -- ^ Outputs
+    -> TokenMap
+    -- ^ Output value to add
+    -> (NonEmpty TokenMap, Coin, s)
     -- ^ Outputs with the additional value added
 addValueToOutputs constraints outputs outputUnchecked =
     -- We need to be a bit careful with the output value to be added, as it may
     -- itself be oversized. We split it up if any of the output size limits are
     -- exceeded:
-    NE.fromList
-        $ F.foldl' (flip add) outputs
+    (\(os, cost, size) -> (NE.fromList os, cost, size))
+        $ F.foldl' (flip add) (outputs, mempty, mempty)
         $ splitOutputIfLimitsExceeded constraints outputUnchecked
   where
     -- Add an output value (whose size has been checked) to the existing
     -- outputs, merging it into one of the existing outputs if possible.
-    add :: TokenMap -> [TokenMap] -> [TokenMap]
-    add output outputs = run [] outputsSorted
+    add :: TokenMap -> ([TokenMap], Coin, s) -> ([TokenMap], Coin, s)
+    add output (outputs, cost, size) = run [] outputsSorted
       where
         -- Attempt to merge the specified output value into one of the existing
         -- outputs, by trying each existing output in turn, and terminating as
         -- soon as a successful candidate for merging is found.
-        run :: [TokenMap] -> [TokenMap] -> [TokenMap]
+        run :: [TokenMap] -> [TokenMap] -> ([TokenMap], Coin, s)
         run considered (candidate : unconsidered) =
             case safeMerge output candidate of
-                Just merged -> merged : (considered <> unconsidered)
-                Nothing -> run (candidate : considered) unconsidered
+                Just merged ->
+                    ( merged : (considered <> unconsidered)
+                    , cost <> Coin.distance
+                        (txOutputMapCost candidate)
+                        (txOutputMapCost merged)
+                    , size <> txSizeDistance
+                        (txOutputMapSize candidate)
+                        (txOutputMapSize merged)
+                    )
+                Nothing ->
+                    run (candidate : considered) unconsidered
         run considered [] =
             -- Merging with an existing output is not possible, so just make
             -- a new output.
-            output : considered
+            ( output : considered
+            , cost <> txOutputMapCost output
+            , size <> txOutputMapSize output
+            )
+        txOutputMapCost = txOutputCost constraints . TokenBundle mempty
+        txOutputMapSize = txOutputSize constraints . TokenBundle mempty
+
+        --txOutputMapCost = txOutputCost constraints . TokenBundle mempty
+        --txOutputMapSize = txOutputSize constraints . TokenBundle mempty
 
         -- To minimize both the number of merge attempts and the size increase
         -- of the merged output compared to the original, we sort the existing

@@ -8,12 +8,12 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
 
-module Cardano.Wallet.Primitive.MigrationSpec
+module Cardano.Wallet.Primitive.Migration.PlanningSpec
     where
 
 import Prelude
 
-import Cardano.Wallet.Primitive.Migration
+import Cardano.Wallet.Primitive.Migration.Planning
     ( CategorizedUTxO (..)
     , MigrationPlan (..)
     , RewardWithdrawal (..)
@@ -80,7 +80,7 @@ import qualified Data.List.NonEmpty as NE
 import qualified Data.Set as Set
 
 spec :: Spec
-spec = describe "Cardano.Wallet.Primitive.MigrationSpec" $
+spec = describe "Cardano.Wallet.Primitive.Migration.PlanningSpec" $
 
     modifyMaxSuccess (const 1000) $ do
 

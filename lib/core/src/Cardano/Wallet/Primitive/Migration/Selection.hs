@@ -6,8 +6,6 @@
 {-# LANGUAGE OverloadedLists #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE TupleSections #-}
-{-# LANGUAGE TypeApplications #-}
 
 module Cardano.Wallet.Primitive.Migration.Selection
     (
@@ -318,8 +316,9 @@ checkOutputMinimumAdaQuantities constraints selection =
 -- Selection correctness: output sizes
 --------------------------------------------------------------------------------
 
-data SelectionOutputSizeExceedsLimitError = SelectionOutputSizeExceedsLimitError
-    { selectionOutput :: TokenBundle }
+newtype SelectionOutputSizeExceedsLimitError =
+    SelectionOutputSizeExceedsLimitError
+        { selectionOutput :: TokenBundle }
     deriving (Eq, Show)
 
 checkOutputSizes

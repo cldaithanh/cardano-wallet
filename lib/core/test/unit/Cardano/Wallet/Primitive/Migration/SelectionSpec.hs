@@ -1,4 +1,3 @@
-{-# LANGUAGE DerivingStrategies #-}
 {-# LANGUAGE DerivingVia #-}
 {-# LANGUAGE DuplicateRecordFields #-}
 {-# LANGUAGE FlexibleInstances #-}
@@ -382,7 +381,7 @@ prop_minimizeFee mockArgs =
         "feeExcessAfter == 0" $
     cover 50 (totalOutputCostIncrease > Coin 0)
         "totalOutputCostIncrease > 0" $
-    conjoin $
+    conjoin
         [ length outputsAfter == length outputsBefore
         , feeExcessAfter <= feeExcessBefore
         , totalOutputCostIncrease <> totalOutputAdaIncrease ==
@@ -801,7 +800,7 @@ data MockTxOutputMinimumAdaQuantity = MockTxOutputMinimumAdaQuantity
 unMockTxOutputMinimumAdaQuantity
     :: MockTxOutputMinimumAdaQuantity
     -> (TokenMap -> Coin)
-unMockTxOutputMinimumAdaQuantity mock = \m ->
+unMockTxOutputMinimumAdaQuantity mock m =
     let assetCount = Set.size $ TokenMap.getAssets m in
     perOutput mock
         <> mtimesDefault assetCount (perOutputAsset mock)
@@ -995,7 +994,7 @@ instance Arbitrary a => Arbitrary (NonEmpty a) where
 --------------------------------------------------------------------------------
 
 conjoinMap :: [(String, Bool)] -> Property
-conjoinMap = conjoin . fmap (\(d, t) -> counterexample d t)
+conjoinMap = conjoin . fmap (uncurry counterexample)
 
 counterexampleMap :: [(String, String)] -> String
 counterexampleMap

@@ -6,7 +6,6 @@
 {-# LANGUAGE OverloadedLists #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE TypeApplications #-}
 
 module Cardano.Wallet.Primitive.Migration.PlanningSpec
     where
@@ -190,7 +189,7 @@ prop_createPlan mockArgs =
         , ( "reward withdrawal amount incorrect"
           , rewardWithdrawalAmount == rewardWithdrawalExpected )
         , ( "one or more supporters not selected"
-          , supporters (unselected result) == [] )
+          , null (supporters (unselected result)) )
         ]
   where
     labelTransactionCount = pretty $ mconcat

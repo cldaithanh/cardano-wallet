@@ -545,11 +545,10 @@ txOutputCoinMinimum :: TxConstraints s -> Coin
 txOutputCoinMinimum constraints = txOutputMinimumAdaQuantity constraints mempty
 
 txOutputIsValid :: Ord s => TxConstraints s -> TokenBundle -> Bool
-txOutputIsValid constraints b = and
-    [ constraints `txOutputHasValidAdaQuantity` b
-    , constraints `txOutputHasValidSize` b
-    , constraints `txOutputHasValidTokenQuantities` (view #tokens b)
-    ]
+txOutputIsValid constraints b =
+    constraints `txOutputHasValidAdaQuantity` b
+    && constraints `txOutputHasValidSize` b
+    && constraints `txOutputHasValidTokenQuantities` (view #tokens b)
 
 txOutputHasValidAdaQuantity :: TxConstraints s -> TokenBundle -> Bool
 txOutputHasValidAdaQuantity constraints (TokenBundle c m) =

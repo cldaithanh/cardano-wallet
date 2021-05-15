@@ -3,17 +3,17 @@
   "builds": {
     "required": {
       "id": 6378343,
-      "finished": 0,
-      "buildstatus": null,
+      "finished": 1,
+      "buildstatus": 0,
       "buildmetrics": {}
     }
   },
   "rev": "a60199f3adcca94897e0aa9fce3f43e43287c44a",
   "timings": {
-    "actionStarted": "2021-05-15T03:51:36.038Z",
-    "ciStatusCreated": "2021-05-15T03:51:36.644Z",
-    "evaluated": "2021-05-15T03:51:37.175Z",
-    "foundBuilds": "2021-05-15T03:51:37.743Z",
-    "built": "2021-05-15T03:52:05.293Z"
+    "actionStarted": "2021-05-15T03:52:17.682Z",
+    "ciStatusCreated": "2021-05-15T03:52:17.799Z",
+    "evaluated": "2021-05-15T03:52:18.308Z",
+    "foundBuilds": "2021-05-15T03:52:19.067Z",
+    "built": "2021-05-15T03:52:19.068Z"
   }
 }

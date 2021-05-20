@@ -2538,9 +2538,15 @@ instance ToJSON ApiActiveSharedWallet where
     toJSON = genericToJSON defaultRecordTypeOptions
 
 instance FromJSON ApiPendingSharedWallet where
-    parseJSON = genericParseJSON defaultRecordTypeOptions
+    parseJSON val = case val of
+        Aeson.Object obj -> do
+            let obj' = HM.delete "status" obj
+            genericParseJSON defaultRecordTypeOptions (Aeson.Object obj')
+        _ -> fail "ApiPendingSharedWallet should be object"
 instance ToJSON ApiPendingSharedWallet where
-    toJSON = genericToJSON defaultRecordTypeOptions
+    toJSON wal = Aeson.Object $ HM.insert "status" (String "incomplete") obj
+      where
+        (Aeson.Object obj) = genericToJSON defaultRecordTypeOptions wal
 
 instance FromJSON ApiSharedWallet where
     parseJSON obj = do

@@ -267,6 +267,11 @@ x-addressState: &addressState
     - used
     - unused
 
+x-statusIncomplete: &statusIncomplete
+  type: string
+  enum:
+    - incomplete
+
 x-stakePoolId: &stakePoolId
   type: string
   format: hex|bech32
@@ -2076,6 +2081,7 @@ components:
         - account_index
         - address_pool_gap
         - payment_script_template
+        - status
       properties:
         id: *walletId
         name: *walletName
@@ -2083,6 +2089,7 @@ components:
         address_pool_gap: *walletAddressPoolGap
         payment_script_template: *scriptTemplate
         delegation_script_template: *scriptTemplate
+        status: *statusIncomplete
 
     ApiSharedWallet: &ApiSharedWallet
       type: object

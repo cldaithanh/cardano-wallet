@@ -46,6 +46,7 @@ import Prelude
 
 import Cardano.Address.Script
     ( Cosigner (..)
+    , ErrValidateScriptTemplate (..)
     , KeyHash (..)
     , Script (..)
     , ScriptHash (..)
@@ -329,8 +330,17 @@ validateScriptTemplates accXPub level pTemplate dTemplateM = do
             when (checkXPub dTemplate) $ Left (Delegation, accXPubErr)
         Nothing -> pure ()
   where
+      --when creating the shared wallet we can have cosigners in script with missing
+      --account public key. They are supposed to be collected when patching.
+      handleUnusedCosigner
+          :: Either ErrValidateScriptTemplate ()
+          -> Either ErrValidateScriptTemplate ()
+      handleUnusedCosigner = \case
+          Left UnusedCosigner -> Right ()
+          rest -> rest
       checkTemplate cred template' =
           mapLeft (\err -> (cred, T.pack $ prettyErrValidateScriptTemplate err)) $
+          handleUnusedCosigner $
           validateScriptTemplate level template'
       checkXPub template' =
           accountXPubCondition accXPub template'

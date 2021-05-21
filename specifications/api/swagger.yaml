@@ -3104,18 +3104,18 @@ x-errSharedWalletCannotUpdateKey: &errSharedWalletCannotUpdateKey
       type: string
       enum: ['shared_wallet_cannot_update_key']
 
-x-errSharedWalletCreateNotAllowed: &errSharedWalletCreateNotAllowed
+x-errSharedWalletScriptTemplateNotValidated: &errSharedWalletScriptTemplateNotValidated
   <<: *responsesErr
-  title: shared_wallet_create_not_allowed
+  title: shared_wallet_script_template_not_validated
   properties:
     message:
       type: string
       description: |
-        Returned when a user tries to create a shared wallet with missing wallet's
-        account key in all the script templates.
+        Returned when a user tries to create a shared wallet with script template
+        that is not validated.
     code:
       type: string
-      enum: ['shared_wallet_create_not_allowed']
+      enum: ['shared_wallet_script_template_not_validated']
 
 # TODO: Map this error to the place it belongs.
 x-errNetworkUnreachable: &errNetworkUnreachable
@@ -3629,7 +3629,7 @@ x-responsesPostSharedWallet: &responsesPostSharedWallet
       application/json:
         schema:
           oneOf:
-            - <<: *errSharedWalletCreateNotAllowed
+            - <<: *errSharedWalletScriptTemplateNotValidated
   201:
     description: Created
     content:

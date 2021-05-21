@@ -2115,6 +2115,7 @@ components:
         account_index: *derivationSegment
         payment_script_template: *scriptTemplateEntry
         delegation_script_template: *scriptTemplateEntry
+        script_validation: *validationLevel
 
     ApiSharedWalletPostDataFromAccountPubX: &ApiSharedWalletPostDataFromAccountPubX
       type: object
@@ -2129,6 +2130,7 @@ components:
         account_index: *derivationSegment
         payment_script_template: *scriptTemplateEntry
         delegation_script_template: *scriptTemplateEntry
+        script_validation: *validationLevel
 
     ApiSharedWalletPostData: &ApiSharedWalletPostData
       type: object

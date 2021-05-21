@@ -113,7 +113,7 @@ import Prelude
 import Cardano.Address.Derivation
     ( XPrv, XPub, xpubPublicKey, xpubToBytes )
 import Cardano.Address.Script
-    ( Cosigner (..), ScriptTemplate (..) )
+    ( Cosigner (..), ScriptTemplate (..), ValidationLevel (..) )
 import Cardano.Api
     ( AnyCardanoEra (..), CardanoEra (..), SerialiseAsCBOR (..) )
 import Cardano.BM.Tracing
@@ -324,7 +324,7 @@ import Cardano.Wallet.Primitive.AddressDiscovery.Shared
     , SharedStatePending (..)
     , mkSharedStateFromAccountXPub
     , mkSharedStateFromRootXPrv
-    , walletCreationInvariant
+    , validateScriptTemplates
     )
 import Cardano.Wallet.Primitive.CoinSelection.MA.RoundRobin
     ( SelectionError (..)
@@ -419,7 +419,7 @@ import Control.DeepSeq
 import Control.Error.Util
     ( failWith )
 import Control.Monad
-    ( forM, forever, join, unless, void, when, (>=>) )
+    ( forM, forever, join, void, when, (>=>) )
 import Control.Monad.IO.Class
     ( MonadIO, liftIO )
 import Control.Monad.Trans.Except
@@ -894,8 +894,11 @@ postSharedWalletFromRootXPrv
     -> ApiSharedWalletPostDataFromMnemonics
     -> Handler ApiSharedWallet
 postSharedWalletFromRootXPrv ctx generateKey body = do
-    unless (walletCreationInvariant accXPub pTemplate dTemplateM) $
-        liftHandler $ throwE ErrConstructSharedWalletMissingKey
+    case validateScriptTemplates accXPub scriptValidation pTemplate dTemplateM of
+        Left (cred, err) ->
+            liftHandler $ throwE $
+            ErrConstructSharedWalletWrongScriptTemplate cred err
+        Right _ -> pure ()
     let state = mkSharedStateFromRootXPrv (rootXPrv, pwd) accIx g pTemplate dTemplateM
     void $ liftHandler $ createWalletWorker @_ @s @k ctx wid
         (\wrk -> W.createWallet @(WorkerCtx ctx) @_ @s @k wrk wid wName state)
@@ -915,6 +918,7 @@ postSharedWalletFromRootXPrv ctx generateKey body = do
     dTemplateM = scriptTemplateFromSelf (getRawKey accXPub) <$> body ^. #delegationScriptTemplate
     wName = getApiT (body ^. #name)
     accXPub = publicKey $ deriveAccountPrivateKey pwd rootXPrv accIx
+    scriptValidation = fromMaybe RecommendedValidation (getApiT <$> body ^. #scriptValidation)
 
 postSharedWalletFromAccountXPub
     :: forall ctx s k n.
@@ -934,8 +938,11 @@ postSharedWalletFromAccountXPub
     -> ApiSharedWalletPostDataFromAccountPubX
     -> Handler ApiSharedWallet
 postSharedWalletFromAccountXPub ctx liftKey body = do
-    unless (walletCreationInvariant (liftKey accXPub) pTemplate dTemplateM) $
-        liftHandler $ throwE ErrConstructSharedWalletMissingKey
+    case validateScriptTemplates (liftKey accXPub) scriptValidation pTemplate dTemplateM of
+        Left (cred, err) ->
+            liftHandler $ throwE $
+            ErrConstructSharedWalletWrongScriptTemplate cred err
+        Right _ -> pure ()
     let state = mkSharedStateFromAccountXPub (liftKey accXPub) accIx g pTemplate dTemplateM
     void $ liftHandler $ createWalletWorker @_ @s @k ctx wid
         (\wrk -> W.createWallet @(WorkerCtx ctx) @_ @s @k wrk wid wName state)
@@ -950,6 +957,7 @@ postSharedWalletFromAccountXPub ctx liftKey body = do
     (ApiAccountPublicKey accXPubApiT) =  body ^. #accountPublicKey
     accXPub = getApiT accXPubApiT
     wid = WalletId $ digest (liftKey accXPub)
+    scriptValidation = fromMaybe RecommendedValidation (getApiT <$> body ^. #scriptValidation)
 
 scriptTemplateFromSelf :: XPub -> ApiScriptTemplateEntry -> ScriptTemplate
 scriptTemplateFromSelf xpub (ApiScriptTemplateEntry cosigners' template') =
@@ -3291,11 +3299,11 @@ instance IsServerError ErrAddCosignerKey where
 
 instance IsServerError ErrConstructSharedWallet where
     toServerError = \case
-        ErrConstructSharedWalletMissingKey ->
-            apiError err403 SharedWalletCreateNotAllowed $ mconcat
+        ErrConstructSharedWalletWrongScriptTemplate cred reason ->
+            apiError err403 SharedWalletScriptTemplateNotValidated $ mconcat
                 [ "It looks like you've tried to create a shared wallet "
-                , "with a missing account key in the script template(s). This cannot be done "
-                , "as the wallet's account key must be always present for each script template."
+                , "with a template script for ", toText cred, " credential that does not "
+                ," pass validation. The problem is: ", reason, "."
                 ]
 
 instance IsServerError (ErrInvalidDerivationIndex 'Soft level) where

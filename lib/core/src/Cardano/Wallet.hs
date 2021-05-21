@@ -443,6 +443,8 @@ import Data.Quantity
     ( Quantity (..) )
 import Data.Set
     ( Set )
+import Data.Text
+    ( Text )
 import Data.Text.Class
     ( ToText (..) )
 import Data.Time.Clock
@@ -2391,8 +2393,8 @@ data ErrAddCosignerKey
     deriving (Eq, Show)
 
 data ErrConstructSharedWallet
-    = ErrConstructSharedWalletMissingKey
-        -- ^ The shared wallet' script template doesn't have the wallet's account public key
+    = ErrConstructSharedWalletWrongScriptTemplate CredentialType Text
+        -- ^ The shared wallet' script template doesn't pass validation
     deriving (Eq, Show)
 
 data ErrReadAccountPublicKey

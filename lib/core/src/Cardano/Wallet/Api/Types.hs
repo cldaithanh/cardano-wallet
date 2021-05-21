@@ -1115,6 +1115,7 @@ data ApiSharedWalletPostDataFromMnemonics = ApiSharedWalletPostDataFromMnemonics
     , accountIndex :: !(ApiT DerivationIndex)
     , paymentScriptTemplate :: !ApiScriptTemplateEntry
     , delegationScriptTemplate :: !(Maybe ApiScriptTemplateEntry)
+    , scriptValidation :: !(Maybe (ApiT ValidationLevel))
     } deriving (Eq, Generic, Show)
 
 data ApiSharedWalletPostDataFromAccountPubX = ApiSharedWalletPostDataFromAccountPubX
@@ -1123,6 +1124,7 @@ data ApiSharedWalletPostDataFromAccountPubX = ApiSharedWalletPostDataFromAccount
     , accountIndex :: !(ApiT DerivationIndex)
     , paymentScriptTemplate :: !ApiScriptTemplateEntry
     , delegationScriptTemplate :: !(Maybe ApiScriptTemplateEntry)
+    , scriptValidation :: !(Maybe (ApiT ValidationLevel))
     } deriving (Eq, Generic, Show)
 
 newtype ApiSharedWalletPostData = ApiSharedWalletPostData
@@ -1221,7 +1223,7 @@ data ApiErrorCode
     | SharedWalletKeyAlreadyExists
     | SharedWalletNoSuchCosigner
     | SharedWalletCannotUpdateKey
-    | SharedWalletCreateNotAllowed
+    | SharedWalletScriptTemplateNotValidated
     deriving (Eq, Generic, Show, Data, Typeable)
     deriving anyclass NFData
 

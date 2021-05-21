@@ -34,7 +34,7 @@ module Cardano.Wallet.Primitive.AddressDiscovery.Shared
     , addCosignerAccXPub
     , isShared
     , retrieveAllCosigners
-    , walletCreationInvariant
+    , validateScriptTemplates
 
     , CredentialType (..)
     , liftPaymentAddress
@@ -52,6 +52,7 @@ import Cardano.Address.Script
     , ScriptTemplate (..)
     , ValidationLevel (..)
     , foldScript
+    , prettyErrValidateScriptTemplate
     , toScriptHash
     , validateScriptTemplate
     )
@@ -104,14 +105,20 @@ import Cardano.Wallet.Primitive.Types.RewardAccount
     ( RewardAccount )
 import Control.DeepSeq
     ( NFData )
+import Control.Monad
+    ( when )
 import Data.Coerce
     ( coerce )
 import Data.Either
     ( isRight )
+import Data.Either.Combinators
+    ( mapLeft )
 import Data.Kind
     ( Type )
 import Data.Proxy
     ( Proxy (..) )
+import Data.Text
+    ( Text )
 import Data.Text.Class
     ( FromText (..), TextDecodingError (..), ToText (..) )
 import GHC.Generics
@@ -123,6 +130,7 @@ import qualified Cardano.Address as CA
 import qualified Cardano.Address.Style.Shelley as CA
 import qualified Data.Foldable as F
 import qualified Data.Map.Strict as Map
+import qualified Data.Text as T
 
 {-------------------------------------------------------------------------------
                                 Shared State
@@ -305,17 +313,28 @@ accountXPubCondition
 accountXPubCondition accXPub (ScriptTemplate cosignerKeys _) =
     getRawKey accXPub `F.elem` cosignerKeys
 
-walletCreationInvariant
+validateScriptTemplates
     :: WalletKey k
     => k 'AccountK XPub
+    -> ValidationLevel
     -> ScriptTemplate
     -> Maybe ScriptTemplate
-    -> Bool
-walletCreationInvariant accXPub pTemplate dTemplate =
-    isValid pTemplate && maybe True isValid dTemplate
+    -> Either (CredentialType, Text) ()
+validateScriptTemplates accXPub level pTemplate dTemplateM = do
+    checkTemplate Payment pTemplate
+    when (checkXPub pTemplate) $ Left (Payment, accXPubErr)
+    case dTemplateM of
+        Just dTemplate -> do
+            checkTemplate Delegation dTemplate
+            when (checkXPub dTemplate) $ Left (Delegation, accXPubErr)
+        Nothing -> pure ()
   where
-    isValid template' =
-        accountXPubCondition accXPub template'
+      checkTemplate cred template' =
+          mapLeft (\err -> (cred, T.pack $ prettyErrValidateScriptTemplate err)) $
+          validateScriptTemplate level template'
+      checkXPub template' =
+          accountXPubCondition accXPub template'
+      accXPubErr = "The wallet's account key must be always present for the script template."
 
 templatesComplete
     :: WalletKey k

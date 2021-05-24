@@ -489,6 +489,51 @@ spec = describe "SHARED_WALLETS" $ do
         let reason = "The list inside a script has duplicate keys (which is not recommended)."
         expectErrorMessage (errMsg403TemplateInvalidScript reason) rPost
 
+    it "SHARED_WALLETS_CREATE_11 - Correct script template when required validation" $ \ctx -> runResourceT $ do
+        (_, accXPubTxt):_ <- liftIO $ genXPubs 1
+        let payload = Json [json| {
+                "name": "Shared Wallet",
+                "account_public_key": #{accXPubTxt},
+                "account_index": "10H",
+                "payment_script_template":
+                    { "cosigners":
+                        { "cosigner#0": #{accXPubTxt} },
+                      "template":
+                          { "all":
+                             [ "cosigner#0",
+                               { "active_from": 120 },
+                               "cosigner#0"
+                             ]
+                          }
+                    },
+                "script_validation": "required"
+                } |]
+        rPost <- postSharedWallet ctx Default payload
+        expectResponseCode HTTP.status201 rPost
+
+    it "SHARED_WALLETS_CREATE_12 - Incorrect script template due to WrongScript - timelocks" $ \ctx -> runResourceT $ do
+        (_, accXPubTxt):_ <- liftIO $ genXPubs 1
+        let payload = Json [json| {
+                "name": "Shared Wallet",
+                "account_public_key": #{accXPubTxt},
+                "account_index": "10H",
+                "payment_script_template":
+                    { "cosigners":
+                        { "cosigner#0": #{accXPubTxt} },
+                      "template":
+                          { "all":
+                             [ "cosigner#0",
+                               { "active_from": 120 },
+                               { "active_until": 110 }
+                             ]
+                          }
+                    }
+                } |]
+        rPost <- postSharedWallet ctx Default payload
+        expectResponseCode HTTP.status403 rPost
+        let reason = "The timelocks used are contradictory when used with 'all' (which is not recommended)."
+        expectErrorMessage (errMsg403TemplateInvalidScript reason) rPost
+
     it "SHARED_WALLETS_DELETE_01 - Delete of a shared wallet" $ \ctx -> runResourceT $ do
         let walName = "Shared Wallet" :: Text
         (_, payload) <- getAccountWallet walName

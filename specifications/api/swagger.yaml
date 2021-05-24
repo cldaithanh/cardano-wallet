@@ -3989,6 +3989,16 @@ x-responsesGetSharedKey: &responsesGetSharedKey
       application/json:
         schema: *ApiVerificationKeyShared
 
+x-responsesGetAccountSharedKey: &responsesGetAccountSharedKey
+  <<: *responsesErr400
+  <<: *responsesErr404
+  <<: *responsesErr406
+  200:
+    description: Ok
+    content:
+      application/json:
+        schema: *ApiAccountKeyShared
+
 x-responsesPostAccountKey: &responsesPostAccountKey
   <<: *responsesErr400
   <<: *responsesErr406
@@ -5450,7 +5460,7 @@ paths:
       summary: Create
       description: |
         <p align="right">status: <strong>stable</strong></p>
-        Retrieve account public key from the shared wallet.
+        Derive any account public key from the shared wallet provided the wallet was created from mnemonics.
 
         <b>Note:</b> Only _Hardened_ indexes are supported by this endpoint.
       parameters:
@@ -5462,6 +5472,22 @@ paths:
           application/json:
             schema: *ApiPostAccountKeyData
       responses: *responsesPostAccountKeyShared
+
+  /shared-wallets/{walletId}/keys:
+    get:
+      operationId: getAccountKeyShared
+      tags: ["Shared Keys"]
+      summary: Get
+      description: |
+        <p align="right">status: <strong>stable</strong></p>
+        Retrieve account public key of the shared wallet.
+
+        To get an extended public key, instead of the public key,
+        use query parameter `extended=true`.
+
+      parameters:
+        - *parametersWalletId
+      responses: *responsesGetAccountSharedKey
 
   /shared-wallets/{walletId}/addresses:
     get:

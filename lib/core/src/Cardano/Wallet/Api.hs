@@ -126,6 +126,7 @@ module Cardano.Wallet.Api
     , SharedWalletKeys
         , GetSharedWalletKey
         , PostAccountKeyShared
+        , GetAccountKeyShared
 
     , SharedAddresses
         , ListSharedAddresses
@@ -912,6 +913,7 @@ type DeleteSharedWallet = "shared-wallets"
 type SharedWalletKeys =
          GetSharedWalletKey
     :<|> PostAccountKeyShared
+    :<|> GetAccountKeyShared
 
 -- | https://input-output-hk.github.io/cardano-wallet/api/#operation/getSharedWalletKey
 type GetSharedWalletKey = "shared-wallets"
@@ -929,6 +931,13 @@ type PostAccountKeyShared = "shared-wallets"
     :> Capture "index" (ApiT DerivationIndex)
     :> ReqBody '[JSON] ApiPostAccountKeyData
     :> PostAccepted '[JSON] ApiAccountKeyShared
+
+-- | https://input-output-hk.github.io/cardano-wallet/api/#operation/getAccountKeyShared
+type GetAccountKeyShared = "shared-wallets"
+    :> Capture "walletId" (ApiT WalletId)
+    :> "keys"
+    :> QueryParam "extended" Bool
+    :> Get '[JSON] ApiAccountKeyShared
 
 {-------------------------------------------------------------------------------
                                  Shared Addresses

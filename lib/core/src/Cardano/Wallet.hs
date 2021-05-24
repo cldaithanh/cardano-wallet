@@ -166,6 +166,7 @@ module Cardano.Wallet
     , withRootKey
     , derivePublicKey
     , readPublicAccountKey
+    , getPublicAccountKey
     , signMetadataWith
     , ErrWithRootKey (..)
     , ErrWrongPassphrase (..)
@@ -2264,7 +2265,25 @@ derivePublicKey ctx wid role_ ix = db & \DBLayer{..} -> do
   where
     db = ctx ^. dbLayer @IO @s @k
 
--- | Retrieve public account key of a wallet.
+-- | Retrieve current public account key of a wallet.
+getPublicAccountKey
+    :: forall ctx s k.
+        ( HasDBLayer IO s k ctx
+        , GetAccount s k
+        )
+    => ctx
+    -> WalletId
+    -> ExceptT ErrReadAccountPublicKey IO (k 'AccountK XPub)
+getPublicAccountKey ctx wid = db & \DBLayer{..} -> do
+    cp <- mapExceptT atomically
+        $ withExceptT ErrReadAccountPublicKeyNoSuchWallet
+        $ withNoSuchWallet wid
+        $ readCheckpoint wid
+    pure $ getAccount (getState cp)
+  where
+    db = ctx ^. dbLayer @IO @s @k
+
+-- | Retrieve any public account key of a wallet.
 readPublicAccountKey
     :: forall ctx s k.
         ( HasDBLayer IO s k ctx

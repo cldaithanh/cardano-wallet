@@ -82,6 +82,7 @@ module Cardano.Wallet.Api.Server
     , selectCoinsForQuit
     , signMetadata
     , postAccountPublicKey
+    , getAccountPublicKey
     , postSharedWallet
     , patchSharedWallet
     , mkSharedWallet
@@ -299,6 +300,7 @@ import Cardano.Wallet.Primitive.AddressDerivation.Shelley
 import Cardano.Wallet.Primitive.AddressDiscovery
     ( CompareDiscovery
     , GenChange (ArgGenChange)
+    , GetAccount
     , IsOurs
     , IsOwned
     , KnownAddresses
@@ -2364,6 +2366,30 @@ postAccountPublicKey ctx mkAccount (ApiT wid) (ApiT ix) (ApiPostAccountKeyData (
         k <- liftHandler $ W.readPublicAccountKey @_ @s @k wrk wid pwd ix
         pure $ mkAccount (xPubtoBytes extd $ getRawKey k) extd
   where
+      xPubtoBytes :: KeyFormat -> XPub -> ByteString
+      xPubtoBytes = \case
+          Extended -> xpubToBytes
+          NonExtended -> xpubPublicKey
+
+getAccountPublicKey
+    :: forall ctx s k account.
+        ( ctx ~ ApiLayer s k
+        , GetAccount s k
+        , WalletKey k
+        )
+    => ctx
+    -> (ByteString -> KeyFormat -> account)
+    -> ApiT WalletId
+    -> Maybe Bool
+    -> Handler account
+getAccountPublicKey ctx mkAccount (ApiT wid) extended = do
+    withWorkerCtx @_ @s @k ctx wid liftE liftE $ \wrk -> do
+        k <- liftHandler $ W.getPublicAccountKey @_ @s @k wrk wid
+        pure $ mkAccount (xPubtoBytes extd $ getRawKey k) extd
+  where
+      extd = case extended of
+          Just True -> Extended
+          _ -> NonExtended
       xPubtoBytes :: KeyFormat -> XPub -> ByteString
       xPubtoBytes = \case
           Extended -> xpubToBytes

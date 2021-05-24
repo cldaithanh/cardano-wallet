@@ -67,6 +67,7 @@ import Cardano.Wallet.Api.Server
     , deleteWallet
     , derivePublicKeyShared
     , derivePublicKeyShelley
+    , getAccountPublicKey
     , getAsset
     , getAssetDefault
     , getCurrentEpoch
@@ -515,6 +516,7 @@ server byron icarus shelley multisig spl ntp =
     sharedWalletKeys apilayer =
              (derivePublicKeyShared apilayer)
         :<|> (postAccountPublicKey apilayer ApiAccountKeyShared)
+        :<|> (getAccountPublicKey apilayer ApiAccountKeyShared)
 
     sharedAddresses
         :: ApiLayer (SharedState n SharedKey) SharedKey

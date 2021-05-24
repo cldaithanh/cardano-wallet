@@ -110,6 +110,7 @@ module Cardano.Wallet.Api.Link
      -- * SharedWalletKeys
     , getSharedWalletKey
     , postAccountKeyShared
+    , getAccountKeyShared
 
     , PostWallet
     , Discriminate
@@ -747,6 +748,18 @@ postAccountKeyShared
     -> (Method, Text)
 postAccountKeyShared w index =
     endpoint @Api.PostAccountKeyShared (\mk -> mk wid (ApiT index))
+  where
+    wid = w ^. typed @(ApiT WalletId)
+
+getAccountKeyShared
+    :: forall w.
+        ( HasType (ApiT WalletId) w
+        )
+    => w
+    -> Maybe Bool
+    -> (Method, Text)
+getAccountKeyShared w extended =
+    endpoint @Api.GetAccountKeyShared (\mk -> mk wid extended)
   where
     wid = w ^. typed @(ApiT WalletId)
 

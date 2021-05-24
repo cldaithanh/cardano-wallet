@@ -91,6 +91,7 @@ module Test.Integration.Framework.TestData
     , errMsg400ScriptTimelocksContradictory
     , errMsg400ScriptNotUniformRoles
     , errMsg403TemplateInvalidNoCosignerInScript
+    , errMsg403TemplateInvalidUnknownCosigner
     ) where
 
 import Prelude
@@ -557,6 +558,13 @@ errMsg403TemplateInvalidNoCosignerInScript = mconcat
     [ "It looks like you've tried to create a shared wallet with a template "
     , "script for payment credential that does not pass validation. "
     , "The problem is: The list inside a script is empty or only contains timelocks (which is not recommended)."
+    ]
+
+errMsg403TemplateInvalidUnknownCosigner :: String
+errMsg403TemplateInvalidUnknownCosigner = mconcat
+    [ "It looks like you've tried to create a shared wallet with a template"
+    , " script for payment credential that does not pass validation. The problem is:"
+    , " The specified cosigner must be present in the script of the template."
     ]
 
 errMsg400ScriptWrongCoeffcient :: String

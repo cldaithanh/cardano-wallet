@@ -3303,7 +3303,7 @@ instance IsServerError ErrConstructSharedWallet where
             apiError err403 SharedWalletScriptTemplateNotValidated $ mconcat
                 [ "It looks like you've tried to create a shared wallet "
                 , "with a template script for ", toText cred, " credential that does not "
-                ," pass validation. The problem is: ", reason, "."
+                , "pass validation. The problem is: ", reason
                 ]
 
 instance IsServerError (ErrInvalidDerivationIndex 'Soft level) where

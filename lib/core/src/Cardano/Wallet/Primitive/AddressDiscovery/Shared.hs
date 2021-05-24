@@ -107,7 +107,7 @@ import Cardano.Wallet.Primitive.Types.RewardAccount
 import Control.DeepSeq
     ( NFData )
 import Control.Monad
-    ( when )
+    ( unless )
 import Data.Coerce
     ( coerce )
 import Data.Either
@@ -323,11 +323,11 @@ validateScriptTemplates
     -> Either (CredentialType, Text) ()
 validateScriptTemplates accXPub level pTemplate dTemplateM = do
     checkTemplate Payment pTemplate
-    when (checkXPub pTemplate) $ Left (Payment, accXPubErr)
+    unless (checkXPub pTemplate) $ Left (Payment, accXPubErr)
     case dTemplateM of
         Just dTemplate -> do
             checkTemplate Delegation dTemplate
-            when (checkXPub dTemplate) $ Left (Delegation, accXPubErr)
+            unless (checkXPub dTemplate) $ Left (Delegation, accXPubErr)
         Nothing -> pure ()
   where
       --when creating the shared wallet we can have cosigners in script with missing
@@ -336,7 +336,7 @@ validateScriptTemplates accXPub level pTemplate dTemplateM = do
           :: Either ErrValidateScriptTemplate ()
           -> Either ErrValidateScriptTemplate ()
       handleUnusedCosigner = \case
-          Left UnusedCosigner -> Right ()
+          Left MissingCosignerXPub -> Right ()
           rest -> rest
       checkTemplate cred template' =
           mapLeft (\err -> (cred, T.pack $ prettyErrValidateScriptTemplate err)) $

@@ -470,7 +470,7 @@ spec = describe "SHARED_WALLETS" $ do
                     { "cosigners":
                         { "cosigner#0": #{accXPubTxt0} },
                       "template":
-                          { "all":
+                          { "any":
                              [ "cosigner#0",
                                "cosigner#1",
                                { "active_from": 120 },
@@ -599,7 +599,7 @@ spec = describe "SHARED_WALLETS" $ do
                     { "cosigners":
                         { "cosigner#0": #{accXPubTxt0} },
                       "template":
-                          { "all":
+                          { "any":
                              [ "cosigner#0",
                                "cosigner#1",
                                { "active_from": 120 },

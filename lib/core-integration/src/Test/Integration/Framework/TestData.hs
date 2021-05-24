@@ -546,9 +546,9 @@ errMsg403CannotUpdateThisCosigner = mconcat
 
 errMsg403CreateIllegal :: String
 errMsg403CreateIllegal = mconcat
-    [ "It looks like you've tried to create a shared wallet "
-    , "with a missing account key in the script template(s). This cannot be done "
-    , "as the wallet's account key must be always present for each script template."
+    [ "It looks like you've tried to create a shared wallet with a template "
+    , "script for payment credential that does not pass validation. The problem "
+    , "is: The wallet's account key must be always present for the script template."
     ]
 
 errMsg400ScriptWrongCoeffcient :: String

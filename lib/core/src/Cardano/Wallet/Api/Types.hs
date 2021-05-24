@@ -1060,14 +1060,15 @@ data ApiWalletSignData = ApiWalletSignData
     } deriving (Eq, Generic, Show)
       deriving anyclass NFData
 
-newtype ApiVerificationKeyShelley = ApiVerificationKeyShelley
-    { getApiVerificationKey :: (ByteString, Role)
-    } deriving (Eq, Generic, Show)
-      deriving anyclass NFData
-
 data VerificationKeyHashing = WithHashing | WithoutHashing
     deriving (Eq, Generic, Show)
     deriving anyclass NFData
+
+data ApiVerificationKeyShelley = ApiVerificationKeyShelley
+    { getApiVerificationKey :: (ByteString, Role)
+    , hashed :: VerificationKeyHashing
+    } deriving (Eq, Generic, Show)
+      deriving anyclass NFData
 
 data ApiVerificationKeyShared = ApiVerificationKeyShared
     { getApiVerificationKey :: (ByteString, Role)
@@ -1486,29 +1487,39 @@ instance FromJSON (ApiT DerivationIndex) where
     parseJSON = fromTextJSON "DerivationIndex"
 
 instance ToJSON ApiVerificationKeyShelley where
-    toJSON (ApiVerificationKeyShelley (pub, role_)) =
+    toJSON (ApiVerificationKeyShelley (pub, role_) hashed) =
         toJSON $ Bech32.encodeLenient hrp $ dataPartFromBytes pub
       where
         hrp = case role_ of
-            UtxoInternal -> [humanReadablePart|addr_vk|]
-            UtxoExternal -> [humanReadablePart|addr_vk|]
-            MutableAccount -> [humanReadablePart|stake_vk|]
+            UtxoExternal -> case hashed of
+                WithHashing -> [humanReadablePart|addr_vkh|]
+                WithoutHashing -> [humanReadablePart|addr_vk|]
+            UtxoInternal -> case hashed of
+                WithHashing -> [humanReadablePart|addr_vkh|]
+                WithoutHashing -> [humanReadablePart|addr_vk|]
+            MutableAccount -> case hashed of
+                WithHashing -> [humanReadablePart|stake_vkh|]
+                WithoutHashing -> [humanReadablePart|stake_vk|]
 
 instance FromJSON ApiVerificationKeyShelley where
     parseJSON value = do
         (hrp, bytes) <- parseJSON value >>= (parseBech32 "Malformed verification key")
-        fmap ApiVerificationKeyShelley . (,)
-            <$> parsePubVer bytes
-            <*> parseRole hrp
+        (role, hashing) <- parseRoleHashing hrp
+        payload <- case hashing of
+            WithoutHashing -> parsePubVer bytes
+            WithHashing -> parsePubVerHash bytes
+        pure $ ApiVerificationKeyShelley (payload,role) hashing
       where
-        parseRole = \case
-            hrp | hrp == [humanReadablePart|addr_vk|] -> pure UtxoExternal
-            hrp | hrp == [humanReadablePart|stake_vk|] -> pure MutableAccount
+        parseRoleHashing = \case
+            hrp | hrp == [humanReadablePart|addr_vk|] -> pure (UtxoExternal, WithoutHashing)
+            hrp | hrp == [humanReadablePart|stake_vk|] -> pure (MutableAccount, WithoutHashing)
+            hrp | hrp == [humanReadablePart|addr_vkh|] -> pure (UtxoExternal, WithHashing)
+            hrp | hrp == [humanReadablePart|stake_vkh|] -> pure (MutableAccount, WithHashing)
             _ -> fail errRole
           where
             errRole =
                 "Unrecognized human-readable part. Expected one of:\
-                \ \"addr_vk\" or \"stake_vk\"."
+                \ \"addr_vkh\", \"stake_vkh\",\"addr_vk\" or \"stake_vk\"."
 
 parseBech32
     :: Text

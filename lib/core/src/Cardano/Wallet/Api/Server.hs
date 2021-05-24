@@ -42,8 +42,7 @@ module Cardano.Wallet.Api.Server
     , delegationFee
     , deleteTransaction
     , deleteWallet
-    , derivePublicKeyShelley
-    , derivePublicKeyShared
+    , derivePublicKey
     , getNetworkClock
     , getNetworkInformation
     , getNetworkParameters
@@ -222,8 +221,6 @@ import Cardano.Wallet.Api.Types
     , ApiTxInput (..)
     , ApiTxMetadata (..)
     , ApiUtxoStatistics (..)
-    , ApiVerificationKeyShared (..)
-    , ApiVerificationKeyShelley (..)
     , ApiWallet (..)
     , ApiWalletAssetsBalance (..)
     , ApiWalletBalance (..)
@@ -2307,40 +2304,24 @@ signMetadata ctx (ApiT wid) (ApiT role_) (ApiT ix) body = do
         getSignature <$> W.signMetadataWith @_ @s @k @n
             wrk wid (coerce pwd) (role_, ix) meta
 
-derivePublicKeyShelley
-    :: forall ctx s k n.
-        ( s ~ SeqState n k
-        , ctx ~ ApiLayer s k
+derivePublicKey
+    :: forall ctx s k ver.
+        ( ctx ~ ApiLayer s k
         , SoftDerivation k
         , WalletKey k
+        , GetAccount s k
         )
     => ctx
-    -> ApiT WalletId
-    -> ApiT Role
-    -> ApiT DerivationIndex
-    -> Handler ApiVerificationKeyShelley
-derivePublicKeyShelley ctx (ApiT wid) (ApiT role_) (ApiT ix) = do
-    withWorkerCtx @_ @s @k ctx wid liftE liftE $ \wrk -> do
-        k <- liftHandler $ W.derivePublicKey @_ @s @k wrk wid role_ ix
-        pure $ ApiVerificationKeyShelley (xpubPublicKey $ getRawKey k, role_)
-
-derivePublicKeyShared
-    :: forall ctx s k n.
-        ( s ~ SharedState n k
-        , ctx ~ ApiLayer s k
-        , SoftDerivation k
-        , WalletKey k
-        )
-    => ctx
+    -> ((ByteString, Role) -> VerificationKeyHashing -> ver)
     -> ApiT WalletId
     -> ApiT Role
     -> ApiT DerivationIndex
     -> Maybe Bool
-    -> Handler ApiVerificationKeyShared
-derivePublicKeyShared ctx (ApiT wid) (ApiT role_) (ApiT ix) hashed = do
+    -> Handler ver
+derivePublicKey ctx mkVer (ApiT wid) (ApiT role_) (ApiT ix) hashed = do
     withWorkerCtx @_ @s @k ctx wid liftE liftE $ \wrk -> do
         k <- liftHandler $ W.derivePublicKey @_ @s @k wrk wid role_ ix
-        pure $ ApiVerificationKeyShared (computePayload k, role_) hashing
+        pure $ mkVer (computePayload k, role_) hashing
   where
     hashing = case hashed of
         Nothing -> WithoutHashing
@@ -2365,11 +2346,11 @@ postAccountPublicKey ctx mkAccount (ApiT wid) (ApiT ix) (ApiPostAccountKeyData (
     withWorkerCtx @_ @s @k ctx wid liftE liftE $ \wrk -> do
         k <- liftHandler $ W.readPublicAccountKey @_ @s @k wrk wid pwd ix
         pure $ mkAccount (xPubtoBytes extd $ getRawKey k) extd
-  where
-      xPubtoBytes :: KeyFormat -> XPub -> ByteString
-      xPubtoBytes = \case
-          Extended -> xpubToBytes
-          NonExtended -> xpubPublicKey
+
+xPubtoBytes :: KeyFormat -> XPub -> ByteString
+xPubtoBytes = \case
+    Extended -> xpubToBytes
+    NonExtended -> xpubPublicKey
 
 getAccountPublicKey
     :: forall ctx s k account.
@@ -2390,10 +2371,6 @@ getAccountPublicKey ctx mkAccount (ApiT wid) extended = do
       extd = case extended of
           Just True -> Extended
           _ -> NonExtended
-      xPubtoBytes :: KeyFormat -> XPub -> ByteString
-      xPubtoBytes = \case
-          Extended -> xpubToBytes
-          NonExtended -> xpubPublicKey
 
 {-------------------------------------------------------------------------------
                                   Helpers

@@ -1457,7 +1457,7 @@ getSharedWalletKey ctx wal role ix hashed =
         ApiSharedWallet (Right wal') -> r wal'
   where
       r :: forall w. HasType (ApiT WalletId) w => w -> m (HTTP.Status, Either RequestException ApiVerificationKeyShared)
-      r w = request @ApiVerificationKeyShared ctx (Link.getSharedWalletKey w role ix hashed) Default Empty
+      r w = request @ApiVerificationKeyShared ctx (Link.getWalletKey @'Shared w role ix hashed) Default Empty
 
 postAccountKeyShared
     :: forall m.
@@ -1476,7 +1476,7 @@ postAccountKeyShared ctx wal ix headers payload =
         ApiSharedWallet (Right wal') -> r wal'
   where
       r :: forall w. HasType (ApiT WalletId) w => w -> m (HTTP.Status, Either RequestException ApiAccountKeyShared)
-      r w = request @ApiAccountKeyShared ctx (Link.postAccountKeyShared w ix) headers payload
+      r w = request @ApiAccountKeyShared ctx (Link.postAccountKey @'Shared w ix) headers payload
 
 patchEndpointEnding :: CredentialType -> Text
 patchEndpointEnding = \case

@@ -52,6 +52,7 @@ module Cardano.Wallet.Api.Link
     , getWalletKey
     , signMetadata
     , postAccountKey
+    , getAccountKey
 
       -- * Addresses
     , postRandomAddress
@@ -106,11 +107,6 @@ module Cardano.Wallet.Api.Link
 
      -- * Shared Wallets
     , patchSharedWallet
-
-     -- * SharedWalletKeys
-    , getSharedWalletKey
-    , postAccountKeyShared
-    , getAccountKeyShared
 
     , PostWallet
     , Discriminate
@@ -232,7 +228,7 @@ getUTxOsStatistics
 getUTxOsStatistics w = discriminate @style
     (endpoint @Api.GetUTxOsStatistics (wid &))
     (endpoint @Api.GetByronUTxOsStatistics (wid &))
-    notSupported
+    (notSupported "Shared")
   where
     wid = w ^. typed @(ApiT WalletId)
 
@@ -256,7 +252,7 @@ putWallet
 putWallet w = discriminate @style
     (endpoint @Api.PutWallet (wid &))
     (endpoint @Api.PutByronWallet (wid &))
-    notSupported
+    (notSupported "Shared")
   where
     wid = w ^. typed @(ApiT WalletId)
 
@@ -270,7 +266,7 @@ putWalletPassphrase
 putWalletPassphrase w = discriminate @style
     (endpoint @Api.PutWalletPassphrase (wid &))
     (endpoint @Api.PutByronWalletPassphrase (wid &))
-    notSupported
+    (notSupported "Shared")
   where
     wid = w ^. typed @(ApiT WalletId)
 
@@ -284,7 +280,7 @@ migrateWallet
 migrateWallet w = discriminate @style
     (endpoint @(Api.MigrateShelleyWallet Net) (wid &))
     (endpoint @(Api.MigrateByronWallet Net) (wid &))
-    notSupported
+    (notSupported "Shared")
   where
     wid = w ^. typed @(ApiT WalletId)
 
@@ -298,7 +294,7 @@ createMigrationPlan
 createMigrationPlan w = discriminate @style
     (endpoint @(Api.CreateShelleyWalletMigrationPlan Net) (wid &))
     (endpoint @(Api.CreateByronWalletMigrationPlan Net) (wid &))
-    notSupported
+    (notSupported "Shared")
   where
     wid = w ^. typed @(ApiT WalletId)
 
@@ -307,15 +303,19 @@ createMigrationPlan w = discriminate @style
 --
 
 getWalletKey
-    :: forall w.
+    :: forall style w.
         ( HasType (ApiT WalletId) w
+        , Discriminate style
         )
     => w
     -> Role
     -> DerivationIndex
+    -> Maybe Bool
     -> (Method, Text)
-getWalletKey w role_ index =
-    endpoint @Api.GetWalletKey (\mk -> mk wid (ApiT role_) (ApiT index))
+getWalletKey w role_ index hashed = discriminate @style
+    (notSupported "Byron")
+    (endpoint @Api.GetWalletKey (\mk -> mk wid (ApiT role_) (ApiT index) hashed))
+    (endpoint @Api.GetSharedWalletKey (\mk -> mk wid (ApiT role_) (ApiT index) hashed))
   where
     wid = w ^. typed @(ApiT WalletId)
 
@@ -333,16 +333,35 @@ signMetadata w role_ index =
     wid = w ^. typed @(ApiT WalletId)
 
 postAccountKey
-    :: forall w.
+    :: forall style w.
         ( HasType (ApiT WalletId) w
+        , Discriminate style
         )
     => w
     -> DerivationIndex
     -> (Method, Text)
-postAccountKey w index =
-    endpoint @Api.PostAccountKey (\mk -> mk wid (ApiT index))
+postAccountKey w index = discriminate @style
+    (notSupported "Byron")
+    (endpoint @Api.PostAccountKey (\mk -> mk wid (ApiT index)))
+    (endpoint @Api.PostAccountKeyShared (\mk -> mk wid (ApiT index)))
   where
     wid = w ^. typed @(ApiT WalletId)
+
+getAccountKey
+    :: forall style w.
+        ( HasType (ApiT WalletId) w
+        , Discriminate style
+        )
+    => w
+    -> Maybe Bool
+    -> (Method, Text)
+getAccountKey w extended = discriminate @style
+    (notSupported "Byron")
+    (endpoint @Api.GetAccountKey (\mk -> mk wid extended))
+    (endpoint @Api.GetAccountKeyShared (\mk -> mk wid extended))
+  where
+    wid = w ^. typed @(ApiT WalletId)
+
 
 --
 -- Addresses
@@ -420,7 +439,7 @@ selectCoins
 selectCoins w = discriminate @style
     (endpoint @(Api.SelectCoins Net) (wid &))
     (endpoint @(Api.ByronSelectCoins Net) (wid &))
-    notSupported
+    (notSupported "Shared")
   where
     wid = w ^. typed @(ApiT WalletId)
 
@@ -496,7 +515,7 @@ createTransaction
 createTransaction w = discriminate @style
     (endpoint @(Api.CreateTransaction Net) (wid &))
     (endpoint @(Api.CreateByronTransaction Net) (wid &))
-    notSupported
+    (notSupported "Shared")
   where
     wid = w ^. typed @(ApiT WalletId)
 
@@ -526,7 +545,7 @@ listTransactions' w minWithdrawal inf sup order = discriminate @style
         (\mk -> mk wid (MinWithdrawal <$> minWithdrawal) inf sup (ApiT <$> order)))
     (endpoint @(Api.ListByronTransactions Net)
         (\mk -> mk wid inf sup (ApiT <$> order)))
-    notSupported
+    (notSupported "Shared")
   where
     wid = w ^. typed @(ApiT WalletId)
 
@@ -540,7 +559,7 @@ getTransactionFee
 getTransactionFee w = discriminate @style
     (endpoint @(Api.PostTransactionFee Net) (wid &))
     (endpoint @(Api.PostByronTransactionFee Net) (wid &))
-    notSupported
+    (notSupported "Shared")
   where
     wid = w ^. typed @(ApiT WalletId)
 
@@ -556,7 +575,7 @@ deleteTransaction
 deleteTransaction w t = discriminate @style
     (endpoint @Api.DeleteTransaction mkURL)
     (endpoint @Api.DeleteByronTransaction mkURL)
-    notSupported
+    (notSupported "Shared")
   where
     wid = w ^. typed @(ApiT WalletId)
     tid = ApiTxId (t ^. typed @(ApiT (Hash "Tx")))
@@ -574,7 +593,7 @@ getTransaction
 getTransaction w t = discriminate @style
     (endpoint @(Api.GetTransaction Net) mkURL)
     (endpoint @(Api.GetByronTransaction Net) mkURL)
-    notSupported
+    (notSupported "Shared")
   where
     wid = w ^. typed @(ApiT WalletId)
     tid = ApiTxId (t ^. typed @(ApiT (Hash "Tx")))
@@ -723,48 +742,6 @@ patchSharedWallet w cred =
     wid = w ^. typed @(ApiT WalletId)
 
 --
--- SharedWalletKeys
---
-getSharedWalletKey
-    :: forall w.
-        ( HasType (ApiT WalletId) w
-        )
-    => w
-    -> Role
-    -> DerivationIndex
-    -> Maybe Bool
-    -> (Method, Text)
-getSharedWalletKey w role_ index hashed =
-    endpoint @Api.GetSharedWalletKey (\mk -> mk wid (ApiT role_) (ApiT index) hashed)
-  where
-    wid = w ^. typed @(ApiT WalletId)
-
-postAccountKeyShared
-    :: forall w.
-        ( HasType (ApiT WalletId) w
-        )
-    => w
-    -> DerivationIndex
-    -> (Method, Text)
-postAccountKeyShared w index =
-    endpoint @Api.PostAccountKeyShared (\mk -> mk wid (ApiT index))
-  where
-    wid = w ^. typed @(ApiT WalletId)
-
-getAccountKeyShared
-    :: forall w.
-        ( HasType (ApiT WalletId) w
-        )
-    => w
-    -> Maybe Bool
-    -> (Method, Text)
-getAccountKeyShared w extended =
-    endpoint @Api.GetAccountKeyShared (\mk -> mk wid extended)
-  where
-    wid = w ^. typed @(ApiT WalletId)
-
-
---
 -- Internals
 --
 
@@ -823,8 +800,8 @@ instance Discriminate 'Byron where
 instance Discriminate 'Shared where
     discriminate _ _ a = a
 
-notSupported :: a
-notSupported = error "Endpoint not supported for Shared style"
+notSupported :: String -> a
+notSupported style = error $ "Endpoint not supported for " <> style <> " style"
 
 -- | Some endpoints are parameterized via a network discriminant in order to
 -- correctly encode their end type (for example, 'CreateTransaction n'). Yet, in

@@ -634,10 +634,10 @@ spec = describe "SHELLEY_ADDRESSES" $ do
         -- wallet API
         let indices = [0..19]
         generatedAddresses <- forM indices $ \index -> do
-            let paymentPath = Link.getWalletKey w UtxoExternal (DerivationIndex index)
+            let paymentPath = Link.getWalletKey @'Shelley w UtxoExternal (DerivationIndex index) Nothing
             (_, paymentKey) <- unsafeRequest @ApiVerificationKeyShelley ctx paymentPath Empty
 
-            let stakePath = Link.getWalletKey w MutableAccount (DerivationIndex 0)
+            let stakePath = Link.getWalletKey @'Shelley w MutableAccount (DerivationIndex 0) Nothing
             (_, stakeKey) <- unsafeRequest @ApiVerificationKeyShelley ctx stakePath Empty
 
             let payload = Json [json|{
@@ -910,7 +910,7 @@ spec = describe "SHELLEY_ADDRESSES" $ do
         let initPoolGap = 10
         w <- emptyWalletWith ctx ("Wallet", fixturePassphrase, initPoolGap)
 
-        let endpoint = Link.postAccountKey w (DerivationIndex 0)
+        let endpoint = Link.postAccountKey @'Shelley w (DerivationIndex 0)
         let payload = Json [json|{
                 "passphrase": #{fixturePassphrase},
                 "format": "extended"
@@ -921,7 +921,7 @@ spec = describe "SHELLEY_ADDRESSES" $ do
         -- Request first 10 extended account public keys
         let indices = [0..9]
         accountPublicKeys <- forM indices $ \index -> do
-            let accountPath = Link.postAccountKey w (DerivationIndex $ 2147483648 + index)
+            let accountPath = Link.postAccountKey @'Shelley w (DerivationIndex $ 2147483648 + index)
             let payload1 = Json [json|{
                     "passphrase": #{fixturePassphrase},
                     "format": "extended"

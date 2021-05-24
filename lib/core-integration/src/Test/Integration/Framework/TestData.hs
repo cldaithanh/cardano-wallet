@@ -93,6 +93,7 @@ module Test.Integration.Framework.TestData
     , errMsg403TemplateInvalidNoCosignerInScript
     , errMsg403TemplateInvalidUnknownCosigner
     , errMsg403TemplateInvalidDuplicateXPub
+    , errMsg403TemplateInvalidScript
     ) where
 
 import Prelude
@@ -573,6 +574,13 @@ errMsg403TemplateInvalidDuplicateXPub = mconcat
     [ "It looks like you've tried to create a shared wallet with a template"
     , " script for payment credential that does not pass validation. The problem is:"
     , " The cosigners in a script template must stand behind an unique extended public key."
+    ]
+
+errMsg403TemplateInvalidScript :: String -> String
+errMsg403TemplateInvalidScript reason = mconcat
+    [ "It looks like you've tried to create a shared wallet with a template"
+    , " script for payment credential that does not pass validation. The problem is: "
+    , reason
     ]
 
 errMsg400ScriptWrongCoeffcient :: String

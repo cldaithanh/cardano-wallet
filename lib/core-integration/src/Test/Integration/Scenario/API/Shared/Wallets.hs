@@ -94,6 +94,7 @@ import Test.Integration.Framework.TestData
     , errMsg403KeyAlreadyPresent
     , errMsg403NoDelegationTemplate
     , errMsg403NoSuchCosigner
+    , errMsg403TemplateInvalidDuplicateXPub
     , errMsg403TemplateInvalidNoCosignerInScript
     , errMsg403TemplateInvalidUnknownCosigner
     , errMsg403WalletAlreadyActive
@@ -441,6 +442,28 @@ spec = describe "SHARED_WALLETS" $ do
         rPost <- postSharedWallet ctx Default payload
         expectResponseCode HTTP.status403 rPost
         expectErrorMessage errMsg403TemplateInvalidUnknownCosigner rPost
+
+    it "SHARED_WALLETS_CREATE_09 - Incorrect script template due to DuplicateXPub" $ \ctx -> runResourceT $ do
+        (_, accXPubTxt):_ <- liftIO $ genXPubs 1
+        let payload = Json [json| {
+                "name": "Shared Wallet",
+                "account_public_key": #{accXPubTxt},
+                "account_index": "10H",
+                "payment_script_template":
+                    { "cosigners":
+                        { "cosigner#0": #{accXPubTxt}, "cosigner#1": #{accXPubTxt} },
+                      "template":
+                          { "all":
+                             [ "cosigner#0",
+                               "cosigner#1",
+                              { "active_from": 120 }
+                             ]
+                          }
+                    }
+                } |]
+        rPost <- postSharedWallet ctx Default payload
+        expectResponseCode HTTP.status403 rPost
+        expectErrorMessage errMsg403TemplateInvalidDuplicateXPub rPost
 
     it "SHARED_WALLETS_DELETE_01 - Delete of a shared wallet" $ \ctx -> runResourceT $ do
         let walName = "Shared Wallet" :: Text

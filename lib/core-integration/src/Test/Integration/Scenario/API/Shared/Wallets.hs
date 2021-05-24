@@ -75,6 +75,7 @@ import Test.Integration.Framework.DSL
     , fixturePassphrase
     , genMnemonics
     , genXPubs
+    , getAccountKeyShared
     , getFromResponse
     , getSharedWallet
     , getSharedWalletKey
@@ -174,6 +175,16 @@ spec = describe "SHARED_WALLETS" $ do
         let (ApiAccountKeyShared bytes _) = getFromResponse id rKey
         T.decodeUtf8 (hex bytes) `Expectations.shouldBe` accXPubDerived
 
+        aKey <-
+            getAccountKeyShared ctx wal (Just True)
+
+        verify aKey
+            [ expectResponseCode HTTP.status200
+            , expectField #format (`shouldBe` Extended)
+            ]
+        let (ApiAccountKeyShared bytes' _) = getFromResponse id aKey
+        T.decodeUtf8 (hex bytes') `Expectations.shouldBe` accXPubDerived
+
     it "SHARED_WALLETS_CREATE_02 - Create a pending shared wallet from root xprv" $ \ctx -> runResourceT $ do
         m15txt <- liftIO $ genMnemonics M15
         m12txt <- liftIO $ genMnemonics M12
@@ -244,8 +255,8 @@ spec = describe "SHARED_WALLETS" $ do
                           }
                     }
                 } |]
-        r <- postSharedWallet ctx Default payload
-        verify (second (\(Right (ApiSharedWallet (Right res))) -> Right res) r)
+        rPost <- postSharedWallet ctx Default payload
+        verify (second (\(Right (ApiSharedWallet (Right res))) -> Right res) rPost)
             [ expectResponseCode HTTP.status201
             , expectField
                     (#name . #getApiT . #getWalletName) (`shouldBe` "Shared Wallet")
@@ -261,6 +272,17 @@ spec = describe "SHARED_WALLETS" $ do
             , expectField #delegationScriptTemplate (`shouldBe` Nothing)
             , expectField (#accountIndex . #getApiT) (`shouldBe` DerivationIndex 2147483658)
             ]
+
+        let wal = getFromResponse id rPost
+        aKey <-
+            getAccountKeyShared ctx wal (Just True)
+
+        verify aKey
+            [ expectResponseCode HTTP.status200
+            , expectField #format (`shouldBe` Extended)
+            ]
+        let (ApiAccountKeyShared bytes' _) = getFromResponse id aKey
+        T.decodeUtf8 (hex bytes') `Expectations.shouldBe` accXPubTxt
 
     it "SHARED_WALLETS_CREATE_04 - Create a pending shared wallet from account xpub" $ \ctx -> runResourceT $ do
         (_, accXPubTxt):_ <- liftIO $ genXPubs 1

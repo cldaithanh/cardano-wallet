@@ -80,6 +80,7 @@ module Test.Integration.Framework.DSL
     , patchSharedWallet
     , getSharedWalletKey
     , postAccountKeyShared
+    , getAccountKeyShared
 
     -- * Wallet helpers
     , listFilteredWallets
@@ -1477,6 +1478,23 @@ postAccountKeyShared ctx wal ix headers payload =
   where
       r :: forall w. HasType (ApiT WalletId) w => w -> m (HTTP.Status, Either RequestException ApiAccountKeyShared)
       r w = request @ApiAccountKeyShared ctx (Link.postAccountKey @'Shared w ix) headers payload
+
+getAccountKeyShared
+    :: forall m.
+        ( MonadIO m
+        , MonadUnliftIO m
+        )
+    => Context
+    -> ApiSharedWallet
+    -> Maybe Bool
+    -> m (HTTP.Status, Either RequestException ApiAccountKeyShared)
+getAccountKeyShared ctx wal hashed =
+    case wal of
+        ApiSharedWallet (Left wal') -> r wal'
+        ApiSharedWallet (Right wal') -> r wal'
+  where
+      r :: forall w. HasType (ApiT WalletId) w => w -> m (HTTP.Status, Either RequestException ApiAccountKeyShared)
+      r w = request @ApiAccountKeyShared ctx (Link.getAccountKey @'Shared w hashed) Default Empty
 
 patchEndpointEnding :: CredentialType -> Text
 patchEndpointEnding = \case

@@ -10,10 +10,10 @@
   },
   "rev": "66f74c4b9442281f1c77bc3d04d435c08210c7ae",
   "timings": {
-    "actionStarted": "2021-05-25T21:05:27.922Z",
-    "ciStatusCreated": "2021-05-25T21:05:28.163Z",
-    "evaluated": "2021-05-25T21:05:28.913Z",
-    "foundBuilds": "2021-05-25T21:05:29.780Z",
-    "built": "2021-05-25T21:05:29.780Z"
+    "actionStarted": "2021-05-25T21:39:47.576Z",
+    "ciStatusCreated": "2021-05-25T21:39:47.881Z",
+    "evaluated": "2021-05-25T21:39:48.630Z",
+    "foundBuilds": "2021-05-25T21:39:49.321Z",
+    "built": "2021-05-25T21:39:49.321Z"
   }
 }

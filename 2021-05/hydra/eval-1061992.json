@@ -2,18 +2,18 @@
   "eval": 1061992,
   "builds": {
     "required": {
-      "id": 6462194,
-      "finished": 1,
-      "buildstatus": 0,
+      "id": 6462332,
+      "finished": 0,
+      "buildstatus": null,
       "buildmetrics": {}
     }
   },
   "rev": "667037bf11884e4cd8ac2caef9ad909277ec07e0",
   "timings": {
-    "actionStarted": "2021-05-25T04:42:16.937Z",
-    "ciStatusCreated": "2021-05-25T04:42:17.062Z",
-    "evaluated": "2021-05-25T04:42:17.659Z",
-    "foundBuilds": "2021-05-25T04:42:18.125Z",
-    "built": "2021-05-25T04:42:18.126Z"
+    "actionStarted": "2021-05-25T04:51:41.245Z",
+    "ciStatusCreated": "2021-05-25T04:51:41.431Z",
+    "evaluated": "2021-05-25T04:51:42.262Z",
+    "foundBuilds": "2021-05-25T04:51:43.299Z",
+    "built": "2021-05-25T05:06:52.070Z"
   }
 }

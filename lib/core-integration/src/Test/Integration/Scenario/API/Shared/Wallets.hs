@@ -32,7 +32,7 @@ import Cardano.Wallet.Api.Types
     , KeyFormat (..)
     )
 import Cardano.Wallet.Primitive.AddressDerivation
-    ( DerivationIndex (..), Passphrase (..), Role (..), hex )
+    ( DerivationIndex (..), Passphrase (..), Role (..) )
 import Cardano.Wallet.Primitive.AddressDiscovery.Shared
     ( CredentialType (..) )
 import Cardano.Wallet.Primitive.SyncProgress
@@ -56,7 +56,9 @@ import Data.Text
 import Data.Text.Class
     ( ToText (..) )
 import Test.Hspec
-    ( SpecWith, describe, shouldBe, shouldNotBe )
+    ( SpecWith, describe )
+import Test.Hspec.Expectations.Lifted
+    ( shouldBe, shouldNotBe )
 import Test.Hspec.Extra
     ( it )
 import Test.Integration.Framework.DSL
@@ -80,6 +82,7 @@ import Test.Integration.Framework.DSL
     , getSharedWallet
     , getSharedWalletKey
     , getWalletIdFromSharedWallet
+    , hexText
     , json
     , listFilteredSharedWallets
     , notDelegating
@@ -108,7 +111,6 @@ import qualified Data.Set as Set
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as T
 import qualified Network.HTTP.Types as HTTP
-import qualified Test.Hspec.Expectations.Lifted as Expectations
 
 spec :: forall n.
     ( DecodeAddress n
@@ -172,18 +174,17 @@ spec = describe "SHARED_WALLETS" $ do
             [ expectResponseCode HTTP.status202
             , expectField #format (`shouldBe` Extended)
             ]
-        let (ApiAccountKeyShared bytes _) = getFromResponse id rKey
-        T.decodeUtf8 (hex bytes) `Expectations.shouldBe` accXPubDerived
+        let ApiAccountKeyShared bytes _ = getFromResponse id rKey
+        hexText bytes `shouldBe` accXPubDerived
 
-        aKey <-
-            getAccountKeyShared ctx wal (Just True)
+        aKey <- getAccountKeyShared ctx wal (Just True)
 
         verify aKey
             [ expectResponseCode HTTP.status200
             , expectField #format (`shouldBe` Extended)
             ]
-        let (ApiAccountKeyShared bytes' _) = getFromResponse id aKey
-        T.decodeUtf8 (hex bytes') `Expectations.shouldBe` accXPubDerived
+        let ApiAccountKeyShared bytes' _ = getFromResponse id aKey
+        hexText bytes' `shouldBe` accXPubDerived
 
     it "SHARED_WALLETS_CREATE_02 - Create a pending shared wallet from root xprv" $ \ctx -> runResourceT $ do
         m15txt <- liftIO $ genMnemonics M15
@@ -235,8 +236,8 @@ spec = describe "SHARED_WALLETS" $ do
             [ expectResponseCode HTTP.status202
             , expectField #format (`shouldBe` Extended)
             ]
-        let (ApiAccountKeyShared bytes _) = getFromResponse id rKey
-        T.decodeUtf8 (hex bytes) `Expectations.shouldBe` accXPubDerived
+        let ApiAccountKeyShared bytes _ = getFromResponse id rKey
+        hexText bytes `shouldBe` accXPubDerived
 
     it "SHARED_WALLETS_CREATE_03 - Create an active shared wallet from account xpub" $ \ctx -> runResourceT $ do
         (_, accXPubTxt):_ <- liftIO $ genXPubs 1
@@ -274,15 +275,14 @@ spec = describe "SHARED_WALLETS" $ do
             ]
 
         let wal = getFromResponse id rPost
-        aKey <-
-            getAccountKeyShared ctx wal (Just True)
+        aKey <- getAccountKeyShared ctx wal (Just True)
 
         verify aKey
             [ expectResponseCode HTTP.status200
             , expectField #format (`shouldBe` Extended)
             ]
-        let (ApiAccountKeyShared bytes' _) = getFromResponse id aKey
-        T.decodeUtf8 (hex bytes') `Expectations.shouldBe` accXPubTxt
+        let ApiAccountKeyShared bytes' _ = getFromResponse id aKey
+        hexText bytes' `shouldBe` accXPubTxt
 
     it "SHARED_WALLETS_CREATE_04 - Create a pending shared wallet from account xpub" $ \ctx -> runResourceT $ do
         (_, accXPubTxt):_ <- liftIO $ genXPubs 1
@@ -372,7 +372,7 @@ spec = describe "SHARED_WALLETS" $ do
 
         let walWithSelf = getFromResponse id rPostWithSelf
 
-        getWalletIdFromSharedWallet walWithSelf `Expectations.shouldBe` getWalletIdFromSharedWallet wal
+        getWalletIdFromSharedWallet walWithSelf `shouldBe` getWalletIdFromSharedWallet wal
 
     it "SHARED_WALLETS_CREATE_06 - Create an active shared wallet from account xpub with self" $ \ctx -> runResourceT $ do
         (_, accXPubTxt):_ <- liftIO $ genXPubs 1
@@ -423,7 +423,7 @@ spec = describe "SHARED_WALLETS" $ do
 
         let walWithSelf = getFromResponse id rPostWithSelf
 
-        getWalletIdFromSharedWallet walWithSelf `Expectations.shouldBe` getWalletIdFromSharedWallet wal
+        getWalletIdFromSharedWallet walWithSelf `shouldBe` getWalletIdFromSharedWallet wal
 
     it "SHARED_WALLETS_CREATE_07 - Incorrect script template due to NoCosignerInScript" $ \ctx -> runResourceT $ do
         (_, accXPubTxt):_ <- liftIO $ genXPubs 1
@@ -845,10 +845,10 @@ spec = describe "SHARED_WALLETS" $ do
         (_, Right stakeKey) <- getSharedWalletKey ctx wal MutableAccount (DerivationIndex 0) Nothing
 
         let (String paymentAddr) = toJSON paymentKey
-        T.isPrefixOf "addr_shared_vk" paymentAddr `Expectations.shouldBe` True
+        T.isPrefixOf "addr_shared_vk" paymentAddr `shouldBe` True
 
         let (String stakeAddr) = toJSON stakeKey
-        T.isPrefixOf "stake_shared_vk" stakeAddr `Expectations.shouldBe` True
+        T.isPrefixOf "stake_shared_vk" stakeAddr `shouldBe` True
 
     it "SHARED_WALLETS_KEYS_02 - Getting verification keys works for pending shared wallet" $ \ctx -> runResourceT $ do
         (_, accXPubTxt):_ <- liftIO $ genXPubs 1
@@ -878,25 +878,25 @@ spec = describe "SHARED_WALLETS" $ do
         (_, Right stakeKey) <- getSharedWalletKey ctx wal MutableAccount (DerivationIndex 0) Nothing
 
         let (String paymentAddr) = toJSON paymentKey
-        T.isPrefixOf "addr_shared_vk" paymentAddr `Expectations.shouldBe` True
+        T.isPrefixOf "addr_shared_vk" paymentAddr `shouldBe` True
 
         let (String stakeAddr) = toJSON stakeKey
-        T.isPrefixOf "stake_shared_vk" stakeAddr `Expectations.shouldBe` True
+        T.isPrefixOf "stake_shared_vk" stakeAddr `shouldBe` True
 
         (_, Right paymentKey') <- getSharedWalletKey ctx wal UtxoExternal (DerivationIndex 10) (Just False)
         (_, Right stakeKey') <- getSharedWalletKey ctx wal MutableAccount (DerivationIndex 0) (Just False)
 
-        paymentKey' `Expectations.shouldBe` paymentKey
-        stakeKey' `Expectations.shouldBe` stakeKey
+        paymentKey' `shouldBe` paymentKey
+        stakeKey' `shouldBe` stakeKey
 
         (_, Right paymentKeyH) <- getSharedWalletKey ctx wal UtxoExternal (DerivationIndex 10) (Just True)
         (_, Right stakeKeyH) <- getSharedWalletKey ctx wal MutableAccount (DerivationIndex 0) (Just True)
 
         let (String paymentAddrH) = toJSON paymentKeyH
-        T.isPrefixOf "addr_shared_vkh" paymentAddrH `Expectations.shouldBe` True
+        T.isPrefixOf "addr_shared_vkh" paymentAddrH `shouldBe` True
 
         let (String stakeAddrH) = toJSON stakeKeyH
-        T.isPrefixOf "stake_shared_vkh" stakeAddrH `Expectations.shouldBe` True
+        T.isPrefixOf "stake_shared_vkh" stakeAddrH `shouldBe` True
 
     it "SHARED_WALLETS_LIST_01 - Created a wallet can be listed" $ \ctx -> runResourceT $ do
         let walName = "Shared Wallet" :: Text

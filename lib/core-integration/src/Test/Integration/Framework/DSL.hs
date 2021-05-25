@@ -161,6 +161,8 @@ module Test.Integration.Framework.DSL
     , triggerMaintenanceAction
     , verifyMaintenanceAction
     , genXPubs
+    , hexText
+    , fromHexText
     , accPubKeyFromMnemonics
 
     -- * Delegation helpers
@@ -856,9 +858,11 @@ genXPubs num =
     xpubFromText :: Text -> Maybe XPub
     xpubFromText = fmap eitherToMaybe fromHexText >=> xpubFromBytes
 
-    fromHexText :: Text -> Either String ByteString
-    fromHexText = fromHex . T.encodeUtf8
+fromHexText :: Text -> Either String ByteString
+fromHexText = fromHex . T.encodeUtf8
 
+hexText :: ByteString -> Text
+hexText = T.decodeLatin1 . hex
 
 getTxId :: (ApiTransaction n) -> String
 getTxId tx = T.unpack $ toUrlPiece $ ApiTxId (tx ^. #id)

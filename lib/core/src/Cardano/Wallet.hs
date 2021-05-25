@@ -165,8 +165,8 @@ module Cardano.Wallet
     -- ** Root Key
     , withRootKey
     , derivePublicKey
-    , readPublicAccountKey
-    , getPublicAccountKey
+    , getAccountPublicKeyAtIndex
+    , readAccountPublicKey
     , signMetadataWith
     , ErrWithRootKey (..)
     , ErrWrongPassphrase (..)
@@ -2266,7 +2266,7 @@ derivePublicKey ctx wid role_ ix = db & \DBLayer{..} -> do
     db = ctx ^. dbLayer @IO @s @k
 
 -- | Retrieve current public account key of a wallet.
-getPublicAccountKey
+readAccountPublicKey
     :: forall ctx s k.
         ( HasDBLayer IO s k ctx
         , GetAccount s k
@@ -2274,7 +2274,7 @@ getPublicAccountKey
     => ctx
     -> WalletId
     -> ExceptT ErrReadAccountPublicKey IO (k 'AccountK XPub)
-getPublicAccountKey ctx wid = db & \DBLayer{..} -> do
+readAccountPublicKey ctx wid = db & \DBLayer{..} -> do
     cp <- mapExceptT atomically
         $ withExceptT ErrReadAccountPublicKeyNoSuchWallet
         $ withNoSuchWallet wid
@@ -2284,7 +2284,7 @@ getPublicAccountKey ctx wid = db & \DBLayer{..} -> do
     db = ctx ^. dbLayer @IO @s @k
 
 -- | Retrieve any public account key of a wallet.
-readPublicAccountKey
+getAccountPublicKeyAtIndex
     :: forall ctx s k.
         ( HasDBLayer IO s k ctx
         , HardDerivation k
@@ -2295,7 +2295,7 @@ readPublicAccountKey
     -> Passphrase "raw"
     -> DerivationIndex
     -> ExceptT ErrReadAccountPublicKey IO (k 'AccountK XPub)
-readPublicAccountKey ctx wid pwd ix = db & \DBLayer{..} -> do
+getAccountPublicKeyAtIndex ctx wid pwd ix = db & \DBLayer{..} -> do
     acctIx <- withExceptT ErrReadAccountPublicKeyInvalidIndex $ guardHardIndex ix
 
     _cp <- mapExceptT atomically

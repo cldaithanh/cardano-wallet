@@ -917,7 +917,7 @@ postSharedWalletFromRootXPrv ctx generateKey body = do
     dTemplateM = scriptTemplateFromSelf (getRawKey accXPub) <$> body ^. #delegationScriptTemplate
     wName = getApiT (body ^. #name)
     accXPub = publicKey $ deriveAccountPrivateKey pwd rootXPrv accIx
-    scriptValidation = fromMaybe RecommendedValidation (getApiT <$> body ^. #scriptValidation)
+    scriptValidation = maybe RecommendedValidation getApiT (body ^. #scriptValidation)
 
 postSharedWalletFromAccountXPub
     :: forall ctx s k n.
@@ -956,7 +956,7 @@ postSharedWalletFromAccountXPub ctx liftKey body = do
     (ApiAccountPublicKey accXPubApiT) =  body ^. #accountPublicKey
     accXPub = getApiT accXPubApiT
     wid = WalletId $ digest (liftKey accXPub)
-    scriptValidation = fromMaybe RecommendedValidation (getApiT <$> body ^. #scriptValidation)
+    scriptValidation = maybe RecommendedValidation getApiT (body ^. #scriptValidation)
 
 scriptTemplateFromSelf :: XPub -> ApiScriptTemplateEntry -> ScriptTemplate
 scriptTemplateFromSelf xpub (ApiScriptTemplateEntry cosigners' template') =
@@ -2344,7 +2344,7 @@ postAccountPublicKey
     -> Handler account
 postAccountPublicKey ctx mkAccount (ApiT wid) (ApiT ix) (ApiPostAccountKeyData (ApiT pwd) extd) = do
     withWorkerCtx @_ @s @k ctx wid liftE liftE $ \wrk -> do
-        k <- liftHandler $ W.readPublicAccountKey @_ @s @k wrk wid pwd ix
+        k <- liftHandler $ W.getAccountPublicKeyAtIndex @_ @s @k wrk wid pwd ix
         pure $ mkAccount (xPubtoBytes extd $ getRawKey k) extd
 
 xPubtoBytes :: KeyFormat -> XPub -> ByteString
@@ -2365,7 +2365,7 @@ getAccountPublicKey
     -> Handler account
 getAccountPublicKey ctx mkAccount (ApiT wid) extended = do
     withWorkerCtx @_ @s @k ctx wid liftE liftE $ \wrk -> do
-        k <- liftHandler $ W.getPublicAccountKey @_ @s @k wrk wid
+        k <- liftHandler $ W.readAccountPublicKey @_ @s @k wrk wid
         pure $ mkAccount (xPubtoBytes extd $ getRawKey k) extd
   where
       extd = case extended of

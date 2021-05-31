@@ -57,6 +57,7 @@ module Cardano.Wallet.Api.Server
     , getTransaction
     , listWallets
     , listStakeKeys
+    , listStakeKeys'
     , createMigrationPlan
     , migrateWallet
     , postExternalTransaction
@@ -2043,10 +2044,6 @@ quitStakePool ctx (ApiT wid) body = do
     genChange = delegationAddress @n
 
 -- More testable helper for `listStakeKeys`.
---
--- TODO: Ideally test things like
--- no rewards => ada in distr == utxo balance
--- all keys in inputs appear (once) in output
 listStakeKeys'
     :: forall (n :: NetworkDiscriminant) m. Monad m
     => UTxO.UTxO
@@ -2058,6 +2055,8 @@ listStakeKeys'
     -> [(RewardAccount, Natural, ApiWalletDelegation)]
         -- ^ The wallet's known stake keys, along with derivation index, and
         -- delegation status.
+        --
+        -- The `RewardAccount`s (and the derivation indices) must be unique.
     -> m (ApiStakeKeys n)
 listStakeKeys' utxo lookupStakeRef fetchRewards ourKeysWithInfo = do
         let distr = stakeKeyCoinDistr lookupStakeRef utxo

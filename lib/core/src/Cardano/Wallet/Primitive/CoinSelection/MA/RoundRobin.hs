@@ -1032,6 +1032,8 @@ makeChange criteria
         -- asset count:
         & NE.zipWith (\m1 (m2, c) -> (m1 <> m2, c))
             changeForNonUserSpecifiedAssets
+        & addMintValueToChangeMaps
+        & subtractBurnValueFromChangeMaps
         -- Finally, if there are any maps that are oversized (in any way), then
         -- split these maps up along with their corresponding output coins:
         & splitOversizedMaps
@@ -1139,6 +1141,37 @@ makeChange criteria
     nonUserSpecifiedAssetQuantities =
         collateNonUserSpecifiedAssetQuantities
             (view #tokens <$> inputBundles) userSpecifiedAssetIds
+
+-- Subtracts from the start of the list
+--
+-- Properties:
+-- 1. F.fold changeMaps `TokenMap.difference` burnValue
+--      == F.fold (f changeMaps burnValue)
+-- 2. length is conserved
+-- 3. order is preserved (i.e., the result is in ascending partial order).
+--
+subtractBurnValueFromChangeMaps
+    :: NonEmpty TokenMap
+        -- ^ Change maps for user and non-user-specified assets.
+    -> TokenMap
+        -- ^ Value to burn.
+    -> NonEmpty TokenMap
+subtractBurnValueFromChangeMaps = undefined
+
+-- Adds to the end of the list
+--
+-- Properties:
+-- 1. F.fold changeMaps <> mintValue == F.fold (f changeMaps mintValue)
+-- 2. length is conserved
+-- 3. order is preserved (i.e., the result is in ascending partial order).
+--
+addMintValueToChangeMaps
+    :: NonEmpty TokenMap
+        -- ^ Change maps for user and non-user-specified assets.
+    -> TokenMap
+        -- ^ Value to mint.
+    -> NonEmpty TokenMap
+addMintValueToChangeMaps changeMaps mintValue = undefined
 
 -- | Generates a map of all non-user-specified assets and their quantities.
 --

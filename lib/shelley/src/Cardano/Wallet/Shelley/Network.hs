@@ -489,6 +489,10 @@ withNetworkLayerBase tr np conn (versionData, _) tol action = do
     _stakeDistribution queue coin = do
         liftIO $ traceWith tr $ MsgWillQueryRewardsForStake coin
 
+        mprov <- bracketQuery "getRewardProvenance" tr $
+            queue `send` (SomeLSQ queryRewardsProvenance)
+        liftIO $ traceWith tr $ MsgRewardsProvenance mprov
+
         let qry :: LSQ (CardanoBlock StandardCrypto) IO (Maybe W.StakePoolsSummary)
             qry = liftA3 (liftA3 W.StakePoolsSummary)
                 getNOpt
@@ -518,6 +522,11 @@ withNetworkLayerBase tr np conn (versionData, _) tol action = do
         getNOpt :: LSQ (CardanoBlock StandardCrypto) IO (Maybe Int)
         getNOpt = shelleyBased $
             optimumNumberOfPools <$> LSQry Shelley.GetCurrentPParams
+
+        queryRewardsProvenance
+            :: LSQ (CardanoBlock StandardCrypto) IO (Maybe String)
+        queryRewardsProvenance = shelleyBased $
+            show <$> LSQry Shelley.GetRewardProvenance
 
         queryNonMyopicMemberRewards
             :: LSQ (CardanoBlock StandardCrypto) IO
@@ -1164,6 +1173,7 @@ data NetworkLayerLog where
     MsgDestroyCursor :: ThreadId -> NetworkLayerLog
     MsgWillQueryRewardsForStake :: W.Coin -> NetworkLayerLog
     MsgFetchStakePoolsData :: Maybe W.StakePoolsSummary -> NetworkLayerLog
+    MsgRewardsProvenance :: Maybe String -> NetworkLayerLog
     MsgFetchStakePoolsDataSummary :: Int -> Int -> NetworkLayerLog
       -- ^ Number of pools in stake distribution, and rewards map,
       -- respectively.
@@ -1248,6 +1258,8 @@ instance ToText NetworkLayerLog where
             ]
         MsgWillQueryRewardsForStake c ->
             "Will query non-myopic rewards using the stake " <> pretty c
+        MsgRewardsProvenance str ->
+            "Rewards provenance " <> maybe "NONE" T.pack str
         MsgFetchStakePoolsData d ->
             "Fetched pool data from node tip using LSQ: " <> pretty d
         MsgFetchStakePoolsDataSummary inStake inRewards -> mconcat
@@ -1293,6 +1305,7 @@ instance HasSeverityAnnotation NetworkLayerLog where
         MsgAccountDelegationAndRewards{}   -> Debug
         MsgDestroyCursor{}                 -> Debug
         MsgWillQueryRewardsForStake{}      -> Info
+        MsgRewardsProvenance{}             -> Notice
         MsgFetchStakePoolsData{}           -> Debug
         MsgFetchStakePoolsDataSummary{}    -> Info
         MsgWatcherUpdate{}                 -> Debug

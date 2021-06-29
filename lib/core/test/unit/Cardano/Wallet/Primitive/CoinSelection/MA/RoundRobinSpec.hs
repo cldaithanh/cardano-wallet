@@ -898,22 +898,22 @@ prop_performSelection minCoinValueFor costFor (Blind criteria) coverage =
 
     onOutputsInsufficient e = do
         monitor $ counterexample $ unlines
-          [ "minted values:"
-          , pretty (Flat errorMintedValues)
-          , "burnt values:"
-          , pretty (Flat errorBurntValues)
-          , "requested assets to cover:"
-          , pretty (Flat requestedOutputAssets)
-          , "values minted but not spent or burnt:"
-          , pretty (Flat $ missingOutputAssets e)
-          ]
+            [ "minted values:"
+            , pretty (Flat errorMintedValues)
+            , "burnt values:"
+            , pretty (Flat errorBurntValues)
+            , "requested assets to cover:"
+            , pretty (Flat requestedOutputAssets)
+            , "values minted but not spent or burnt:"
+            , pretty (Flat $ missingOutputAssets e)
+            ]
         assert $ errorMintedValues
             `leq` (requestedOutputAssets `TokenMap.add` errorBurntValues)
       where
         OutputsInsufficientError
-          errorMintedValues
-          errorBurntValues
-          requestedOutputAssets = e
+            errorMintedValues
+            errorBurntValues
+            requestedOutputAssets = e
 
     onInsufficientMinCoinValues es = do
         monitor $ counterexample $ unlines
@@ -3263,10 +3263,9 @@ prop_addMintValueToChangeMaps_order mint changeMapDiffs =
     property
         $ inAscendingPartialOrder
         $ addMintValueToChangeMaps mint changeMaps
-
-    where
-        -- A list of change maps already in ascending partial order
-        changeMaps = NE.scanl (<>) TokenMap.empty changeMapDiffs
+  where
+    -- A list of change maps already in ascending partial order
+    changeMaps = NE.scanl (<>) TokenMap.empty changeMapDiffs
 
 -- The plural of this function is equivalent to calling the singular multiple
 -- times. This is an important property because we only test the properties on
@@ -3312,10 +3311,9 @@ prop_removeBurnValueFromChangeMaps_order burn changeMapDiffs =
     property
         $ inAscendingPartialOrder
         $ removeBurnValueFromChangeMaps burn changeMaps
-
-    where
-        -- A list of change maps already in ascending partial order
-        changeMaps = NE.scanl (<>) TokenMap.empty changeMapDiffs
+  where
+    -- A list of change maps already in ascending partial order
+    changeMaps = NE.scanl (<>) TokenMap.empty changeMapDiffs
 
 -- The plural of this function is equivalent to calling the singular multiple
 -- times. This is an important property because we only test the properties on

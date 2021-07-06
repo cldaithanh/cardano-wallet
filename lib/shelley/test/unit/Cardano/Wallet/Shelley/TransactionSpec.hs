@@ -101,6 +101,7 @@ import Cardano.Wallet.Shelley.Compatibility
     , fromAlonzoTx
     , fromMaryTx
     , fromShelleyTx
+    , maxTokenBundleSerializedLengthBytes
     , sealShelleyTx
     , toCardanoLovelace
     )
@@ -115,6 +116,7 @@ import Cardano.Wallet.Shelley.Transaction
     , mkTxSkeleton
     , mkUnsignedTx
     , newTransactionLayer
+    , sealShelleyTx
     , txConstraints
     , _decodeSignedTx
     , _estimateMaxNumberOfInputs
@@ -404,9 +406,7 @@ spec = do
               where
                   toBase16 = T.decodeUtf8 . hex
                   ledgerTx = Cardano.makeSignedTransaction addrWits unsigned
-                  mkByronWitness' unsignedTx (_, (TxOut addr _)) =
-                      mkByronWitness unsignedTx Cardano.Mainnet addr
-                  addrWits = zipWith (mkByronWitness' unsigned) inps pairs
+                  addrWits = map (mkByronWitness unsigned Cardano.Mainnet) pairs
                   fee = toCardanoLovelace $ selectionDelta txOutCoin cs
                   Right unsigned = mkUnsignedTx era slotNo cs md mempty [] fee
                   cs = SelectionResult
@@ -498,9 +498,7 @@ spec = do
                   toBase16 = T.decodeUtf8 . hex
                   ledgerTx = Cardano.makeSignedTransaction addrWits unsigned
                   net = Cardano.Testnet (Cardano.NetworkMagic 0)
-                  mkByronWitness' unsignedTx (_, (TxOut addr _)) =
-                      mkByronWitness unsignedTx net addr
-                  addrWits = zipWith (mkByronWitness' unsigned) inps pairs
+                  addrWits = map (mkByronWitness unsigned net) pairs
                   fee = toCardanoLovelace $ selectionDelta txOutCoin cs
                   Right unsigned = mkUnsignedTx era slotNo cs md mempty [] fee
                   cs = SelectionResult
@@ -640,12 +638,7 @@ prop_decodeSignedShelleyTxRoundtrip shelleyEra (DecodeShelleySetup utxo outs md 
     let addrWits = map (mkShelleyWitness unsigned) pairs
     let wits = addrWits
     let ledgerTx = Cardano.makeSignedTransaction wits unsigned
-    let expected = case shelleyEra of
-            Cardano.ShelleyBasedEraShelley -> Right $ sealShelleyTx fromShelleyTx ledgerTx
-            Cardano.ShelleyBasedEraAllegra -> Right $ sealShelleyTx fromAllegraTx ledgerTx
-            Cardano.ShelleyBasedEraMary    -> Right $ sealShelleyTx fromMaryTx ledgerTx
-            Cardano.ShelleyBasedEraAlonzo  -> Right $ sealShelleyTx fromAlonzoTx ledgerTx
-
+    let expected = Right $ sealShelleyTx ledgerTx
 
     _decodeSignedTx anyEra (Cardano.serialiseToCBOR ledgerTx) === expected
   where
@@ -667,14 +660,13 @@ prop_decodeSignedByronTxRoundtrip (DecodeByronSetup utxo outs slotNo ntwrk pairs
     let cs = mkSelection inps
     let fee = toCardanoLovelace $ selectionDelta txOutCoin cs
     let Right unsigned = mkUnsignedTx shelleyEra slotNo cs Nothing mempty [] fee
-    let byronWits = zipWith (mkByronWitness' unsigned) inps pairs
+    let byronWits = map (mkByronWitness unsigned ntwrk) pairs
     let ledgerTx = Cardano.makeSignedTransaction byronWits unsigned
 
     _decodeSignedTx era (Cardano.serialiseToCBOR ledgerTx)
-        === Right (sealShelleyTx fromAllegraTx ledgerTx)
+        === Right (sealShelleyTx ledgerTx)
   where
-    mkByronWitness' unsigned (_, (TxOut addr _)) =
-        mkByronWitness unsigned ntwrk addr
+    shelleyEra = Cardano.ShelleyBasedEraAllegra
     mkSelection inps = SelectionResult
         { inputsSelected = NE.fromList inps
         , extraCoinSource = Nothing

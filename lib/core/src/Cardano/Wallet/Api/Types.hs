@@ -94,7 +94,6 @@ module Cardano.Wallet.Api.Types
     , ApiSignTransactionPostData (..)
     , PostTransactionOldData (..)
     , PostTransactionFeeOldData (..)
-    , ApiSerialisedTransaction (..)
     , ApiSignedTransaction (..)
     , ApiTransaction (..)
     , ApiMintedBurnedTransaction (..)
@@ -297,10 +296,12 @@ import Cardano.Wallet.Primitive.Types.Hash
     ( Hash (..) )
 import Cardano.Wallet.Primitive.Types.Tx
     ( Direction (..)
+    , SealedTx (..)
     , SerialisedTx (..)
     , TxIn (..)
     , TxMetadata
     , TxStatus (..)
+    , sealedTxFromBytes
     , txMetadataIsNull
     )
 import Cardano.Wallet.Primitive.Types.UTxO
@@ -320,9 +321,10 @@ import Control.Arrow
 import Control.DeepSeq
     ( NFData (..) )
 import Control.Monad
-    ( guard, when, (>=>) )
+    ( guard, when, (<=<), (>=>) )
 import Data.Aeson.Types
     ( FromJSON (..)
+    , Parser
     , SumEncoding (..)
     , ToJSON (..)
     , Value (Object, String)
@@ -937,7 +939,7 @@ data ApiValidityBound
     deriving anyclass NFData
 
 data ApiSignTransactionPostData = ApiSignTransactionPostData
-    { transaction :: !(ApiBytesT 'Base64 SerialisedTx)
+    { transaction :: !(ApiT SealedTx)
     , passphrase :: !(ApiT (Passphrase "lenient"))
     } deriving (Eq, Generic, Show)
 
@@ -960,15 +962,8 @@ data PostTransactionFeeOldData (n :: NetworkDiscriminant) = PostTransactionFeeOl
 
 type ApiBase64 = ApiBytesT 'Base64 ByteString
 
-newtype ApiSerialisedTransaction = ApiSerialisedTransaction
-    { transaction :: ApiBytesT 'Base64 SerialisedTx
-    }
-    deriving stock (Eq, Generic)
-    deriving newtype NFData
-    deriving Show via (Quiet ApiSerialisedTransaction)
-
 data ApiSignedTransaction = ApiSignedTransaction
-    { transaction :: ApiBytesT 'Base64 SerialisedTx
+    { transaction :: ApiT SealedTx
     , body :: ApiBase64
     , witnesses :: [ApiBase64]
     } deriving (Eq, Generic, Show, NFData)
@@ -2575,11 +2570,18 @@ instance (HasBase base, ByteArray bs) => FromJSON (ApiBytesT base bs) where
 instance (HasBase base, ByteArrayAccess bs) => ToJSON (ApiBytesT base bs) where
     toJSON = String . toText @(ApiBytesT base bs)
 
-instance FromJSON ApiSerialisedTransaction where
-    parseJSON = genericParseJSON defaultRecordTypeOptions
+instance FromJSON (ApiT SealedTx) where
+    parseJSON = fmap ApiT . parseSealedTxBytes @'Base64
 
-instance ToJSON ApiSerialisedTransaction where
-    toJSON = genericToJSON defaultRecordTypeOptions
+instance ToJSON (ApiT SealedTx) where
+    toJSON = sealedTxBytesValue @'Base64 . getApiT
+
+parseSealedTxBytes :: forall (base :: Base). HasBase base => Value -> Parser SealedTx
+parseSealedTxBytes = (eitherToParser . first ShowFmt . sealedTxFromBytes)
+        <=< (fmap getApiBytesT . parseJSON @(ApiBytesT base ByteString))
+
+sealedTxBytesValue :: forall (base :: Base). HasBase base => SealedTx -> Value
+sealedTxBytesValue = toJSON . ApiBytesT @base . view #serialisedTx
 
 instance FromJSON ApiSignedTransaction where
     parseJSON = genericParseJSON defaultRecordTypeOptions
@@ -3208,6 +3210,12 @@ instance MimeUnrender OctetStream (ApiBytesT base SerialisedTx) where
 
 instance MimeRender OctetStream (ApiBytesT base SerialisedTx) where
    mimeRender _ = BL.fromStrict . view #payload . getApiBytesT
+
+instance MimeUnrender OctetStream (ApiT SealedTx) where
+    mimeUnrender _ = bimap show ApiT . sealedTxFromBytes . BL.toStrict
+
+instance MimeRender OctetStream (ApiT SealedTx) where
+   mimeRender _ = BL.fromStrict . view #serialisedTx . getApiT
 
 instance FromText a => FromHttpApiData (ApiT a) where
     parseUrlPiece = bimap pretty ApiT . fromText

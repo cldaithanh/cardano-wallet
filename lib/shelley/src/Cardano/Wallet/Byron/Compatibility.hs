@@ -25,6 +25,12 @@ module Cardano.Wallet.Byron.Compatibility
     , genesisBlockFromTxOuts
 
       -- * Conversions
+<<<<<<< HEAD
+=======
+    , toByronHash
+    , toPoint
+
+>>>>>>> 4e9bf232d (Work on Wallet.signTransaction)
     , fromBlockNo
     , fromByronBlock
     , toByronBlockHeader
@@ -202,6 +208,21 @@ toEpochSlots :: W.EpochLength -> EpochSlots
 toEpochSlots =
     EpochSlots . fromIntegral . W.unEpochLength
 
+<<<<<<< HEAD
+=======
+-- | Magic value for the absence of a block.
+hashOfNoParent :: W.Hash "BlockHeader"
+hashOfNoParent = W.Hash . BS.pack $ replicate 0 32
+
+toPoint
+    :: W.Hash "Genesis"
+    -> W.BlockHeader
+    -> Point ByronBlock
+toPoint genesisH (W.BlockHeader sl _ h _)
+  | h == (coerce genesisH) = O.GenesisPoint
+  | otherwise = O.Point $ Point.block sl (toByronHash h)
+
+>>>>>>> 4e9bf232d (Work on Wallet.signTransaction)
 byronCodecConfig :: W.SlottingParameters -> CodecConfig ByronBlock
 byronCodecConfig W.SlottingParameters{getEpochLength} =
     ByronCodecConfig (toEpochSlots getEpochLength)

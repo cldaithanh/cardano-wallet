@@ -43,6 +43,13 @@ module Cardano.Wallet.Shelley.Network
 
 import Prelude
 
+import Cardano.Api
+    ( CardanoMode
+    , LocalChainSyncClient (NoLocalChainSyncClient)
+    , LocalNodeClientProtocols (..)
+    , LocalNodeConnectInfo (..)
+    , connectToLocalNode
+    )
 import Cardano.BM.Data.Severity
     ( Severity (..) )
 import Cardano.BM.Data.Tracer
@@ -63,6 +70,8 @@ import Cardano.Wallet.Primitive.Slotting
     )
 import Cardano.Wallet.Primitive.SyncProgress
     ( SyncProgress (..), SyncTolerance )
+import Cardano.Wallet.Primitive.Types.Tx
+    ( SealedTx (..) )
 import Cardano.Wallet.Shelley.Compatibility
     ( AnyCardanoEra (..)
     , CardanoEra (..)
@@ -76,6 +85,7 @@ import Cardano.Wallet.Shelley.Compatibility
     , fromStakeCredential
     , fromTip
     , fromTip'
+    , localNodeConnectInfo
     , nodeToClientVersion
     , optimumNumberOfPools
     , slottingParametersFromGenesis
@@ -102,13 +112,14 @@ import Control.Monad.Class.MonadSTM
     , atomically
     , isEmptyTMVar
     , modifyTVar'
-    , newEmptyTMVar
+    , newEmptyTMVarIO
     , newTMVarIO
     , newTQueue
     , newTVar
     , putTMVar
     , readTMVar
     , readTVar
+    , readTVarIO
     , takeTMVar
     , tryReadTMVar
     , writeTVar
@@ -125,8 +136,6 @@ import Control.Retry
     ( RetryPolicyM, RetryStatus (..), capDelay, fibonacciBackoff, recovering )
 import Control.Tracer
     ( Tracer (..), contramap, nullTracer, traceWith )
-import Data.ByteArray.Encoding
-    ( Base (..), convertToBase )
 import Data.ByteString.Lazy
     ( ByteString )
 import Data.Function
@@ -154,7 +163,7 @@ import Data.Time.Clock
 import Data.Void
     ( Void )
 import Fmt
-    ( Buildable (..), fmt, listF, mapF, pretty )
+    ( Buildable (..), fmt, hexF, listF, mapF, pretty, (+|), (|+) )
 import GHC.Stack
     ( HasCallStack )
 import Network.Mux
@@ -162,12 +171,7 @@ import Network.Mux
 import Ouroboros.Consensus.Cardano
     ( CardanoBlock )
 import Ouroboros.Consensus.Cardano.Block
-    ( BlockQuery (..)
-    , CardanoApplyTxErr
-    , CardanoEras
-    , CodecConfig (..)
-    , GenTx (..)
-    )
+    ( BlockQuery (..), CardanoEras, CodecConfig (..) )
 import Ouroboros.Consensus.HardFork.Combinator
     ( EraIndex (..), QueryAnytime (..), QueryHardFork (..), eraIndexToInt )
 import Ouroboros.Consensus.HardFork.Combinator.AcrossEras
@@ -240,8 +244,6 @@ import Ouroboros.Network.Protocol.LocalStateQuery.Client
     ( localStateQueryClientPeer )
 import Ouroboros.Network.Protocol.LocalStateQuery.Type
     ( LocalStateQuery )
-import Ouroboros.Network.Protocol.LocalTxSubmission.Client
-    ( localTxSubmissionClientPeer )
 import Ouroboros.Network.Protocol.LocalTxSubmission.Type
     ( LocalTxSubmission, SubmitResult (..) )
 import System.IO.Error
@@ -255,6 +257,7 @@ import UnliftIO.Concurrent
 import UnliftIO.Exception
     ( Handler (..), IOException )
 
+import qualified Cardano.Api as Cardano
 import qualified Cardano.Ledger.Core as SL.Core
 import qualified Cardano.Wallet.Primitive.SyncProgress as SyncProgress
 import qualified Cardano.Wallet.Primitive.Types as W
@@ -266,16 +269,11 @@ import qualified Codec.CBOR.Term as CBOR
 import qualified Data.Map as Map
 import qualified Data.Set as Set
 import qualified Data.Text as T
-import qualified Data.Text.Encoding as T
 import qualified Ouroboros.Consensus.Byron.Ledger as Byron
 import qualified Ouroboros.Consensus.Shelley.Ledger as Shelley
 import qualified Ouroboros.Network.Point as Point
 import qualified Shelley.Spec.Ledger.API as SL
 import qualified Shelley.Spec.Ledger.LedgerState as SL
-
-{- HLINT ignore "Use readTVarIO" -}
-{- HLINT ignore "Use newTVarIO" -}
-{- HLINT ignore "Use newEmptyTMVarIO" -}
 
 -- | Network layer cursor for Shelley. Mostly useless since the protocol itself is
 -- stateful and the node's keep track of the associated connection's cursor.
@@ -289,6 +287,8 @@ withNetworkLayer
     :: HasCallStack
     => Tracer IO NetworkLayerLog
         -- ^ Logging of network layer startup
+    -> Cardano.NetworkId
+       -- ^ NetworkId for local node connection
     -> W.NetworkParameters
         -- ^ Initial blockchain parameters
     -> CardanoNodeConn
@@ -299,20 +299,21 @@ withNetworkLayer
     -> (NetworkLayer IO (CardanoBlock StandardCrypto) -> IO a)
         -- ^ Callback function with the network layer
     -> IO a
-withNetworkLayer tr np conn ver tol action = do
+withNetworkLayer tr net np conn ver tol action = do
     trTimings <- traceQueryTimings tr
-    withNetworkLayerBase (tr <> trTimings) np conn ver tol action
+    withNetworkLayerBase (tr <> trTimings) net np conn ver tol action
 
 withNetworkLayerBase
     :: HasCallStack
     => Tracer IO NetworkLayerLog
+    -> Cardano.NetworkId
     -> W.NetworkParameters
     -> CardanoNodeConn
     -> (NodeToClientVersionData, CodecCBORTerm Text NodeToClientVersionData)
     -> SyncTolerance
     -> (NetworkLayer IO (CardanoBlock StandardCrypto) -> IO a)
     -> IO a
-withNetworkLayerBase tr np conn (versionData, _) tol action = do
+withNetworkLayerBase tr net np conn (versionData, _) tol action = do
     -- NOTE: We keep client connections running for accessing the node tip,
     -- submitting transactions, querying parameters and delegations/rewards.
     --
@@ -324,8 +325,10 @@ withNetworkLayerBase tr np conn (versionData, _) tol action = do
     -- FIXME: Would be nice to remove these multiple vars.
     -- Not as trivial as it seems, since we'd need to preserve the @debounce@
     -- behaviour.
-    (readNodeTip, networkParamsVar, interpreterVar, eraVar, localTxSubmissionQ)
+    (readNodeTip, networkParamsVar, interpreterVar, eraVar)
         <- connectNodeTipClient handlers
+
+    localTxSubmissionQ <- connectLocalTxSubmissionClient
 
     queryRewardQ <- connectDelegationRewardsClient handlers
 
@@ -352,9 +355,8 @@ withNetworkLayerBase tr np conn (versionData, _) tol action = do
             fst <$> atomically (readTMVar networkParamsVar)
         , currentSlottingParameters =
             snd <$> atomically (readTMVar networkParamsVar)
-        , postTx = \sealed -> do
-            era <- liftIO readCurrentNodeEra
-            _postTx localTxSubmissionQ era sealed
+        , postTx =
+            _postTx localTxSubmissionQ
         , stakeDistribution =
             _stakeDistribution queryRewardQ
         , getCachedRewardAccountBalance =
@@ -371,6 +373,7 @@ withNetworkLayerBase tr np conn (versionData, _) tol action = do
         , getGenesisBlockDate
         } = W.genesisParameters np
     sp = W.slottingParameters np
+    connectInfo = localNodeConnectInfo sp net conn
     cfg = codecConfig sp
 
     -- Put if empty, replace if not empty.
@@ -379,7 +382,6 @@ withNetworkLayerBase tr np conn (versionData, _) tol action = do
         unless e $ void $ takeTMVar var
         putTMVar var x
 
-
     connectNodeTipClient
         :: HasCallStack
         => RetryHandlers
@@ -387,23 +389,28 @@ withNetworkLayerBase tr np conn (versionData, _) tol action = do
               , TMVar IO (W.ProtocolParameters, W.SlottingParameters)
               , TMVar IO (CardanoInterpreter StandardCrypto)
               , TMVar IO AnyCardanoEra
-              , TQueue IO (LocalTxSubmissionCmd
-                  (GenTx (CardanoBlock StandardCrypto))
-                  (CardanoApplyTxErr StandardCrypto)
-                  IO)
               )
     connectNodeTipClient handlers = do
-        localTxSubmissionQ <- atomically newTQueue
-        networkParamsVar <- atomically newEmptyTMVar
-        interpreterVar <- atomically newEmptyTMVar
-        eraVar <- atomically newEmptyTMVar
+        networkParamsVar <- newEmptyTMVarIO
+        interpreterVar <- newEmptyTMVarIO
+        eraVar <- newEmptyTMVarIO
         (nodeTipClient, readTip) <- mkTipSyncClient tr np
-            localTxSubmissionQ
             (curry (atomically . repsertTMVar networkParamsVar))
             (atomically . repsertTMVar interpreterVar)
             (atomically . repsertTMVar eraVar)
         link =<< async (connectClient tr handlers nodeTipClient versionData conn)
-        pure (readTip, networkParamsVar, interpreterVar, eraVar, localTxSubmissionQ)
+        pure (readTip, networkParamsVar, interpreterVar, eraVar)
+
+    connectLocalTxSubmissionClient
+        :: IO ( TQueue IO (LocalTxSubmissionCmd
+                  (Cardano.TxInMode CardanoMode)
+                  (Cardano.TxValidationErrorInMode CardanoMode)
+                  IO)
+              )
+    connectLocalTxSubmissionClient = do
+        localTxSubmissionQ <- atomically newTQueue
+        mkCardanoApiClient tr connectInfo localTxSubmissionQ
+        pure localTxSubmissionQ
 
     connectDelegationRewardsClient
         :: HasCallStack
@@ -452,48 +459,16 @@ withNetworkLayerBase tr np conn (versionData, _) tol action = do
     _cursorSlotNo (Cursor _ point _) = do
         fromWithOrigin (SlotNo 0) $ pointSlot point
 
-    -- NOTE1: only shelley transactions can be submitted like this, because they
-    -- are deserialised as shelley transactions before submitting.
-    --
-    -- NOTE2: It is not ideal to query the current era again here because we
-    -- should in practice use the same era as the one used to construct the
-    -- transaction. However, when turning transactions to 'SealedTx', we loose
-    -- all form of type-level indicator about the era. The 'SealedTx' type
-    -- shouldn't be needed anymore since we've dropped jormungandr, so we could
-    -- instead carry a transaction from cardano-api types with proper typing.
-    _postTx localTxSubmissionQ era tx = do
+    -- NOTE: only shelley format transactions can be submitted for now.
+    _postTx localTxSubmissionQ tx = do
         liftIO $ traceWith tr $ MsgPostTx tx
-        case era of
-            AnyCardanoEra ByronEra ->
-                throwE $ ErrPostTxProtocolFailure "Invalid era: Byron"
-
-            AnyCardanoEra ShelleyEra -> do
-                let cmd = CmdSubmitTx $ unsealShelleyTx GenTxShelley tx
-                result <- liftIO $ localTxSubmissionQ `send` cmd
-                case result of
-                    SubmitSuccess -> pure ()
-                    SubmitFail err -> throwE $ ErrPostTxBadRequest $ T.pack (show err)
-
-            AnyCardanoEra AllegraEra -> do
-                let cmd = CmdSubmitTx $ unsealShelleyTx GenTxAllegra tx
-                result <- liftIO $ localTxSubmissionQ `send` cmd
-                case result of
-                    SubmitSuccess -> pure ()
-                    SubmitFail err -> throwE $ ErrPostTxBadRequest $ T.pack (show err)
-
-            AnyCardanoEra MaryEra -> do
-                let cmd = CmdSubmitTx $ unsealShelleyTx GenTxMary tx
-                result <- liftIO $ localTxSubmissionQ `send` cmd
-                case result of
-                    SubmitSuccess -> pure ()
-                    SubmitFail err -> throwE $ ErrPostTxBadRequest $ T.pack (show err)
-            AnyCardanoEra AlonzoEra -> do
-                let cmd = CmdSubmitTx $ unsealShelleyTx GenTxAlonzo tx
-                result <- liftIO $ localTxSubmissionQ `send` cmd
-                case result of
-                    SubmitSuccess -> pure ()
-                    SubmitFail err -> throwE $ ErrPostTxBadRequest $ T.pack (show err)
-
+        cmd <- case unsealShelleyTx tx of
+            Nothing -> throwE $ ErrPostTxProtocolFailure
+               "Byron era transactions are not supported."
+            Just tx' -> pure $ CmdSubmitTx tx'
+        liftIO (localTxSubmissionQ `send` cmd) >>= \case
+            SubmitSuccess -> pure ()
+            SubmitFail err -> throwE $ ErrPostTxBadRequest $ T.pack (show err)
 
     _stakeDistribution queue coin = do
         liftIO $ traceWith tr $ MsgWillQueryRewardsForStake coin
@@ -517,7 +492,6 @@ withNetworkLayerBase tr np conn (versionData, _) tol action = do
                 return res
             Nothing -> pure $ W.StakePoolsSummary 0 mempty mempty
       where
-
         stakeDistr
             :: LSQ (CardanoBlock StandardCrypto) IO
                 (Maybe (Map W.PoolId Percentage))
@@ -597,7 +571,6 @@ withNetworkLayerBase tr np conn (versionData, _) tol action = do
                     Left _pastHorizon -> return NotResponding
                     Right p -> return p
 
-
 --------------------------------------------------------------------------------
 --
 -- Network Client
@@ -638,12 +611,8 @@ mkWalletClient tr cfg gp chainSyncQ = do
                 runPipelinedPeer nullTracer (cChainSyncCodec $ codecs cfg) channel
                 $ chainSyncClientPeerPipelined
                 $ chainSyncWithBlocks tr' (fromTip' gp) chainSyncQ stash
-
-        , localTxSubmissionProtocol =
-            doNothingProtocol
-
-        , localStateQueryProtocol =
-            doNothingProtocol
+        , localTxSubmissionProtocol = doNothingProtocol
+        , localStateQueryProtocol = doNothingProtocol
         })
         nodeToClientVersion
   where
@@ -729,7 +698,6 @@ type CardanoInterpreter sc = Interpreter (CardanoEras sc)
 -- | Construct a network client with the given communication channel, for the
 -- purpose of:
 --
---  * Submitting transactions
 --  * Tracking the node tip
 --  * Tracking the latest protocol parameters state.
 --  * Querying the history interpreter as necessary.
@@ -739,12 +707,6 @@ mkTipSyncClient
         -- ^ Base trace for underlying protocols
     -> W.NetworkParameters
         -- ^ Initial blockchain parameters
-    -> TQueue m
-        (LocalTxSubmissionCmd
-            (GenTx (CardanoBlock StandardCrypto))
-            (CardanoApplyTxErr StandardCrypto)
-            m)
-        -- ^ Communication channel with the LocalTxSubmission client
     -> (W.ProtocolParameters -> W.SlottingParameters -> m ())
         -- ^ Notifier callback for when parameters for tip change.
     -> (CardanoInterpreter StandardCrypto -> m ())
@@ -752,7 +714,7 @@ mkTipSyncClient
     -> (AnyCardanoEra -> m ())
         -- ^ Notifier callback for when the era is updated
     -> m (NetworkClient m, STM m (Tip (CardanoBlock StandardCrypto)))
-mkTipSyncClient tr np localTxSubmissionQ onPParamsUpdate onInterpreterUpdate onEraUpdate = do
+mkTipSyncClient tr np onPParamsUpdate onInterpreterUpdate onEraUpdate = do
     (localStateQueryQ :: TQueue m (LocalStateQueryCmd (CardanoBlock StandardCrypto) m))
         <- atomically newTQueue
 
@@ -810,15 +772,7 @@ mkTipSyncClient tr np localTxSubmissionQ onPParamsUpdate onInterpreterUpdate onE
                     $ chainSyncClientPeer
                     $ chainSyncFollowTip toCardanoEra (curry (atomically . writeTVar tipVar))
 
-            , localTxSubmissionProtocol =
-                let
-                    tr' = contramap MsgTxSubmission tr
-                    codec = cTxSubmissionCodec $ serialisedCodecs cfg
-                in
-                InitiatorProtocolOnly $ MuxPeerRaw
-                    $ \channel -> runPeer tr' codec channel
-                    $ localTxSubmissionClientPeer
-                    $ localTxSubmission localTxSubmissionQ
+            , localTxSubmissionProtocol = doNothingProtocol
 
             , localStateQueryProtocol =
                 let
@@ -833,6 +787,30 @@ mkTipSyncClient tr np localTxSubmissionQ onPParamsUpdate onInterpreterUpdate onE
             nodeToClientVersion
     return (client, snd <$> readTVar tipVar)
     -- FIXME: We can remove the era from the tip sync client now.
+
+-- | Construct a network client with the given communication channel, for the
+-- purpose of submitting transactions.
+mkCardanoApiClient
+    :: Tracer IO NetworkLayerLog
+        -- ^ Base trace for underlying protocols
+    -> LocalNodeConnectInfo CardanoMode
+    -> TQueue IO
+        (LocalTxSubmissionCmd
+            (Cardano.TxInMode CardanoMode)
+            (Cardano.TxValidationErrorInMode CardanoMode)
+            IO)
+        -- ^ Communication channel with the LocalTxSubmission client
+    -> IO ()
+mkCardanoApiClient _tr info localTxSubmissionQ = connectToLocalNode info proto
+  where
+    proto = LocalNodeClientProtocols
+            { localChainSyncClient = NoLocalChainSyncClient
+            , localTxSubmissionClient = Just client
+            , localStateQueryClient = Nothing
+            }
+    client = localTxSubmission localTxSubmissionQ
+    -- fixme: put back tracing of messages
+    -- tr' = contramap MsgTxSubmission tr
 
 -- Reward Account Balances
 
@@ -974,9 +952,7 @@ newObserver tr fetch = do
                     modifyTVar' observedKeysVar (Set.delete k)
                     modifyTVar' cacheVar (Map.delete k)
                 traceWith tr $ MsgRemovedObserver k
-            , query = \k -> do
-                m <- atomically (readTVar cacheVar)
-                return $ Map.lookup k m
+            , query = \k -> Map.lookup k <$> readTVarIO cacheVar
             }
 
     refresh
@@ -1148,7 +1124,7 @@ data NetworkLayerLog where
     MsgConnectionLost :: Maybe IOException -> NetworkLayerLog
     MsgTxSubmission
         :: (TraceSendRecv
-            (LocalTxSubmission (GenTx (CardanoBlock StandardCrypto)) (CardanoApplyTxErr StandardCrypto)))
+            (LocalTxSubmission (Cardano.TxInMode CardanoMode) (Cardano.TxValidationErrorInMode CardanoMode)))
         -> NetworkLayerLog
     MsgLocalStateQuery
         :: QueryClientName
@@ -1220,10 +1196,8 @@ instance ToText NetworkLayerLog where
             ]
         MsgIntersectionFound point -> T.unwords
             [ "Intersection found:", pretty point ]
-        MsgPostTx (W.SealedTx bytes) -> T.unwords
-            [ "Posting transaction, serialized as:"
-            , T.decodeUtf8 $ convertToBase Base16 bytes
-            ]
+        MsgPostTx tx ->
+            "Posting transaction, serialized as:\n"+|hexF (serialisedTx tx)|+""
         MsgLocalStateQuery client msg ->
             T.pack (show client <> " " <> show msg)
         MsgNodeTip bh -> T.unwords

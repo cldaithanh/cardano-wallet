@@ -72,6 +72,8 @@ module Cardano.Wallet.Shelley.Compatibility
     , toCardanoValue
     , fromCardanoValue
     , rewardAccountFromAddress
+    , fromShelleyPParams
+    , fromAlonzoPParams
 
       -- ** Assessing sizes of token bundles
     , tokenBundleSizeAssessor
@@ -101,7 +103,6 @@ module Cardano.Wallet.Shelley.Compatibility
     , toByronNetworkMagic
     , fromTip
     , fromTip'
-    , fromShelleyPParams
     , fromNetworkDiscriminant
     , fromShelleyTx
     , fromAllegraTx
@@ -111,6 +112,7 @@ module Cardano.Wallet.Shelley.Compatibility
     , fromMaryBlock
     , fromMaryTx
     , fromAlonzoTx
+    , fromAlonzoBlock
 
       -- * Internal Conversions
     , decentralizationLevelFromPParams
@@ -130,6 +132,7 @@ import Cardano.Address.Derivation
     ( XPub, xpubPublicKey )
 import Cardano.Api
     ( AllegraEra
+    , AlonzoEra
     , AnyCardanoEra (..)
     , AsType (..)
     , CardanoEra (..)
@@ -144,8 +147,6 @@ import Cardano.Binary
     ( fromCBOR, serialize' )
 import Cardano.Crypto.Hash.Class
     ( Hash (UnsafeHash), hashToBytes )
-import Cardano.Ledger.Alonzo
-    ( AlonzoEra )
 import Cardano.Ledger.BaseTypes
     ( strictMaybeToMaybe, urlToText )
 import Cardano.Ledger.Era
@@ -219,6 +220,7 @@ import Data.Word
     ( Word16, Word32, Word64, Word8 )
 import Fmt
     ( Buildable (..) )
+import GHC.Records
 import GHC.Stack
     ( HasCallStack )
 import GHC.TypeLits
@@ -231,6 +233,9 @@ import Ouroboros.Consensus.Cardano.Block
     , CardanoGenTx
     , GenTx (..)
     , HardForkBlock (..)
+    , StandardAllegra
+    , StandardAlonzo
+    , StandardMary
     , StandardShelley
     )
 import Ouroboros.Consensus.HardFork.Combinator.AcrossEras
@@ -271,6 +276,12 @@ import qualified Cardano.Byron.Codec.Cbor as CBOR
 import qualified Cardano.Chain.Common as Byron
 import qualified Cardano.Crypto.Hash as Crypto
 import qualified Cardano.Ledger.Address as SL
+import qualified Cardano.Ledger.Alonzo as Alonzo
+import qualified Cardano.Ledger.Alonzo.Data as Alonzo
+import qualified Cardano.Ledger.Alonzo.PParams as Alonzo
+import qualified Cardano.Ledger.Alonzo.Tx as Alonzo
+import qualified Cardano.Ledger.Alonzo.TxBody as Alonzo
+import qualified Cardano.Ledger.Alonzo.TxSeq as Alonzo
 import qualified Cardano.Ledger.BaseTypes as SL
 import qualified Cardano.Ledger.Core as SL.Core
 import qualified Cardano.Ledger.Credential as SL
@@ -347,7 +358,7 @@ emptyGenesis gp = W.Block
 
 -- | The protocol client version. Distinct from the codecs version.
 nodeToClientVersion :: NodeToClientVersion
-nodeToClientVersion = NodeToClientV_8
+nodeToClientVersion = NodeToClientV_9
 
 -- | Settings for configuring a MainNet network client
 mainnetVersionData
@@ -514,11 +525,28 @@ fromMaryBlock gp blk@(ShelleyBlock (SL.Block _ (SL.TxSeq txs')) _) =
         , mconcat poolCerts
         )
 
+-- TODO: We could use the cardano-api `Block` pattern to very elegently get the
+-- header and txs of any era block.
+--
+-- We would need to remove the previous block hash from our `W.BlockHeader`,
+-- which shouldn't be needed modulo some hacks w.r.t. the genesis point which
+-- would need to be cleaned up too. We probably will need to use `Point block`,
+-- in all chain followers (including the DBLayer).
 fromAlonzoBlock
     :: W.GenesisParameters
-    -> ShelleyBlock (AlonzoEra StandardCrypto)
+    -> ShelleyBlock (Alonzo.AlonzoEra StandardCrypto)
     -> (W.Block, [W.PoolCertificate])
-fromAlonzoBlock = error "fromAlonzoBlock unimplemented" -- TODO: [ADP-952] fromAlonzoBlock
+fromAlonzoBlock gp blk@(ShelleyBlock (SL.Block _ (Alonzo.TxSeq txs')) _) =
+    let
+       (txs, dlgCerts, poolCerts) = unzip3 $ map fromAlonzoValidatedTx $ toList txs'
+    in
+        ( W.Block
+            { header = toShelleyBlockHeader (W.getGenesisBlockHash gp) blk
+            , transactions = txs
+            , delegations  = mconcat dlgCerts
+            }
+        , mconcat poolCerts
+        )
 
 fromShelleyHash :: ShelleyHash c -> W.Hash "BlockHeader"
 fromShelleyHash (ShelleyHash (SL.HashHeader h)) = W.Hash (hashToBytes h)
@@ -597,7 +625,9 @@ fromMaxTxSize =
     Quantity . fromIntegral
 
 fromShelleyPParams
-    :: forall era. W.EraInfo Bound -> SLAPI.PParams era -> W.ProtocolParameters
+    :: W.EraInfo Bound
+    -> SLAPI.PParams era
+    -> W.ProtocolParameters
 fromShelleyPParams eraInfo pp = W.ProtocolParameters
     { decentralizationLevel =
         decentralizationLevelFromPParams pp
@@ -614,9 +644,27 @@ fromShelleyPParams eraInfo pp = W.ProtocolParameters
     fromBound (Bound _relTime _slotNo (EpochNo e)) =
         W.EpochNo $ fromIntegral e
 
+fromAlonzoPParams
+    :: W.EraInfo Bound
+    -> Alonzo.PParams StandardAlonzo
+    -> W.ProtocolParameters
+fromAlonzoPParams eraInfo pp = W.ProtocolParameters
+    { decentralizationLevel =
+        decentralizationLevelFromPParams pp
+    , txParameters =
+        txParametersFromPParams pp
+    , desiredNumberOfStakePools =
+        desiredNumberOfStakePoolsFromPParams pp
+    , minimumUTxOvalue = W.Coin 0 -- TODO: use _coinsPerUTxOWord
+    , stakeKeyDeposit = stakeKeyDepositFromPParams pp
+    , eras = fromBound <$> eraInfo
+    }
+  where
+    fromBound (Bound _relTime _slotNo (EpochNo e)) =
+        W.EpochNo $ fromIntegral e
 
--- | Extract the current network decentralization level from the given set of
---   protocol parameters.
+
+-- | Extract the current network decentralization level from the
 --
 -- According to the Design Specification for Delegation and Incentives in
 -- Cardano, the decentralization parameter __/d/__ is a value in the range
@@ -635,42 +683,49 @@ fromShelleyPParams eraInfo pp = W.ProtocolParameters
 -- convert it into a percentage.
 --
 decentralizationLevelFromPParams
-    :: SLAPI.PParams era
+    :: HasField "_d" pparams SL.UnitInterval
+    => pparams
     -> W.DecentralizationLevel
 decentralizationLevelFromPParams pp =
     W.DecentralizationLevel $ fromUnitInterval
         -- We must invert the value provided: (see function comment)
         $ invertUnitInterval d
   where
-    d = SL._d pp
+    d = getField @"_d" pp
 
 txParametersFromPParams
-    :: SLAPI.PParams era
+    :: HasField "_minfeeA" pparams Natural
+    => HasField "_minfeeB" pparams Natural
+    => HasField "_maxTxSize" pparams Natural
+    => pparams
     -> W.TxParameters
 txParametersFromPParams pp = W.TxParameters
     { getFeePolicy = W.LinearFee
-        (Quantity (naturalToDouble (SL._minfeeB pp)))
-        (Quantity (naturalToDouble (SL._minfeeA pp)))
-    , getTxMaxSize = fromMaxTxSize $ SL._maxTxSize pp
+        (Quantity (naturalToDouble (getField @"_minfeeB" pp)))
+        (Quantity (naturalToDouble (getField @"_minfeeA" pp)))
+    , getTxMaxSize = fromMaxTxSize $ getField @"_maxTxSize" pp
     }
   where
     naturalToDouble :: Natural -> Double
     naturalToDouble = fromIntegral
 
 desiredNumberOfStakePoolsFromPParams
-    :: SLAPI.PParams era
+    :: HasField "_nOpt" pparams Natural
+    => pparams
     -> Word16
-desiredNumberOfStakePoolsFromPParams pp = fromIntegral (SL._nOpt pp)
+desiredNumberOfStakePoolsFromPParams pp = fromIntegral $ getField @"_nOpt" pp
 
 minimumUTxOvalueFromPParams
-    :: SLAPI.PParams era
+    :: HasField "_minUTxOValue" pparams SLAPI.Coin
+    => pparams
     -> W.Coin
-minimumUTxOvalueFromPParams = toWalletCoin . SL._minUTxOValue
+minimumUTxOvalueFromPParams = toWalletCoin . getField @"_minUTxOValue"
 
 stakeKeyDepositFromPParams
-    :: SLAPI.PParams era
+    :: HasField "_keyDeposit" pparams SLAPI.Coin
+    => pparams
     -> W.Coin
-stakeKeyDepositFromPParams = toWalletCoin . SL._keyDeposit
+stakeKeyDepositFromPParams = toWalletCoin . getField @"_keyDeposit"
 
 slottingParametersFromGenesis
     :: ShelleyGenesis e
@@ -914,13 +969,67 @@ fromMaryTx tx =
         W.TxOut (fromShelleyAddress addr) $
         fromCardanoValue $ Cardano.fromMaryValue value
 
-fromAlonzoTx
-    :: SLAPI.Tx (Cardano.ShelleyLedgerEra Cardano.AlonzoEra)
+fromAlonzoTxBodyAndAux
+    :: Alonzo.TxBody (Cardano.ShelleyLedgerEra AlonzoEra)
+    -> SLAPI.StrictMaybe (Alonzo.AuxiliaryData (Cardano.ShelleyLedgerEra AlonzoEra))
     -> ( W.Tx
        , [W.DelegationCertificate]
        , [W.PoolCertificate]
        )
-fromAlonzoTx = error "fromAlonzoTx unimplemented" -- TODO: [ADP-952] fromAlonzoTx
+fromAlonzoTxBodyAndAux bod mad =
+    ( W.Tx
+        (fromShelleyTxId $ SL.txid @(Cardano.ShelleyLedgerEra AlonzoEra) bod)
+        (Just $ fromShelleyCoin fee)
+        (map ((,W.Coin 0) . fromShelleyTxIn) (toList ins))
+        (map fromAlonzoTxOut (toList outs))
+        (fromShelleyWdrl wdrls)
+        (fromShelleyMD . toSLMetadata <$> SL.strictMaybeToMaybe mad)
+    , mapMaybe fromShelleyDelegationCert (toList certs)
+    , mapMaybe fromShelleyRegistrationCert (toList certs)
+    )
+  where
+    Alonzo.TxBody
+        ins
+        _collateral
+        outs
+        certs
+        wdrls
+        fee
+        _valid
+        _upd
+        _reqSignerHashes
+        _mint
+        _wwpHash
+        _adHash
+        _network
+        = bod
+
+    fromAlonzoTxOut
+         :: Alonzo.TxOut (Cardano.ShelleyLedgerEra AlonzoEra)
+         -> W.TxOut
+    fromAlonzoTxOut (Alonzo.TxOut addr value _) =
+        W.TxOut (fromShelleyAddress addr) $
+        fromCardanoValue $ Cardano.fromMaryValue value
+
+    toSLMetadata (Alonzo.AuxiliaryData blob _scripts) = SL.Metadata blob
+
+fromAlonzoValidatedTx
+    :: Alonzo.ValidatedTx (Cardano.ShelleyLedgerEra AlonzoEra)
+    -> ( W.Tx
+       , [W.DelegationCertificate]
+       , [W.PoolCertificate]
+       )
+fromAlonzoValidatedTx (Alonzo.ValidatedTx bod _wits _isValidating aux) =
+    fromAlonzoTxBodyAndAux bod aux
+
+fromAlonzoTx
+    :: SLAPI.Tx (Cardano.ShelleyLedgerEra AlonzoEra)
+    -> ( W.Tx
+       , [W.DelegationCertificate]
+       , [W.PoolCertificate]
+       )
+fromAlonzoTx (SL.Tx bod _wits aux) =
+    fromAlonzoTxBodyAndAux bod aux
 
 fromCardanoValue :: Cardano.Value -> TokenBundle.TokenBundle
 fromCardanoValue = uncurry TokenBundle.fromFlatList . extract

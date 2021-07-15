@@ -58,6 +58,7 @@ module Cardano.Wallet.Shelley.Compatibility
     , toShelleyTxOut
     , toAllegraTxOut
     , toMaryTxOut
+    , toAlonzoTxOut
     , toCardanoLovelace
     , sealShelleyTx
     , toStakeKeyRegCert
@@ -1252,9 +1253,8 @@ toShelleyTxOut (W.TxOut (W.Address addr) tokens) =
     Cardano.TxOut
         addrInEra
         (adaOnly $ toCardanoLovelace $ TokenBundle.getCoin tokens)
-        datumHash
+        Cardano.TxOutDatumHashNone
   where
-    datumHash = error "datumHash unimplemented" -- TODO: [ADP-952] datumHash
     adaOnly = Cardano.TxOutAdaOnly Cardano.AdaOnlyInShelleyEra
     addrInEra = fromMaybe (error "toCardanoTxOut: malformed address") $
         asum
@@ -1271,9 +1271,8 @@ toAllegraTxOut (W.TxOut (W.Address addr) tokens) =
     Cardano.TxOut
         addrInEra
         (adaOnly $ toCardanoLovelace $ TokenBundle.getCoin tokens)
-        datumHash
+        Cardano.TxOutDatumHashNone
   where
-    datumHash = error "datumHash unimplemented" -- TODO: [ADP-952] datumHash
     adaOnly = Cardano.TxOutAdaOnly Cardano.AdaOnlyInAllegraEra
     addrInEra = fromMaybe (error "toCardanoTxOut: malformed address") $
         asum
@@ -1290,12 +1289,28 @@ toMaryTxOut (W.TxOut (W.Address addr) tokens) =
     Cardano.TxOut
         addrInEra
         (Cardano.TxOutValue Cardano.MultiAssetInMaryEra $ toCardanoValue tokens)
-        datumHash
+        Cardano.TxOutDatumHashNone
   where
-    datumHash = error "datumHash unimplemented" -- TODO: [ADP-952] datumHash
     addrInEra = fromMaybe (error "toCardanoTxOut: malformed address") $
         asum
         [ Cardano.AddressInEra (Cardano.ShelleyAddressInEra Cardano.ShelleyBasedEraMary)
+            <$> deserialiseFromRawBytes AsShelleyAddress addr
+
+        , Cardano.AddressInEra Cardano.ByronAddressInAnyEra
+            <$> deserialiseFromRawBytes AsByronAddress addr
+        ]
+
+toAlonzoTxOut :: W.TxOut -> Cardano.TxOut AlonzoEra
+toAlonzoTxOut (W.TxOut (W.Address addr) tokens) =
+    Cardano.TxOut
+        addrInEra
+        (Cardano.TxOutValue Cardano.MultiAssetInAlonzoEra $ toCardanoValue tokens)
+        datumHash
+  where
+    datumHash = Cardano.TxOutDatumHashNone
+    addrInEra = fromMaybe (error "toCardanoTxOut: malformed address") $
+        asum
+        [ Cardano.AddressInEra (Cardano.ShelleyAddressInEra Cardano.ShelleyBasedEraAlonzo)
             <$> deserialiseFromRawBytes AsShelleyAddress addr
 
         , Cardano.AddressInEra Cardano.ByronAddressInAnyEra

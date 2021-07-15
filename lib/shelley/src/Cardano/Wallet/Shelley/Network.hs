@@ -804,10 +804,10 @@ mkTipSyncClient tr np localTxSubmissionQ onPParamsUpdate onInterpreterUpdate onE
     -- By blocking (with `send`) we ensure we don't queue multiple queries.
     let onTipUpdate _tip = do
             let qry = (,,) <$> queryParams <*> queryInterpreter <*> currentEra
-            (pparams, int, era) <- localStateQueryQ `send` (SomeLSQ qry)
+            (pparams, int, e) <- localStateQueryQ `send` (SomeLSQ qry)
             onPParamsUpdate' pparams
             onInterpreterUpdate int
-            onEraUpdate era
+            onEraUpdate e
 
     link =<< async (observeForever (readTVar tipVar) onTipUpdate)
 

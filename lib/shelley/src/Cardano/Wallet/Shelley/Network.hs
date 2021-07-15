@@ -78,6 +78,7 @@ import Cardano.Wallet.Shelley.Compatibility
     , fromTip
     , fromTip'
     , nodeToClientVersion
+    , optimumNumberOfPools
     , slottingParametersFromGenesis
     , toCardanoEra
     , toPoint
@@ -260,6 +261,7 @@ import UnliftIO.Exception
     ( Handler (..), IOException )
 
 import qualified Cardano.Api as Cardano
+import qualified Cardano.Ledger.Alonzo.PParams as Alonzo
 import qualified Cardano.Ledger.Core as SL.Core
 import qualified Cardano.Wallet.Primitive.SyncProgress as SyncProgress
 import qualified Cardano.Wallet.Primitive.Types as W
@@ -530,8 +532,12 @@ withNetworkLayerBase tr np conn (versionData, _) tol action = do
             (fromPoolDistr <$> LSQry Shelley.GetStakeDistribution)
 
         getNOpt :: LSQ (CardanoBlock StandardCrypto) IO (Maybe Int)
-        getNOpt = shelleyBased $
-            undefined <$> LSQry Shelley.GetCurrentPParams
+        getNOpt = era
+            (pure Nothing)
+            (Just . optimumNumberOfPools <$> LSQry Shelley.GetCurrentPParams)
+            (Just . optimumNumberOfPools <$> LSQry Shelley.GetCurrentPParams)
+            (Just . optimumNumberOfPools <$> LSQry Shelley.GetCurrentPParams)
+            (Just . fromIntegral . Alonzo._nOpt <$> LSQry Shelley.GetCurrentPParams)
 
         queryNonMyopicMemberRewards
             :: LSQ (CardanoBlock StandardCrypto) IO

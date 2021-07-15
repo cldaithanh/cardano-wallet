@@ -581,9 +581,9 @@ withCluster tr dir LocalClusterConfig{..} onSetup onClusterStart =
             else do
                 let cfg = NodeParams systemStart cfgLastHardFork
                         (port0, ports) cfgNodeLogging
-                --withRelayNode tr dir cfg $ \socket -> do
-                    --let runningRelay = RunningNode socket block0 params
-                onClusterStart (RunningNode bftSocket block0 params) `finally` cancelAll
+                withRelayNode tr dir cfg $ \socket -> do
+                    let runningRelay = RunningNode socket block0 params
+                    onClusterStart runningRelay `finally` cancelAll
   where
     -- | Get permutations of the size (n-1) for a list of n elements, alongside
     -- with the element left aside. `[a]` is really expected to be `Set a`.

@@ -837,10 +837,10 @@ fromNonMyopicMemberRewards =
     . O.unNonMyopicMemberRewards
 
 optimumNumberOfPools
-    :: forall era. (SLAPI.PParams era ~ SL.Core.PParams era)
-    => SL.Core.PParams era
+    :: HasField "_nOpt" pparams Natural
+    => pparams
     -> Int
-optimumNumberOfPools = unsafeConvert . SL._nOpt
+optimumNumberOfPools = unsafeConvert . getField @"_nOpt"
   where
     -- A value of ~100 can be expected, so should be fine.
     unsafeConvert :: Natural -> Int

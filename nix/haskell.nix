@@ -56,7 +56,7 @@ let
           package.isProject = true;
 
           # Enable release flag (optimization and -Werror)
-          flags.release = true;
+          flags.release = false;
 
           # Enable Haskell Program Coverage for all local libraries
           # and test suites.

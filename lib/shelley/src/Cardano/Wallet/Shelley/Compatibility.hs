@@ -167,7 +167,8 @@ import Cardano.Wallet.Byron.Compatibility
 import Cardano.Wallet.Primitive.AddressDerivation
     ( NetworkDiscriminant (..) )
 import Cardano.Wallet.Primitive.Types
-    ( PoolCertificate (..)
+    ( MinimumUTxOValue (..)
+    , PoolCertificate (..)
     , PoolRegistrationCertificate (..)
     , PoolRetirementCertificate (..)
     )
@@ -637,7 +638,7 @@ fromShelleyPParams eraInfo pp = W.ProtocolParameters
     , desiredNumberOfStakePools =
         desiredNumberOfStakePoolsFromPParams pp
     , minimumUTxOvalue =
-        minimumUTxOvalueFromPParams pp
+        MinimumUTxOValue . toWalletCoin $ SLAPI._minUTxOValue pp
     , stakeKeyDeposit = stakeKeyDepositFromPParams pp
     , eras = fromBound <$> eraInfo
     }
@@ -656,7 +657,8 @@ fromAlonzoPParams eraInfo pp = W.ProtocolParameters
         txParametersFromPParams pp
     , desiredNumberOfStakePools =
         desiredNumberOfStakePoolsFromPParams pp
-    , minimumUTxOvalue = W.Coin 0 -- TODO: use _coinsPerUTxOWord
+    , minimumUTxOvalue = MinimumUTxOValueCostPerWord
+        . toWalletCoin $ Alonzo._coinsPerUTxOWord pp
     , stakeKeyDeposit = stakeKeyDepositFromPParams pp
     , eras = fromBound <$> eraInfo
     }
@@ -715,12 +717,6 @@ desiredNumberOfStakePoolsFromPParams
     => pparams
     -> Word16
 desiredNumberOfStakePoolsFromPParams pp = fromIntegral $ getField @"_nOpt" pp
-
-minimumUTxOvalueFromPParams
-    :: HasField "_minUTxOValue" pparams SLAPI.Coin
-    => pparams
-    -> W.Coin
-minimumUTxOvalueFromPParams = toWalletCoin . getField @"_minUTxOValue"
 
 stakeKeyDepositFromPParams
     :: HasField "_keyDeposit" pparams SLAPI.Coin

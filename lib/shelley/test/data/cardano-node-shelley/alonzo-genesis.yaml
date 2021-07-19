@@ -1,7 +1,7 @@
 # Taken from https://hydra.iohk.io/build/6782523/download/1/index.html
 # and not sanity-checked for appropriateness for when we turn on Alonzo
 # in our test cluster.
-adaPerUTxOWord: 0
+adaPerUTxOWord: 30000
 executionPrices:
   prMem: 1
   prSteps: 1
@@ -11,6 +11,6 @@ maxTxExUnits:
 maxBlockExUnits:
   exUnitsMem: 1
   exUnitsSteps: 1
-maxValueSize: 1000
+maxValueSize: 3000
 collateralPercentage: 100
 maxCollateralInputs: 1

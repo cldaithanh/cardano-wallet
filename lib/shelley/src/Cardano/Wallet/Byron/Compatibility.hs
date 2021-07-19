@@ -164,7 +164,7 @@ mainnetNetworkParameters = W.NetworkParameters
                 Quantity 4096
             }
         , desiredNumberOfStakePools = 0
-        , minimumUTxOvalue = W.Coin 0
+        , minimumUTxOvalue = W.MinimumUTxOValue $ W.Coin 0
         , stakeKeyDeposit = W.Coin 0
         , eras = W.emptyEraInfo
         }
@@ -412,7 +412,7 @@ protocolParametersFromPP eraInfo pp = W.ProtocolParameters
         , getTxMaxSize = fromMaxTxSize $ Update.ppMaxTxSize pp
         }
     , desiredNumberOfStakePools = 0
-    , minimumUTxOvalue = W.Coin 0
+    , minimumUTxOvalue = W.MinimumUTxOValue $ W.Coin 0
     , stakeKeyDeposit = W.Coin 0
     , eras = fromBound <$> eraInfo
     }

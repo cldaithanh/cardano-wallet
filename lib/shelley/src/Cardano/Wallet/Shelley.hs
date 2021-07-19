@@ -398,8 +398,7 @@ serveWallet
                     getActiveSlotCoefficient sp
                 , defaultDesiredNumberOfPool =
                     desiredNumberOfStakePools pp
-                , defaultMinimumUTxOValue =
-                    minimumUTxOvalue pp
+                , defaultMinimumUTxOValue = error "todo"
                 , defaultHardforkEpoch = Nothing
                 -- NOTE: see ADP-643
                 --

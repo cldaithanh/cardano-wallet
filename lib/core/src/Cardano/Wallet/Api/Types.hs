@@ -997,10 +997,10 @@ toApiNetworkParameters (NetworkParameters gp sp pp) toEpochInfo = do
             $ unDecentralizationLevel
             $ view #decentralizationLevel pp
         , desiredPoolNumber = view #desiredNumberOfStakePools pp
-        , minimumUtxoValue = Quantity
-            $ fromIntegral
-            $ unCoin
-            $ view #minimumUTxOvalue pp
+        , minimumUtxoValue = Quantity 0 -- FIXME
+--            $ fromIntegral
+--            $ unCoin
+--            $ view #minimumUTxOvalue pp
         , eras = apiEras
         }
 

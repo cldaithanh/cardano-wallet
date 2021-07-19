@@ -397,7 +397,7 @@ spec = do
                   ledgerTx = Cardano.makeSignedTransaction addrWits unsigned
                   addrWits = map (mkByronWitness unsigned Cardano.Mainnet) pairs
                   fee = toCardanoLovelace $ selectionDelta txOutCoin cs
-                  Right unsigned = mkUnsignedTx era slotNo cs md mempty [] fee
+                  Right unsigned = mkUnsignedTx era slotNo cs md mempty [] fee Nothing
                   cs = SelectionResult
                       { inputsSelected = NE.fromList inps
                       , extraCoinSource = Nothing
@@ -489,7 +489,7 @@ spec = do
                   net = Cardano.Testnet (Cardano.NetworkMagic 0)
                   addrWits = map (mkByronWitness unsigned net) pairs
                   fee = toCardanoLovelace $ selectionDelta txOutCoin cs
-                  Right unsigned = mkUnsignedTx era slotNo cs md mempty [] fee
+                  Right unsigned = mkUnsignedTx era slotNo cs md mempty [] fee Nothing
                   cs = SelectionResult
                     { inputsSelected = NE.fromList inps
                     , extraCoinSource = Nothing
@@ -621,7 +621,7 @@ prop_decodeSignedShelleyTxRoundtrip shelleyEra (DecodeShelleySetup utxo outs md 
     let inps = Map.toList $ getUTxO utxo
     let cs = mkSelection inps
     let fee = toCardanoLovelace $ selectionDelta txOutCoin cs
-    let Right unsigned = mkUnsignedTx shelleyEra slotNo cs md mempty [] fee
+    let Right unsigned = mkUnsignedTx shelleyEra slotNo cs md mempty [] fee Nothing
     let addrWits = map (mkShelleyWitness unsigned) pairs
     let wits = addrWits
     let ledgerTx = Cardano.makeSignedTransaction wits unsigned
@@ -645,7 +645,7 @@ prop_decodeSignedByronTxRoundtrip (DecodeByronSetup utxo outs slotNo ntwrk pairs
     let inps = Map.toList $ getUTxO utxo
     let cs = mkSelection inps
     let fee = toCardanoLovelace $ selectionDelta txOutCoin cs
-    let Right unsigned = mkUnsignedTx shelleyEra slotNo cs Nothing mempty [] fee
+    let Right unsigned = mkUnsignedTx shelleyEra slotNo cs Nothing mempty [] fee Nothing
     let byronWits = map (mkByronWitness unsigned ntwrk) pairs
     let ledgerTx = Cardano.makeSignedTransaction byronWits unsigned
 

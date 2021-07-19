@@ -86,6 +86,8 @@ import Cardano.Wallet.Primitive.CoinSelection.MA.RoundRobin
     , prepareOutputsWith
     , selectionDelta
     )
+import Cardano.Wallet.Primitive.MintBurn
+    ( TxMintBurn )
 import Cardano.Wallet.Primitive.Types
     ( FeePolicy (..), ProtocolParameters (..), TxParameters (..) )
 import Cardano.Wallet.Primitive.Types.Address
@@ -121,8 +123,10 @@ import Cardano.Wallet.Shelley.Compatibility
     ( fromCardanoTx
     , fromShelleyTxId
     , maxTokenBundleSerializedLengthBytes
+    , prettyPrintTxMintBurnConversionError
     , toAllegraTxOut
     , toCardanoLovelace
+    , toCardanoMintValue
     , toCardanoStakeCredential
     , toCardanoTxIn
     , toMaryTxOut
@@ -153,6 +157,8 @@ import Data.Bifunctor
     ( bimap )
 import Data.ByteString
     ( ByteString )
+import Data.Either.Combinators
+    ( mapLeft )
 import Data.Function
     ( (&) )
 import Data.Generics.Internal.VL.Lens
@@ -267,12 +273,14 @@ constructUnsignedTx
     -- ^ Finalized asset selection
     -> Coin
     -- ^ Explicit fee amount
+    -> Maybe TxMintBurn
+    -- ^ Optional tokens to mint/burn
     -> ShelleyBasedEra era
     -> Either ErrMkTx SerialisedTx
-constructUnsignedTx networkId (md, certs) ttl rewardAcnt wdrl cs fee era =
+constructUnsignedTx networkId (md, certs) ttl rewardAcnt wdrl cs fee mintBurn era =
     SerialisedTx . serialiseToCBOR <$> tx
   where
-    tx = mkUnsignedTx era ttl cs md wdrls certs (toCardanoLovelace fee)
+    tx = mkUnsignedTx era ttl cs md wdrls certs (toCardanoLovelace fee) mintBurn
     wdrls = mkWithdrawals networkId rewardAcnt wdrl
 
 constructSignedTx
@@ -366,16 +374,19 @@ mkTx
     -- ^ Finalized asset selection
     -> Coin
     -- ^ Explicit fee amount
+    -> Maybe TxMintBurn
+    -- ^ Optional tokens to mint/burn
     -> ShelleyBasedEra era
     -> Either ErrMkTx (Tx, SealedTx)
-mkTx networkId payload ttl (rewardAcnt, pwdAcnt) keyFrom wdrl cs fees era = do
+mkTx networkId payload ttl (rewardAcnt, pwdAcnt) keyFrom wdrl cs fees mintBurn era = do
     let TxPayload md certs mkExtraWits = payload
     let wdrls = mkWithdrawals
             networkId
             (toRewardAccountRaw . toXPub $ rewardAcnt)
             wdrl
 
-    unsigned <- mkUnsignedTx era ttl cs md wdrls certs (toCardanoLovelace fees)
+    unsigned <-
+        mkUnsignedTx era ttl cs md wdrls certs (toCardanoLovelace fees) mintBurn
 
     wits <- case txWitnessTagFor @k of
         TxWitnessShelleyUTxO -> do
@@ -414,12 +425,13 @@ newTransactionLayer networkId = TransactionLayer
         let ttl   = txTimeToLive ctx
         let wdrl  = withdrawalToCoin $ view #txWithdrawal ctx
         let delta = selectionDelta txOutCoin selection
+        let mintBurn = txMintBurn ctx
         case view #txDelegationAction ctx of
             Nothing -> do
                 withShelleyBasedEra era $ do
                     let payload = TxPayload (view #txMetadata ctx) mempty mempty
                     let fees = delta
-                    mkTx networkId payload ttl stakeCreds keystore wdrl selection fees
+                    mkTx networkId payload ttl stakeCreds keystore wdrl selection fees mintBurn
 
             Just action -> do
                 withShelleyBasedEra era $ do
@@ -434,7 +446,7 @@ newTransactionLayer networkId = TransactionLayer
                                 unsafeSubtractCoin selection delta (stakeKeyDeposit pp)
                             _ ->
                                 delta
-                    mkTx networkId payload ttl stakeCreds keystore wdrl selection fees
+                    mkTx networkId payload ttl stakeCreds keystore wdrl selection fees mintBurn
 
     , mkSignedTransaction = constructSignedTx networkId
 
@@ -443,12 +455,13 @@ newTransactionLayer networkId = TransactionLayer
         let wdrl  = withdrawalToCoin $ view #txWithdrawal ctx
         let delta = selectionDelta txOutCoin selection
         let rewardAcct = toRewardAccountRaw stakeXPub
+        let mintBurn = txMintBurn ctx
         case view #txDelegationAction ctx of
             Nothing -> do
                 withShelleyBasedEra era $ do
                     let md = view #txMetadata ctx
                     let fees = delta
-                    constructUnsignedTx networkId (md, []) ttl rewardAcct wdrl selection fees
+                    constructUnsignedTx networkId (md, []) ttl rewardAcct wdrl selection fees mintBurn
 
             Just action -> do
                 withShelleyBasedEra era $ do
@@ -459,7 +472,7 @@ newTransactionLayer networkId = TransactionLayer
                                 unsafeSubtractCoin selection delta (stakeKeyDeposit pp)
                             _ ->
                                 delta
-                    constructUnsignedTx networkId payload ttl rewardAcct wdrl selection fees
+                    constructUnsignedTx networkId payload ttl rewardAcct wdrl selection fees mintBurn
 
     , initSelectionCriteria = _initSelectionCriteria @k
 
@@ -1297,71 +1310,87 @@ mkUnsignedTx
     -> [(Cardano.StakeAddress, Cardano.Lovelace)]
     -> [Cardano.Certificate]
     -> Cardano.Lovelace
+    -> Maybe TxMintBurn
     -> Either ErrMkTx (Cardano.TxBody era)
-mkUnsignedTx era ttl cs md wdrls certs fees =
+mkUnsignedTx era ttl cs md wdrls certs fees mMint = do
+    let cardanoEra = toCardanoEra era
+    txMintValue <- case mMint of
+        Nothing -> Right Cardano.TxMintNone
+        Just txMintBurn ->
+            mapLeft
+              (ErrConstructedInvalidTx . prettyPrintTxMintBurnConversionError)
+            $ toCardanoMintValue cardanoEra txMintBurn
+
     left toErrMkTx $ Cardano.makeTransactionBody $ Cardano.TxBodyContent
-    { Cardano.txIns =
-        (,Cardano.BuildTxWith (Cardano.KeyWitness Cardano.KeyWitnessForSpending))
-        . toCardanoTxIn
-        . fst <$> F.toList (inputsSelected cs)
+     { Cardano.txIns =
+         (,Cardano.BuildTxWith (Cardano.KeyWitness Cardano.KeyWitnessForSpending))
+         . toCardanoTxIn
+         . fst <$> F.toList (inputsSelected cs)
 
-    , Cardano.txOuts =
-        toShelleyBasedTxOut <$> (outputsCovered cs ++ F.toList (changeGenerated cs))
+     , Cardano.txOuts =
+         toShelleyBasedTxOut <$> (outputsCovered cs ++ F.toList (changeGenerated cs))
 
-    , Cardano.txWithdrawals =
-        let
-            wit = Cardano.BuildTxWith
-                $ Cardano.KeyWitness Cardano.KeyWitnessForStakeAddr
-        in
-            Cardano.TxWithdrawals wdrlsSupported
-                (map (\(key, coin) -> (key, coin, wit)) wdrls)
+     , Cardano.txWithdrawals =
+         let
+             wit = Cardano.BuildTxWith
+                 $ Cardano.KeyWitness Cardano.KeyWitnessForStakeAddr
+         in
+             Cardano.TxWithdrawals wdrlsSupported
+                 (map (\(key, coin) -> (key, coin, wit)) wdrls)
 
-    , txInsCollateral =
-        -- TODO: [ADP-957] Support collateral.
-        Cardano.TxInsCollateralNone
+     , txInsCollateral =
+         -- TODO: [ADP-957] Support collateral.
+         Cardano.TxInsCollateralNone
 
-    , txProtocolParams =
-        -- TODO: [ADP-952] We presumably need to provide the protocol params if
-        -- our tx uses scripts?
-        Cardano.BuildTxWith Nothing
+     , txProtocolParams =
+         -- TODO: [ADP-952] We presumably need to provide the protocol params if
+         -- our tx uses scripts?
+         Cardano.BuildTxWith Nothing
 
-    , txExtraScriptData = Cardano.BuildTxWith Cardano.TxExtraScriptDataNone
+     , txExtraScriptData = Cardano.BuildTxWith Cardano.TxExtraScriptDataNone
 
-    , txExtraKeyWits = Cardano.TxExtraKeyWitnessesNone
+     , txExtraKeyWits = Cardano.TxExtraKeyWitnessesNone
 
-    , Cardano.txCertificates =
-        let
-            -- It seems that passing Map.empty here works just fine.
-            witMap = Map.empty
-            ctx = Cardano.BuildTxWith witMap
-        in
-            Cardano.TxCertificates certSupported certs ctx
+     , Cardano.txCertificates =
+         let
+             -- It seems that passing Map.empty here works just fine.
+             witMap = Map.empty
+             ctx = Cardano.BuildTxWith witMap
+         in
+             Cardano.TxCertificates certSupported certs ctx
 
-    , Cardano.txFee = explicitFees fees
+     , Cardano.txFee = explicitFees fees
 
-    , Cardano.txValidityRange =
-        ( Cardano.TxValidityNoLowerBound
-        , Cardano.TxValidityUpperBound txValidityUpperBoundSupported ttl
-        )
+     , Cardano.txValidityRange =
+         ( Cardano.TxValidityNoLowerBound
+         , Cardano.TxValidityUpperBound txValidityUpperBoundSupported ttl
+         )
 
-    , Cardano.txMetadata =
-        maybe
-            Cardano.TxMetadataNone
-            (Cardano.TxMetadataInEra metadataSupported)
-            md
+     , Cardano.txMetadata =
+         maybe
+             Cardano.TxMetadataNone
+             (Cardano.TxMetadataInEra metadataSupported)
+             md
 
-    , Cardano.txAuxScripts =
-        Cardano.TxAuxScriptsNone
+     , Cardano.txAuxScripts =
+         Cardano.TxAuxScriptsNone
 
-    , Cardano.txUpdateProposal =
-        Cardano.TxUpdateProposalNone
+     , Cardano.txUpdateProposal =
+         Cardano.TxUpdateProposalNone
 
-    , Cardano.txMintValue =
-        Cardano.TxMintNone
-    }
+     , Cardano.txMintValue =
+         txMintValue
+     }
   where
     toErrMkTx :: Cardano.TxBodyError era -> ErrMkTx
     toErrMkTx = ErrConstructedInvalidTx . T.pack . Cardano.displayError
+
+    toCardanoEra :: ShelleyBasedEra era -> CardanoEra era
+    toCardanoEra = \case
+        ShelleyBasedEraShelley -> Cardano.ShelleyEra
+        ShelleyBasedEraAllegra -> Cardano.AllegraEra
+        ShelleyBasedEraMary -> Cardano.MaryEra
+        ShelleyBasedEraAlonzo -> Cardano.AlonzoEra
 
     toShelleyBasedTxOut :: TxOut -> Cardano.TxOut era
     toShelleyBasedTxOut = case era of

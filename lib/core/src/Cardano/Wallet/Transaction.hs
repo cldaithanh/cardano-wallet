@@ -46,6 +46,8 @@ import Cardano.Wallet.Primitive.AddressDerivation
     ( Depth (..), DerivationIndex, Passphrase )
 import Cardano.Wallet.Primitive.CoinSelection.MA.RoundRobin
     ( SelectionCriteria, SelectionResult, SelectionSkeleton )
+import Cardano.Wallet.Primitive.MintBurn
+    ( TxMintBurn )
 import Cardano.Wallet.Primitive.Types
     ( PoolId, ProtocolParameters, SlotNo (..) )
 import Cardano.Wallet.Primitive.Types.Address
@@ -186,6 +188,8 @@ data TransactionCtx = TransactionCtx
     -- ^ Transaction expiry (TTL) slot.
     , txDelegationAction :: Maybe DelegationAction
     -- ^ An additional delegation to take.
+    , txMintBurn :: Maybe TxMintBurn
+    -- ^ Optional tokens to mint/burn.
     } deriving (Show, Generic, Eq)
 
 data Withdrawal
@@ -208,6 +212,7 @@ defaultTransactionCtx = TransactionCtx
     , txMetadata = Nothing
     , txTimeToLive = maxBound
     , txDelegationAction = Nothing
+    , txMintBurn = Nothing
     }
 
 -- | Whether the user is attempting any particular delegation action.

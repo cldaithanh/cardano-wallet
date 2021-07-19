@@ -35,6 +35,9 @@ module Cardano.Wallet.Shelley.Compatibility
     , AllegraEra
     , CardanoBlock
     , NetworkId(..)
+    , ErrScriptConversion(..)
+    , ErrScriptWitnessConversion(..)
+    , ErrTxMintBurnConversion(..)
 
     , NodeVersionData
     , StandardCrypto
@@ -60,6 +63,9 @@ module Cardano.Wallet.Shelley.Compatibility
     , toAllegraTxOut
     , toMaryTxOut
     , toCardanoLovelace
+    , toCardanoScript
+    , toCardanoScriptWitness
+    , toCardanoPolicyId
     , toStakeKeyRegCert
     , toStakeKeyDeregCert
     , toStakePoolDlgCert
@@ -73,6 +79,7 @@ module Cardano.Wallet.Shelley.Compatibility
     , fromCardanoValue
     , rewardAccountFromAddress
     , fromShelleyTxId
+    , toCardanoMintValue
 
       -- ** Assessing sizes of token bundles
     , tokenBundleSizeAssessor
@@ -118,6 +125,9 @@ module Cardano.Wallet.Shelley.Compatibility
     , invertUnitInterval
     , interval0
     , interval1
+    , prettyPrintScriptConversionError
+    , prettyPrintScriptWitnessConversionError
+    , prettyPrintTxMintBurnConversionError
     ) where
 
 import Prelude
@@ -181,7 +191,7 @@ import Control.Applicative
 import Control.Arrow
     ( left )
 import Control.Monad
-    ( when, (>=>) )
+    ( forM, when, (>=>) )
 import Crypto.Hash.Utils
     ( blake2b224 )
 import Data.Bifunctor
@@ -202,8 +212,12 @@ import Data.ByteString.Short
     ( fromShort, toShort )
 import Data.Coerce
     ( coerce )
+import Data.Either.Combinators
+    ( mapLeft )
 import Data.Foldable
     ( asum, toList )
+import Data.Function
+    ( (&) )
 import Data.Map.Strict
     ( Map )
 import Data.Maybe
@@ -220,6 +234,8 @@ import Data.Word
     ( Word16, Word32, Word64, Word8 )
 import Fmt
     ( Buildable (..) )
+import GHC.Generics
+    ( Generic )
 import GHC.Stack
     ( HasCallStack )
 import GHC.TypeLits
@@ -254,6 +270,7 @@ import Ouroboros.Network.NodeToClient
 import Ouroboros.Network.Point
     ( WithOrigin (..) )
 
+import qualified Cardano.Address.Script as Cardano.Address
 import qualified Cardano.Address.Style.Shelley as CA
 import qualified Cardano.Api as Cardano
 import qualified Cardano.Api.Byron as Cardano
@@ -274,6 +291,9 @@ import qualified Cardano.Ledger.Shelley.Constraints as SL
 import qualified Cardano.Ledger.ShelleyMA as MA
 import qualified Cardano.Ledger.ShelleyMA.AuxiliaryData as MA
 import qualified Cardano.Ledger.ShelleyMA.TxBody as MA
+import qualified Cardano.Wallet.Primitive.MintBurn as W
+    ( TxMintBurn )
+import qualified Cardano.Wallet.Primitive.MintBurn as MintBurn
 import qualified Cardano.Wallet.Primitive.Types as W
 import qualified Cardano.Wallet.Primitive.Types.Address as W
 import qualified Cardano.Wallet.Primitive.Types.Coin as W
@@ -281,6 +301,7 @@ import qualified Cardano.Wallet.Primitive.Types.Hash as W
 import qualified Cardano.Wallet.Primitive.Types.RewardAccount as W
 import qualified Cardano.Wallet.Primitive.Types.TokenBundle as TokenBundle
 import qualified Cardano.Wallet.Primitive.Types.TokenPolicy as W
+import qualified Cardano.Wallet.Primitive.Types.TokenPolicy as TokenPolicy
 import qualified Cardano.Wallet.Primitive.Types.TokenQuantity as W
 import qualified Cardano.Wallet.Primitive.Types.Tx as W
 import qualified Codec.Binary.Bech32 as Bech32
@@ -292,6 +313,7 @@ import qualified Data.ByteString.Lazy as BL
 import qualified Data.ByteString.Short as SBS
 import qualified Data.Map.Strict as Map
 import qualified Data.Set as Set
+import qualified Data.Text as T
 import qualified Data.Text.Encoding as T
 import qualified Ouroboros.Consensus.Shelley.Ledger as O
 import qualified Ouroboros.Network.Block as O
@@ -303,6 +325,70 @@ import qualified Shelley.Spec.Ledger.UTxO as SL
 
 type NodeVersionData =
     (NodeToClientVersionData, CodecCBORTerm Text NodeToClientVersionData)
+
+-- | Errors that can occur when converting our script type to the
+-- underlying cardano-api script type.
+data ErrScriptConversion
+    = ErrScriptConversionHashExpectedSize !Int
+    | ErrScriptConversionExpectedPaymentKey
+    deriving (Generic, Eq, Show)
+
+prettyPrintScriptConversionError :: ErrScriptConversion -> T.Text
+prettyPrintScriptConversionError = \case
+    ErrScriptConversionHashExpectedSize sz ->
+        "Expected a hash of size '" <> T.pack (show sz) <> "'."
+    ErrScriptConversionExpectedPaymentKey  ->
+        "Scripts can't require the signature of a delegation key."
+
+-- | Errors that can occur when converting our script type to the
+-- underlying cardano-api script type.
+data ErrScriptWitnessConversion era
+    = ErrUnderlyingScriptConversionError ErrScriptConversion
+    | ErrScriptLanguageNotSupportedInEra
+        (Cardano.CardanoEra era)
+        (Cardano.SimpleScriptVersion Cardano.SimpleScriptV2)
+    deriving (Generic, Eq, Show)
+
+prettyPrintScriptWitnessConversionError
+    :: ErrScriptWitnessConversion era -> T.Text
+prettyPrintScriptWitnessConversionError = \case
+    ErrUnderlyingScriptConversionError err ->
+        prettyPrintScriptConversionError err
+    ErrScriptLanguageNotSupportedInEra
+      era Cardano.SimpleScriptV2 ->
+        "The script language 'SimpleScriptV2' is not supported in the "
+        <> prettyPrintCardanoEra era <> " era."
+
+prettyPrintCardanoEra :: CardanoEra era -> T.Text
+prettyPrintCardanoEra = \case
+    ByronEra -> "Byron"
+    ShelleyEra -> "Shelley"
+    AllegraEra -> "Allegra"
+    MaryEra -> "Mary"
+    AlonzoEra -> "Alonzo"
+
+-- | Errors that can occur when converting the mint/burn wallet data to the
+-- Cardano.API representation.
+data ErrTxMintBurnConversion era
+    = ErrTxMintBurnMultiAssetNotSupportedInEra
+          (Cardano.OnlyAdaSupportedInEra era)
+    | ErrTxMintBurnScriptConversionError
+          (ErrScriptWitnessConversion era)
+    deriving (Eq, Show)
+
+-- | Pretty print a @TxMintBurn@ conversion to Cardano.API error.
+prettyPrintTxMintBurnConversionError :: ErrTxMintBurnConversion era -> Text
+prettyPrintTxMintBurnConversionError = \case
+    ErrTxMintBurnMultiAssetNotSupportedInEra adaEra ->
+        "Multi-asset minting is not supported in the "
+        <> (case adaEra of
+               Cardano.AdaOnlyInByronEra -> "Byron"
+               Cardano.AdaOnlyInShelleyEra -> "Shelley"
+               Cardano.AdaOnlyInAllegraEra -> "Allegra"
+           )
+        <> " era."
+    ErrTxMintBurnScriptConversionError err ->
+        prettyPrintScriptWitnessConversionError err
 
 --------------------------------------------------------------------------------
 --
@@ -1147,17 +1233,119 @@ toCardanoValue tb = Cardano.valueFromList $
     toCardanoAssetId (TokenBundle.AssetId pid name) =
         Cardano.AssetId (toCardanoPolicyId pid) (toCardanoAssetName name)
 
-    toCardanoPolicyId (W.UnsafeTokenPolicyId (W.Hash pid)) = just "PolicyId" $
-        Cardano.deserialiseFromRawBytes Cardano.AsPolicyId pid
     toCardanoAssetName (W.UnsafeTokenName name) = just "TokenName" $
         Cardano.deserialiseFromRawBytes Cardano.AsAssetName name
 
-    just :: String -> Maybe a -> a
-    just t = fromMaybe $ error $
-        "toMaryTxOut: Internal error: unable to deserialise " ++ t
-
     coinToQuantity = fromIntegral . W.unCoin
     toQuantity = fromIntegral . W.unTokenQuantity
+
+toCardanoScriptWitness
+    :: CardanoEra era
+    -> Cardano.Address.Script Cardano.Address.KeyHash
+    -> Either (ErrScriptWitnessConversion era) (Cardano.ScriptWitness witctx era)
+toCardanoScriptWitness era script =
+    let
+        ver = Cardano.SimpleScriptV2
+        lang = Cardano.SimpleScriptLanguage ver
+    in
+        case Cardano.scriptLanguageSupportedInEra era lang of
+            Nothing ->
+                Left $ ErrScriptLanguageNotSupportedInEra era ver
+            Just langEra ->
+                case toCardanoScript script of
+                    Left scriptConversionErr ->
+                        Left
+                        $ ErrUnderlyingScriptConversionError scriptConversionErr
+                    Right cardanoScript ->
+                        Right
+                        $ Cardano.SimpleScriptWitness langEra ver cardanoScript
+
+toCardanoScript
+    :: Cardano.Address.Script Cardano.Address.KeyHash
+    -> Either ErrScriptConversion (Cardano.SimpleScript Cardano.SimpleScriptV2)
+toCardanoScript = \case
+    Cardano.Address.RequireSignatureOf keyHash ->
+        Cardano.RequireSignature
+        <$> toCardanoKeyHash keyHash
+    Cardano.Address.RequireAllOf ss ->
+        Cardano.RequireAllOf
+        <$> traverse toCardanoScript ss
+    Cardano.Address.RequireAnyOf ss ->
+        Cardano.RequireAnyOf
+        <$> traverse toCardanoScript ss
+    Cardano.Address.RequireSomeOf n ss ->
+        Cardano.RequireMOf (fromIntegral n)
+        <$> traverse toCardanoScript ss
+    Cardano.Address.ActiveFromSlot slot ->
+        Right
+        $ Cardano.RequireTimeAfter Cardano.TimeLocksInSimpleScriptV2
+        $ fromIntegral slot
+    Cardano.Address.ActiveUntilSlot slot ->
+        Right
+        $ Cardano.RequireTimeBefore Cardano.TimeLocksInSimpleScriptV2
+        $ fromIntegral slot
+
+toCardanoKeyHash
+    :: Cardano.Address.KeyHash
+    -> Either ErrScriptConversion (Cardano.Hash Cardano.PaymentKey)
+toCardanoKeyHash = \case
+    Cardano.Address.KeyHash Cardano.Address.Delegation _ ->
+        Left ErrScriptConversionExpectedPaymentKey
+    Cardano.Address.KeyHash Cardano.Address.Payment bs ->
+        case Crypto.hashFromBytes bs of
+            Nothing -> Left
+                $ ErrScriptConversionHashExpectedSize
+                $ fromIntegral
+                $ Crypto.sizeHash (Proxy :: Proxy Crypto.Blake2b_224)
+            Just h  -> Right
+                $ Cardano.PaymentKeyHash
+                $ SL.KeyHash h
+
+toCardanoPolicyId :: W.TokenPolicyId -> Cardano.PolicyId
+toCardanoPolicyId (W.UnsafeTokenPolicyId (W.Hash pid)) = just "PolicyId" $
+    Cardano.deserialiseFromRawBytes Cardano.AsPolicyId pid
+
+just :: String -> Maybe a -> a
+just t = fromMaybe $ error $
+    "toMaryTxOut: Internal error: unable to deserialise " ++ t
+
+-- | Convert some Wallet mint/burn data to a Cardano.API mint/burn value.
+toCardanoMintValue
+    :: Cardano.CardanoEra era
+    -- ^ Era of the transaction
+    -> W.TxMintBurn
+    -- ^ Wallet mint/burn data
+    -> Either (ErrTxMintBurnConversion era)
+              (Cardano.TxMintValue Cardano.BuildTx era)
+toCardanoMintValue era txMintBurn = do
+    case Cardano.multiAssetSupportedInEra era of
+        Left adaOnly ->
+           Left $ ErrTxMintBurnMultiAssetNotSupportedInEra adaOnly
+        Right supported -> do
+            pidsAndWits <- do
+                fmap mconcat $ forM (MintBurn.scripts txMintBurn) $ \script -> do
+                    let pid = TokenPolicy.tokenPolicyIdFromScript script
+                    witness <-
+                        mapLeft ErrTxMintBurnScriptConversionError
+                        $ toCardanoScriptWitness era script
+                    pure [(toCardanoPolicyId pid, witness)]
+
+            pure $ Cardano.TxMintValue
+                        supported
+                        (cardanoMint <> cardanoBurn)
+                        (Cardano.BuildTxWith $ Map.fromList pidsAndWits)
+
+    where
+        cardanoMint :: Cardano.Value
+        cardanoMint =
+            TokenBundle.fromTokenMap (MintBurn.toMint txMintBurn)
+            & toCardanoValue
+
+        cardanoBurn :: Cardano.Value
+        cardanoBurn =
+            TokenBundle.fromTokenMap (MintBurn.toBurn txMintBurn)
+            & toCardanoValue
+            & Cardano.negateValue
 
 -- | Convert from reward account address (which is a hash of a public key)
 -- to a shelley ledger stake credential.

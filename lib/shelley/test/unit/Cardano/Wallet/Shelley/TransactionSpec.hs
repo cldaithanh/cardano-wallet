@@ -396,7 +396,7 @@ spec = do
                   toBase16 = T.decodeUtf8 . hex
                   ledgerTx = Cardano.makeSignedTransaction addrWits unsigned
                   mkByronWitness' unsignedTx (_, (TxOut addr _)) =
-                      mkByronWitness era unsignedTx Cardano.Mainnet addr
+                      mkByronWitness unsignedTx Cardano.Mainnet addr
                   addrWits = zipWith (mkByronWitness' unsigned) inps pairs
                   fee = toCardanoLovelace $ selectionDelta txOutCoin cs
                   Right unsigned = mkUnsignedTx era slotNo cs md mempty [] fee
@@ -490,7 +490,7 @@ spec = do
                   ledgerTx = Cardano.makeSignedTransaction addrWits unsigned
                   net = Cardano.Testnet (Cardano.NetworkMagic 0)
                   mkByronWitness' unsignedTx (_, (TxOut addr _)) =
-                      mkByronWitness era unsignedTx net addr
+                      mkByronWitness unsignedTx net addr
                   addrWits = zipWith (mkByronWitness' unsigned) inps pairs
                   fee = toCardanoLovelace $ selectionDelta txOutCoin cs
                   Right unsigned = mkUnsignedTx era slotNo cs md mempty [] fee
@@ -658,7 +658,7 @@ prop_decodeSignedByronTxRoundtrip (DecodeByronSetup utxo outs slotNo ntwrk pairs
   where
     shelleyEra = Cardano.ShelleyBasedEraAllegra
     mkByronWitness' unsigned (_, (TxOut addr _)) =
-        mkByronWitness shelleyEra unsigned ntwrk addr
+        mkByronWitness unsigned ntwrk addr
     mkSelection inps = SelectionResult
         { inputsSelected = NE.fromList inps
         , extraCoinSource = Nothing

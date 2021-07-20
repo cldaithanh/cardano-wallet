@@ -53,7 +53,6 @@ module Cardano.Wallet.Shelley.Compatibility
       -- * Conversions
     , toCardanoHash
     , unsealShelleyTx
-    , toEpochSize
     , toPoint
     , toCardanoTxId
     , toCardanoTxIn
@@ -1062,22 +1061,6 @@ fromUnitInterval x =
         , "encountered invalid parameter value: "
         , show x
         ]
-
-fromNetworkDiscriminant
-    :: forall (n :: NetworkDiscriminant). (Typeable n)
-    => Proxy n
-    -> SL.Network
-fromNetworkDiscriminant _ =
-    case testEquality (typeRep @n) (typeRep @'Mainnet) of
-        Just{}  -> SL.Mainnet
-        Nothing -> SL.Testnet
-
-toByronNetworkMagic :: W.ProtocolMagic -> Byron.NetworkMagic
-toByronNetworkMagic pm@(W.ProtocolMagic magic) =
-    if pm == W.mainnetMagic then
-        Byron.NetworkMainOrStage
-    else
-        Byron.NetworkTestnet (fromIntegral magic)
 
 toCardanoTxId :: W.Hash "Tx" -> Cardano.TxId
 toCardanoTxId (W.Hash h) = Cardano.TxId $ UnsafeHash $ toShort h

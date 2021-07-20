@@ -323,5 +323,7 @@ computeMinimumAdaQuantityInternal (MinimumUTxOValueCostPerWord (Coin perWord)) b
     in
         Coin $ fromIntegral outputSize * perWord
   where
-    dummyAddr = Address $ BS.replicate 64 0
+    -- FIXME: We probably need to use the right kind of address for the current
+    -- network...
+    dummyAddr = Address $ BS.pack $ 97 : replicate 28 0
 

@@ -453,6 +453,7 @@ clusterToApiEra = \case
     ShelleyHardFork -> ApiShelley
     AllegraHardFork -> ApiAllegra
     MaryHardFork -> ApiMary
+    AlonzoHardFork -> ApiAlonzo
 
 -- | Defaults to the latest era.
 clusterEraFromEnv :: IO ClusterEra

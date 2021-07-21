@@ -235,9 +235,7 @@ import Ouroboros.Consensus.Cardano.Block
     , CardanoGenTx
     , GenTx (..)
     , HardForkBlock (..)
-    , StandardAllegra
     , StandardAlonzo
-    , StandardMary
     , StandardShelley
     )
 import Ouroboros.Consensus.HardFork.Combinator.AcrossEras
@@ -538,9 +536,10 @@ fromAlonzoBlock
     :: W.GenesisParameters
     -> ShelleyBlock (Alonzo.AlonzoEra StandardCrypto)
     -> (W.Block, [W.PoolCertificate])
-fromAlonzoBlock gp blk@(ShelleyBlock (SL.Block _ (Alonzo.TxSeq txs')) _) =
+fromAlonzoBlock gp blk@(ShelleyBlock (SL.Block _ txSeq) _) =
     let
-       (txs, dlgCerts, poolCerts) = unzip3 $ map fromAlonzoValidatedTx $ toList txs'
+        Alonzo.TxSeq txs' = txSeq
+        (txs, dlgCerts, poolCerts) = unzip3 $ map fromAlonzoValidatedTx $ toList txs'
     in
         ( W.Block
             { header = toShelleyBlockHeader (W.getGenesisBlockHash gp) blk

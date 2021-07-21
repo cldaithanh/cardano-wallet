@@ -74,7 +74,7 @@ import Fmt
 import GHC.Stack
     ( HasCallStack )
 import Ouroboros.Consensus.Shelley.Eras
-    ( StandardAlonzo, StandardCrypto )
+    ( StandardCrypto )
 
 import qualified Cardano.Ledger.Address as Ledger
 
@@ -89,7 +89,6 @@ import qualified Data.ByteString as BS
 import qualified Data.Map.Strict as Map
 import qualified Data.Map.Strict.NonEmptyMap as NonEmptyMap
 import qualified Shelley.Spec.Ledger.API as Ledger
-import qualified Shelley.Spec.Ledger.CompactAddr as Ledger
 
 --------------------------------------------------------------------------------
 -- Public functions

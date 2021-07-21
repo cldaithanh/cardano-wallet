@@ -10,6 +10,8 @@ module Cardano.Wallet.Shelley.Compatibility.LedgerSpec
 
 import Prelude
 
+import Cardano.Wallet.Primitive.Types
+    ( MinimumUTxOValue (..) )
 import Cardano.Wallet.Primitive.Types.Coin
     ( Coin (..) )
 import Cardano.Wallet.Primitive.Types.Coin.Gen
@@ -102,12 +104,20 @@ spec = describe "Cardano.Wallet.Shelley.Compatibility.LedgerSpec" $
 -- Properties
 --------------------------------------------------------------------------------
 
+-- FIXME: Should we revert `MinimumUTxOValue` back to "just a coin"?
+--
+-- No, we still need to differentiate between ShelleyMA and Alonzo...
+--
+-- We should ensure to test the Alonzo variant though...
 prop_computeMinimumAdaQuantity_forCoin
     :: ProtocolMinimum Coin
     -> Coin
     -> Property
 prop_computeMinimumAdaQuantity_forCoin (ProtocolMinimum pm) c =
-    computeMinimumAdaQuantityInternal pm (TokenBundle.fromCoin c) === pm
+    computeMinimumAdaQuantityInternal
+        (MinimumUTxOValue pm)
+        (TokenBundle.fromCoin c)
+        === pm
 
 prop_computeMinimumAdaQuantity_agnosticToAdaQuantity
     :: Blind TokenBundle
@@ -123,7 +133,7 @@ prop_computeMinimumAdaQuantity_agnosticToAdaQuantity
   where
     bundleWithCoinMinimized = TokenBundle.setCoin bundle minBound
     bundleWithCoinMaximized = TokenBundle.setCoin bundle maxBound
-    compute = computeMinimumAdaQuantityInternal protocolMinimum
+    compute = computeMinimumAdaQuantityInternal (MinimumUTxOValue protocolMinimum)
     counterexampleText = unlines
         [ "bundle:"
         , pretty (Flat bundle)
@@ -161,7 +171,7 @@ prop_computeMinimumAdaQuantity_agnosticToAssetQuantities
     assetCountMaximized = Set.size $ TokenBundle.getAssets bundleMaximized
     bundleMinimized = bundle `setAllQuantitiesTo` txOutMinTokenQuantity
     bundleMaximized = bundle `setAllQuantitiesTo` txOutMaxTokenQuantity
-    compute = computeMinimumAdaQuantityInternal protocolMinimum
+    compute = computeMinimumAdaQuantityInternal (MinimumUTxOValue protocolMinimum)
     setAllQuantitiesTo = flip (adjustAllQuantities . const)
     counterexampleText = unlines
         [ "bundle:"
@@ -189,7 +199,7 @@ unit_computeMinimumAdaQuantity_fixedSizeBundle
     -> Property
 unit_computeMinimumAdaQuantity_fixedSizeBundle bundle expectation =
     withMaxSuccess 100 $
-    computeMinimumAdaQuantityInternal protocolMinimum bundle === expectation
+    computeMinimumAdaQuantityInternal (MinimumUTxOValue protocolMinimum) bundle === expectation
   where
     protocolMinimum = Coin 1_000_000
 

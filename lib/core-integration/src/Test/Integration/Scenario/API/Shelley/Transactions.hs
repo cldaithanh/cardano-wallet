@@ -13,6 +13,7 @@
 {-# LANGUAGE TypeFamilies #-}
 
 {- HLINT ignore "Use head" -}
+{- HLINT ignore "Use :" -}
 
 module Test.Integration.Scenario.API.Shelley.Transactions
     ( spec

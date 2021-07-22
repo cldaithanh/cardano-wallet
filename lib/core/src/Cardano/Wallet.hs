@@ -1549,8 +1549,7 @@ signTransaction ctx wid mkRwdAcct pwd tx = do
             mapExceptT atomically $ do
                 let keyFrom txin = do
                         addr <- getAddrFromUTxO txin
-                        (k, p) <- isOwned (getState cp) (xprv, pwdP) addr
-                        pure (addr, k, p)
+                        isOwned (getState cp) (xprv, pwdP) addr
                 let rewardAcnt = mkRwdAcct (xprv, pwdP)
                 withExceptT ErrWitnessTxSignTx $ ExceptT $ pure $ fmap snd $
                     mkSignedTransaction tl rewardAcnt keyFrom tx

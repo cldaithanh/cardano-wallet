@@ -126,7 +126,7 @@ data TransactionLayer k = TransactionLayer
     , mkSignedTransaction
         :: (XPrv, Passphrase "encryption")
             -- Reward account
-        -> (TxIn -> Maybe (Address, k 'AddressK XPrv, Passphrase "encryption"))
+        -> (TxIn -> Maybe (k 'AddressK XPrv, Passphrase "encryption"))
             -- Key store
         -> SealedTx
             -- serialized unsigned transaction

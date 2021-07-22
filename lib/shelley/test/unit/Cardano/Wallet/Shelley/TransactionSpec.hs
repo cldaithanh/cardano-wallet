@@ -395,9 +395,7 @@ spec = do
               where
                   toBase16 = T.decodeUtf8 . hex
                   ledgerTx = Cardano.makeSignedTransaction addrWits unsigned
-                  mkByronWitness' unsignedTx (_, (TxOut addr _)) =
-                      mkByronWitness unsignedTx Cardano.Mainnet addr
-                  addrWits = zipWith (mkByronWitness' unsigned) inps pairs
+                  addrWits = map (mkByronWitness unsigned Cardano.Mainnet) pairs
                   fee = toCardanoLovelace $ selectionDelta txOutCoin cs
                   Right unsigned = mkUnsignedTx era slotNo cs md mempty [] fee
                   cs = SelectionResult
@@ -489,9 +487,7 @@ spec = do
                   toBase16 = T.decodeUtf8 . hex
                   ledgerTx = Cardano.makeSignedTransaction addrWits unsigned
                   net = Cardano.Testnet (Cardano.NetworkMagic 0)
-                  mkByronWitness' unsignedTx (_, (TxOut addr _)) =
-                      mkByronWitness unsignedTx net addr
-                  addrWits = zipWith (mkByronWitness' unsigned) inps pairs
+                  addrWits = map (mkByronWitness unsigned net) pairs
                   fee = toCardanoLovelace $ selectionDelta txOutCoin cs
                   Right unsigned = mkUnsignedTx era slotNo cs md mempty [] fee
                   cs = SelectionResult
@@ -650,15 +646,13 @@ prop_decodeSignedByronTxRoundtrip (DecodeByronSetup utxo outs slotNo ntwrk pairs
     let cs = mkSelection inps
     let fee = toCardanoLovelace $ selectionDelta txOutCoin cs
     let Right unsigned = mkUnsignedTx shelleyEra slotNo cs Nothing mempty [] fee
-    let byronWits = zipWith (mkByronWitness' unsigned) inps pairs
+    let byronWits = map (mkByronWitness unsigned ntwrk) pairs
     let ledgerTx = Cardano.makeSignedTransaction byronWits unsigned
 
     _decodeSignedTx era (Cardano.serialiseToCBOR ledgerTx)
         === Right (sealShelleyTx ledgerTx)
   where
     shelleyEra = Cardano.ShelleyBasedEraAllegra
-    mkByronWitness' unsigned (_, (TxOut addr _)) =
-        mkByronWitness unsigned ntwrk addr
     mkSelection inps = SelectionResult
         { inputsSelected = NE.fromList inps
         , extraCoinSource = Nothing

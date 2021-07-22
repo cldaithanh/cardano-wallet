@@ -60,7 +60,7 @@ import Control.Monad.Class.MonadSTM
     , TQueue
     , atomically
     , isEmptyTQueue
-    , newEmptyTMVarIO
+    , newEmptyTMVar
     , putTMVar
     , readTQueue
     , takeTMVar
@@ -622,7 +622,7 @@ send
     -> ((a -> m ()) -> cmd m)
     -> m a
 send queue cmd = do
-    tvar <- newEmptyTMVarIO
+    tvar <- atomically $ newEmptyTMVar
     atomically $ writeTQueue queue (cmd (atomically . putTMVar tvar))
     atomically $ takeTMVar tvar
 

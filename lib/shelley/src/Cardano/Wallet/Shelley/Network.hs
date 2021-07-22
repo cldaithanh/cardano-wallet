@@ -328,7 +328,7 @@ withNetworkLayerBase tr net np conn (versionData, _) tol action = do
     (readNodeTip, networkParamsVar, interpreterVar, eraVar)
         <- connectNodeTipClient handlers
 
-    localTxSubmissionQ <- connectLocalTxSubmissionClient
+    localTxSubmissionQ <- connectLocalTxSubmissionClient handlers
 
     queryRewardQ <- connectDelegationRewardsClient handlers
 
@@ -402,15 +402,16 @@ withNetworkLayerBase tr net np conn (versionData, _) tol action = do
         pure (readTip, networkParamsVar, interpreterVar, eraVar)
 
     connectLocalTxSubmissionClient
-        :: IO ( TQueue IO (LocalTxSubmissionCmd
+        :: RetryHandlers
+        -> IO ( TQueue IO (LocalTxSubmissionCmd
                   (Cardano.TxInMode CardanoMode)
                   (Cardano.TxValidationErrorInMode CardanoMode)
                   IO)
               )
-    connectLocalTxSubmissionClient = do
-        localTxSubmissionQ <- atomically newTQueue
-        mkCardanoApiClient tr connectInfo localTxSubmissionQ
-        pure localTxSubmissionQ
+    connectLocalTxSubmissionClient handlers = do
+        q <- atomically newTQueue
+        link =<< async (connectCardanoApiClient tr handlers connectInfo q)
+        pure q
 
     connectDelegationRewardsClient
         :: HasCallStack
@@ -790,9 +791,10 @@ mkTipSyncClient tr np onPParamsUpdate onInterpreterUpdate onEraUpdate = do
 
 -- | Construct a network client with the given communication channel, for the
 -- purpose of submitting transactions.
-mkCardanoApiClient
+connectCardanoApiClient
     :: Tracer IO NetworkLayerLog
         -- ^ Base trace for underlying protocols
+    -> RetryHandlers
     -> LocalNodeConnectInfo CardanoMode
     -> TQueue IO
         (LocalTxSubmissionCmd
@@ -801,7 +803,9 @@ mkCardanoApiClient
             IO)
         -- ^ Communication channel with the LocalTxSubmission client
     -> IO ()
-mkCardanoApiClient _tr info localTxSubmissionQ = connectToLocalNode info proto
+connectCardanoApiClient tr handlers info localTxSubmissionQ =
+    recoveringNodeConnection tr handlers $
+        connectToLocalNode info proto
   where
     proto = LocalNodeClientProtocols
             { localChainSyncClient = NoLocalChainSyncClient
@@ -1035,9 +1039,18 @@ connectClient tr handlers client vData conn = withIOManager $ \iocp -> do
             , nctHandshakeTracer = contramap MsgHandshakeTracer tr
             }
     let socket = localSnocket iocp (nodeSocketFile conn)
+    recoveringNodeConnection tr handlers $
+        connectTo socket tracers versions (nodeSocketFile conn)
+
+recoveringNodeConnection
+    :: Tracer IO NetworkLayerLog
+    -> RetryHandlers
+    -> IO a
+    -> IO a
+recoveringNodeConnection tr handlers action =
     recovering policy (coerceHandlers handlers) $ \status -> do
         traceWith tr $ MsgCouldntConnect (rsIterNumber status)
-        connectTo socket tracers versions (nodeSocketFile conn)
+        action
   where
     -- .25s -> .25s -> .5s → .75s → 1.25s → 2s
     policy :: RetryPolicyM IO

@@ -165,6 +165,7 @@ import qualified Data.Map.Strict as Map
 import qualified Data.Set as Set
 import qualified Data.Text.Lazy.Builder as Builder
 
+
 -- | Primitive @Tx@-type.
 --
 -- Currently tailored for jormungandr in that inputs are @(TxIn, Coin)@

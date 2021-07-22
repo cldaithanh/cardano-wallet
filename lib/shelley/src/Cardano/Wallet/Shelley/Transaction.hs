@@ -292,7 +292,7 @@ constructSignedTx networkId (rewardAcnt, pwdAcnt) keyFrom sealed =
     case view #cardanoTx sealed of
         InAnyCardanoEra txEra tx -> case cardanoEraStyle txEra of
             Cardano.LegacyByronEra ->
-                Left ErrSignTxInvalidEra -- fixme: implement
+                Left ErrSignTxInvalidEra
             Cardano.ShelleyBasedEra era' ->
                 fmap sealedTxFromCardano' <$> signShelley era' tx
   where

@@ -1366,9 +1366,11 @@ makeSealedTx tx wits =
     addrInEra =
         let realisticAddr = "018361eab710eac9b17201e91980678691b68d523012f6de85a87c3c5b4c092c7b23a4b0aca82dc115729563c665b116cddf8910d10e552ef6"
             (Right addr) = fromHex $ T.encodeUtf8 realisticAddr
-        in fromMaybe (error "addrInEra: malformed address") $
-           Cardano.AddressInEra (Cardano.ShelleyAddressInEra Cardano.ShelleyBasedEraMary)
-           <$> Cardano.deserialiseFromRawBytes Cardano.AsShelleyAddress addr
+        in maybe
+           (error "addrInEra: malformed address")
+           (Cardano.AddressInEra
+            (Cardano.ShelleyAddressInEra Cardano.ShelleyBasedEraMary))
+           (Cardano.deserialiseFromRawBytes Cardano.AsShelleyAddress addr)
 
     toCardanoTxId :: Hash "Tx" -> Cardano.TxId
     toCardanoTxId (Hash h) = Cardano.TxId $ Crypto.UnsafeHash $ toShort h

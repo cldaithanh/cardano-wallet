@@ -762,7 +762,7 @@ spec = describe "NEW_SHELLEY_TRANSACTIONS" $ do
     mkTxPayload ctx wDest amt = do
         addrs <- listAddresses @n ctx wDest
         let destination = (addrs !! 1) ^. #id
-        return $ (destination, Json [json|{
+        return (destination, Json [json|{
                 "payments": [{
                     "address": #{destination},
                     "amount": {

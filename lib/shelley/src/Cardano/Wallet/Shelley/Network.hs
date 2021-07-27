@@ -115,7 +115,7 @@ import Control.Monad.Class.MonadSTM
     , newEmptyTMVarIO
     , newTMVarIO
     , newTQueue
-    , newTVar
+    , newTVarIO
     , putTMVar
     , readTMVar
     , readTVar
@@ -719,7 +719,7 @@ mkTipSyncClient tr np onPParamsUpdate onInterpreterUpdate onEraUpdate = do
     (localStateQueryQ :: TQueue m (LocalStateQueryCmd (CardanoBlock StandardCrypto) m))
         <- atomically newTQueue
 
-    tipVar <- atomically $ newTVar (Just $ AnyCardanoEra ByronEra, TipGenesis)
+    tipVar <- newTVarIO (Just $ AnyCardanoEra ByronEra, TipGenesis)
 
     (onPParamsUpdate' :: (W.ProtocolParameters, W.SlottingParameters) -> m ()) <-
         debounce $ \(pp, sp) -> do
@@ -935,8 +935,8 @@ newObserver
     -> (env -> Set key -> m (Maybe (Map key value)))
     -> m (Observer m key value, env -> m ())
 newObserver tr fetch = do
-    cacheVar <- atomically $ newTVar Map.empty
-    toBeObservedVar <- atomically $ newTVar Set.empty
+    cacheVar <- newTVarIO Map.empty
+    toBeObservedVar <- newTVarIO Set.empty
     return (observer cacheVar toBeObservedVar, refresh cacheVar toBeObservedVar)
   where
     observer
@@ -965,8 +965,8 @@ newObserver tr fetch = do
         -> env
         -> m ()
     refresh cacheVar observedKeysVar env = do
-        keys <- atomically $ readTVar observedKeysVar
-        oldValues <- atomically $ readTVar cacheVar
+        keys <- readTVarIO observedKeysVar
+        oldValues <- readTVarIO cacheVar
         traceWith tr $ MsgWillFetch keys
         mvalues <- fetch env keys
 

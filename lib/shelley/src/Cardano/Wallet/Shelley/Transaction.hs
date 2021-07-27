@@ -9,7 +9,6 @@
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE OverloadedLabels #-}
-{-# LANGUAGE PatternSynonyms #-}
 {-# LANGUAGE Rank2Types #-}
 {-# LANGUAGE RoleAnnotations #-}
 {-# LANGUAGE ScopedTypeVariables #-}
@@ -320,9 +319,7 @@ constructSignedTx networkId (rewardAcnt, pwdAcnt) keyFrom sealed =
                     pure $ mkShelleyWitness body (getRawKey k, pwd)
 
                 let wdrlsWits =
-                        if areWdrls then
-                            [mkShelleyWitness body (rewardAcnt, pwdAcnt)]
-                        else []
+                        ([mkShelleyWitness body (rewardAcnt, pwdAcnt) | areWdrls])
 
                 pure $ mkExtraWits body <> F.toList addrWits <> wdrlsWits
 
@@ -439,8 +436,7 @@ newTransactionLayer networkId = TransactionLayer
                                 delta
                     mkTx networkId payload ttl stakeCreds keystore wdrl selection fees
 
-    , mkSignedTransaction = \stakeCreds keystore tx ->
-        constructSignedTx networkId stakeCreds keystore tx
+    , mkSignedTransaction = constructSignedTx networkId
 
     , mkUnsignedTransaction = \era stakeXPub pp ctx selection -> do
         let ttl   = txTimeToLive ctx

@@ -1551,8 +1551,8 @@ signTransaction ctx wid mkRwdAcct pwd tx = do
                         addr <- getAddrFromUTxO txin
                         isOwned (getState cp) (xprv, pwdP) addr
                 let rewardAcnt = mkRwdAcct (xprv, pwdP)
-                withExceptT ErrWitnessTxSignTx $ ExceptT $ pure $ fmap snd $
-                    mkSignedTransaction tl rewardAcnt keyFrom tx
+                withExceptT ErrWitnessTxSignTx $ ExceptT $ pure $
+                    (snd <$> mkSignedTransaction tl rewardAcnt keyFrom tx)
 
   where
     db = ctx ^. dbLayer @IO @s @k

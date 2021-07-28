@@ -80,6 +80,8 @@ module Cardano.Wallet.Shelley.Compatibility
     , fromPoolId
     , fromPoolDistr
     , fromNonMyopicMemberRewards
+    , getDesirabilities
+    , getOwnerStakes
     , optimumNumberOfPools
     , getProducer
 
@@ -298,6 +300,7 @@ import qualified Ouroboros.Network.Point as Point
 import qualified Shelley.Spec.Ledger.API as SL
 import qualified Shelley.Spec.Ledger.API as SLAPI
 import qualified Shelley.Spec.Ledger.BlockChain as SL
+import qualified Shelley.Spec.Ledger.RewardProvenance as SL
 import qualified Shelley.Spec.Ledger.UTxO as SL
 
 type NodeVersionData =
@@ -736,6 +739,28 @@ fromNonMyopicMemberRewards =
     Map.map (Map.map toWalletCoin . Map.mapKeys fromPoolId)
     . Map.mapKeys (bimap fromShelleyCoin fromStakeCredential)
     . O.unNonMyopicMemberRewards
+
+getDesirabilities
+    :: forall crypto. ()
+    => SL.RewardProvenance crypto
+    -> Map W.PoolId W.StakePoolDesirability
+getDesirabilities =
+    Map.map fromDesirability
+    . Map.mapKeys fromPoolId
+    . SL.desirabilities
+    where
+    fromDesirability (SL.Desirability x y) = W.StakePoolDesirability x y
+
+getOwnerStakes
+    :: forall crypto. ()
+    => SL.RewardProvenance crypto
+    -> Map W.PoolId W.Coin
+getOwnerStakes =
+    Map.map fromRewardProvenancePool
+    . Map.mapKeys fromPoolId
+    . SL.pools
+    where
+    fromRewardProvenancePool = fromShelleyCoin . SL.ownerStakeP
 
 optimumNumberOfPools
     :: forall era. (SLAPI.PParams era ~ SL.Core.PParams era)

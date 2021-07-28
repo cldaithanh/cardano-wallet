@@ -70,6 +70,8 @@ import Cardano.Wallet.Shelley.Compatibility
     , fromCardanoHash
     , fromChainHash
     , fromNonMyopicMemberRewards
+    , getDesirabilities
+    , getOwnerStakes
     , fromPoolDistr
     , fromShelleyCoin
     , fromShelleyPParams
@@ -85,8 +87,6 @@ import Cardano.Wallet.Shelley.Compatibility
     , toStakeCredential
     , unsealShelleyTx
     )
-import Control.Applicative
-    ( liftA3 )
 import Control.Monad
     ( forever, guard, unless, void, when, (>=>) )
 import Control.Monad.Class.MonadAsync
@@ -498,24 +498,28 @@ withNetworkLayerBase tr np conn (versionData, _) tol action = do
     _stakeDistribution queue coin = do
         liftIO $ traceWith tr $ MsgWillQueryRewardsForStake coin
 
+        let mkStakePoolsSummary4 m1 m2 m3 m4 = do
+                (r3, r5) <- m3
+                W.StakePoolsSummary <$> m1 <*> m2 <*> pure r3 <*> m4 <*> pure r5
         let qry :: LSQ (CardanoBlock StandardCrypto) IO (Maybe W.StakePoolsSummary)
-            qry = liftA3 (liftA3 W.StakePoolsSummary)
+            qry = liftA4 mkStakePoolsSummary4
                 getNOpt
                 queryNonMyopicMemberRewards
+                queryRewardsProvenance
                 stakeDistr
 
         mres <- bracketQuery "stakePoolsSummary" tr $
-            queue `send` (SomeLSQ qry )
+            queue `send` (SomeLSQ qry)
+        traceWith tr $ MsgFetchStakePoolsData mres
 
         -- The result will be Nothing if query occurs during the byron era
-        traceWith tr $ MsgFetchStakePoolsData mres
         case mres of
             Just res@W.StakePoolsSummary{rewards,stake} -> do
                 liftIO $ traceWith tr $ MsgFetchStakePoolsDataSummary
                     (Map.size stake)
                     (Map.size rewards)
-                return res
-            Nothing -> pure $ W.StakePoolsSummary 0 mempty mempty
+                pure res
+            Nothing -> pure $ W.StakePoolsSummary 0 mempty mempty mempty mempty
       where
 
         stakeDistr
@@ -527,6 +531,17 @@ withNetworkLayerBase tr np conn (versionData, _) tol action = do
         getNOpt :: LSQ (CardanoBlock StandardCrypto) IO (Maybe Int)
         getNOpt = shelleyBased $
             optimumNumberOfPools <$> LSQry Shelley.GetCurrentPParams
+
+        queryRewardsProvenance
+            :: LSQ (CardanoBlock StandardCrypto) IO
+                ( Maybe
+                    ( Map W.PoolId W.StakePoolDesirability
+                    , Map W.PoolId W.Coin
+                    )
+                )
+        queryRewardsProvenance = shelleyBased $ do
+            r <- LSQry Shelley.GetRewardProvenance
+            pure (getDesirabilities r, getOwnerStakes r)
 
         queryNonMyopicMemberRewards
             :: LSQ (CardanoBlock StandardCrypto) IO
@@ -597,6 +612,11 @@ withNetworkLayerBase tr np conn (versionData, _) tol action = do
                     Left _pastHorizon -> return NotResponding
                     Right p -> return p
 
+liftA4
+    :: Applicative f
+    => (a1 -> a2 -> a3 -> a4 -> b)
+    -> f a1 -> f a2 -> f a3 -> f a4 -> f b
+liftA4 f a1 a2 a3 a4 = pure f <*> a1 <*> a2 <*> a3 <*> a4
 
 --------------------------------------------------------------------------------
 --

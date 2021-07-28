@@ -89,6 +89,7 @@ module Cardano.Wallet.Primitive.Types
 
     -- * Stake Pools
     , StakePoolsSummary (..)
+    , StakePoolDesirability (..)
     , PoolId(..)
     , PoolOwner(..)
     , poolIdBytesLength
@@ -738,14 +739,34 @@ instance ToJSON PoolOwner where
 data StakePoolsSummary = StakePoolsSummary
     { nOpt :: Int
     , rewards :: Map PoolId Coin
+    , desirabilities :: Map PoolId StakePoolDesirability
     , stake :: Map PoolId Percentage
+    , ownerStake :: Map PoolId Coin
     } deriving (Show, Eq)
 
 instance Buildable StakePoolsSummary where
-    build StakePoolsSummary{nOpt,rewards,stake} = listF' id
+    build StakePoolsSummary{nOpt,rewards,desirabilities,stake,ownerStake} = listF' id
         [ "Stake: " <> mapF (Map.toList stake)
+        , "Stake owned by pool owners: " <> mapF (Map.toList ownerStake)
         , "Non-myopic member rewards: " <> mapF (Map.toList rewards)
+        , "Desirability scores for ranking: " <> mapF (Map.toList desirabilities)
         , "Optimum number of pools: " <> pretty nOpt
+        ]
+
+-- | Information used for ranking stake pools.
+-- Pools with higher desirability scores should be ranked first.
+--
+-- Mirrors the 'Shelley.Spec.Ledger.RewardProvenance.Desirability' type
+-- in cardano-ledger-specs.
+data StakePoolDesirability = StakePoolDesirability
+    { desirabilityScore :: !Double
+    , hitRateEstimate :: !Double
+    } deriving (Show, Eq)
+
+instance Buildable StakePoolDesirability where
+    build StakePoolDesirability{desirabilityScore,hitRateEstimate} = listF' id
+        [ "Pool desirability: " <> pretty desirabilityScore
+        , "Pool hit rate (estimate): " <> pretty hitRateEstimate
         ]
 
 {-------------------------------------------------------------------------------

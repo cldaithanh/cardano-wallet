@@ -180,6 +180,7 @@ import UnliftIO.STM
     )
 
 import qualified Cardano.Wallet.Api.Types as Api
+import qualified Cardano.Wallet.Primitive.Types as W
 import qualified Data.List as L
 import qualified Data.List.NonEmpty as NE
 import qualified Data.Map.Merge.Strict as Map
@@ -339,7 +340,9 @@ newStakePoolLayer gcStatus nl db@DBLayer {..} restartSyncThread = do
 --   state query.
 data PoolLsqData = PoolLsqData
     { nonMyopicMemberRewards :: Coin
+    , desirabilityScore :: Double
     , relativeStake :: Percentage
+    , ownerStake :: Coin
     , saturation :: Double
     } deriving (Eq, Show, Generic)
 
@@ -377,13 +380,16 @@ combineDbAndLsqData ti nOpt lsqData =
       where
         lsqDefault = PoolLsqData
             { nonMyopicMemberRewards = freshmanMemberRewards
+            , desirabilityScore = 0 -- FIXME: We need an analogue of freshmanMemberRewards
             , relativeStake = minBound
+            , ownerStake = Coin 0
             , saturation = 0
             }
 
     -- To give a chance to freshly registered pools that haven't been part of
     -- any leader schedule, we assign them the average reward of the top @k@
     -- pools.
+    -- FIXME: We want input from researchers on how to handle this case.
     freshmanMemberRewards
         = Coin
         $ average
@@ -403,17 +409,20 @@ combineDbAndLsqData ti nOpt lsqData =
         -> PoolLsqData
         -> PoolDbData
         -> IO Api.ApiStakePool
-    mkApiPool pid (PoolLsqData prew pstk psat) dbData = do
+    mkApiPool pid PoolLsqData{..} dbData = do
         let mRetirementEpoch = retirementEpoch <$> retirementCert dbData
         retirementEpochInfo <- traverse
             (interpretQuery (unsafeExtendSafeZone ti) . toApiEpochInfo)
             mRetirementEpoch
+        let pledge = poolPledge $ registrationCert dbData
         pure $ Api.ApiStakePool
             { Api.id = (ApiT pid)
             , Api.metrics = Api.ApiStakePoolMetrics
-                { Api.nonMyopicMemberRewards = Api.coinToQuantity prew
-                , Api.relativeStake = Quantity pstk
-                , Api.saturation = psat
+                { Api.nonMyopicMemberRewards = Api.coinToQuantity nonMyopicMemberRewards
+                , Api.desirabilityScore = desirabilityScore
+                , Api.relativeStake = Quantity relativeStake
+                , Api.ownerStake = Api.coinToQuantity ownerStake
+                , Api.saturation = saturation
                 , Api.producedBlocks =
                     (fmap fromIntegral . nProducedBlocks) dbData
                 }
@@ -422,13 +431,14 @@ combineDbAndLsqData ti nOpt lsqData =
             , Api.cost =
                 Api.coinToQuantity $ poolCost $ registrationCert dbData
             , Api.pledge =
-                Api.coinToQuantity $ poolPledge $ registrationCert dbData
+                Api.coinToQuantity $ pledge
             , Api.margin =
                 Quantity $ poolMargin $ registrationCert dbData
             , Api.retirement =
                 retirementEpochInfo
             , Api.flags =
                 [ Api.Delisted | delisted dbData ]
+                ++ [ Api.OwnerStakeLowerThanPledge | ownerStake < pledge ]
             }
 
 -- | Combines all the LSQ data into a single map.
@@ -441,34 +451,60 @@ combineDbAndLsqData ti nOpt lsqData =
 combineLsqData
     :: StakePoolsSummary
     -> Map PoolId PoolLsqData
-combineLsqData StakePoolsSummary{nOpt, rewards, stake} =
-    Map.merge stakeButNoRewards rewardsButNoStake bothPresent stake rewards
+combineLsqData
+    StakePoolsSummary{nOpt, desirabilities, rewards, stake, ownerStake}
+    = merged_all
   where
     -- calculate the saturation from the relative stake
     sat s = fromRational $ (getPercentage s) / (1 / fromIntegral nOpt)
 
+    -- keep only the desirability scores
+    desirs = Map.map W.desirabilityScore desirabilities
+
+    -- In some cases, stake pools may be included in one map,
+    -- but not in the other. We have to merge these maps with suitable default
+    -- values.
+    merged_rs =
+        mergeWithDefaults default_r default_s (\r s -> (r,s)) rewards stake
+    merged_do =
+        mergeWithDefaults default_d default_o (\d o -> (d,o)) desirs ownerStake
+    merged_all =
+        mergeWithDefaults (default_r, default_s) (default_d, default_o) f
+            merged_rs merged_do
+        where
+        f (r,s) (d,o) = PoolLsqData
+            { nonMyopicMemberRewards = r
+            , desirabilityScore = d
+            , relativeStake = s
+            , ownerStake = o
+            , saturation = sat s
+            }
+
+    -- Default values.
     -- If we fetch non-myopic member rewards of pools using the wallet
     -- balance of 0, the resulting map will be empty. So we set the rewards
-    -- to 0 here:
-    stakeButNoRewards = traverseMissing $ \_k s -> pure $ PoolLsqData
-        { nonMyopicMemberRewards = Coin 0
-        , relativeStake = s
-        , saturation = sat s
-        }
-
-    -- TODO: This case seems possible on shelley_testnet, but why, and how
-    -- should we treat it?
+    -- to 0.
+    default_r = Coin 0
+    -- TODO: The case of a pool that has no stake but shows rewards
+    -- seems impossible, but seems to happen on shelley-testnet.
+    -- Why and how should we treat it?
     --
     -- The pool with rewards but not stake didn't seem to be retiring.
-    rewardsButNoStake = traverseMissing $ \_k r -> pure $ PoolLsqData
-        { nonMyopicMemberRewards = r
-        , relativeStake = noStake
-        , saturation = sat noStake
-        }
-      where
-        noStake = unsafeMkPercentage 0
+    default_s = noStake where noStake = unsafeMkPercentage 0
+    -- default desirability ranking
+    default_d = 0
+    -- default owner stake
+    default_o = Coin 0
 
-    bothPresent = zipWithMatched  $ \_k s r -> PoolLsqData r s (sat s)
+-- | Merge two maps with a combining function,
+-- Use default values at keys which are present in one map,
+-- but not the other.
+mergeWithDefaults :: Ord k => a -> b -> (a -> b -> c) -> Map k a -> Map k b -> Map k c
+mergeWithDefaults defa defb f =
+    Map.merge
+        (Map.mapMissing $ \_k a -> f a defb)
+        (Map.mapMissing $ \_k b -> f defa b)
+        (Map.zipWithMatched $ \_k a b -> f a b)
 
 -- | Combines all the chain-following data into a single map
 combineChainData

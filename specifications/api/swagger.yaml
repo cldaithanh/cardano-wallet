@@ -1482,10 +1482,18 @@ x-stakePoolMetrics: &stakePoolMetrics
   required:
     - relative_stake
     - non_myopic_member_rewards
+    - desirability_score
     - produced_blocks
     - saturation
+    - owner_stake
   properties:
     non_myopic_member_rewards: *nonMyopicMemberRewards
+    desirability_score:
+      type: number
+      description: |
+        A score that provides additional ranking information
+        if the stake pool ranks 0 in `non_myopic_member_rewards`.
+        Higher desirability scores are better.
     relative_stake:
       <<: *percentage
       description: |
@@ -1493,6 +1501,10 @@ x-stakePoolMetrics: &stakePoolMetrics
 
         For more details, see the section "Relative Stake: Active vs Total" in
         [Design Specification for Delegation and Incentives in Cardano](https://hydra.iohk.io/job/Cardano/cardano-ledger-specs/delegationDesignSpec/latest/download-by-type/doc-pdf/delegation_design_spec).
+    owner_stake:
+      <<: *amount
+      description: |
+        Total Ada delegated to the stake pool by the pool owners in order to meet their pledge.
     saturation: *stakePoolSaturation
     produced_blocks:
       <<: *numberOfBlocks
@@ -1502,15 +1514,17 @@ x-stakePoolFlag: &stakePoolFlag
   type: string
   enum:
   - delisted
+  - owner_stake_lower_than_pledge
 
 x-stakePoolFlags: &stakePoolFlags
   type: array
   description: |
     Various flags applicable to stake pools. Possible flags:
 
-    | flag     | description                                                                                                      |
-    | ---      | ---                                                                                                              |
-    | delisted | The pool is marked as delisted on a configured SMASH server; metadata for this pool have therefore been dropped. |
+    | flag                          | description                                                                                                      |
+    | ---                           | ---                                                                                                              |
+    | delisted                      | The pool is marked as delisted on a configured SMASH server; metadata for this pool have therefore been dropped. |
+    | owner_stake_lower_than_pledge | The pool owners fail to meet their pledge; this is bad.
   items: *stakePoolFlag
 
 x-networkInformationSyncProgress: &networkInformationSyncProgress

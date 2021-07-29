@@ -417,12 +417,12 @@ mintValueRequiresPolicyKey = \case
         const False
     Cardano.TxMintValue _era _val Cardano.ViewTx ->
         const False
-    Cardano.TxMintValue _era _val (Cardano.BuildTxWith map) -> \pk ->
+    Cardano.TxMintValue _era _val (Cardano.BuildTxWith scriptWitMap) -> \pk ->
         let
             onSimpleScripts
                 :: (forall lang. Cardano.SimpleScript lang -> a) -> [a]
             onSimpleScripts f =
-                M.elems map
+                M.elems scriptWitMap
                 <&> (\case
                       (Cardano.SimpleScriptWitness _lang _ver s) ->
                           [f s]

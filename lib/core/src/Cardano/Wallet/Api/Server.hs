@@ -1799,14 +1799,26 @@ signTransaction
 signTransaction ctx (ApiT wid) body = do
     let pwd = coerce $ body ^. #passphrase . #getApiT
     let tx = body ^. #transaction . #getApiT
-    let mPolicyKey = Nothing
+    let
+        mPolicyIx :: Maybe DerivationIndex
+        mPolicyIx = getApiT <$> body ^. #monetaryPolicyIndex
+
+    mPolicyIxHard <- do
+        maybe
+          (pure Nothing)
+          (fmap Just
+               . liftHandler
+               . withExceptT ErrConstructSharedWalletInvalidIndex
+               . W.guardHardIndex
+          )
+          mPolicyIx
 
     -- (_, mkRwdAcct) <- mkRewardAccountBuilder @_ @s @_ @n ctx wid Nothing
     let stubRwdAcct = first getRawKey
 
     signed <- withWorkerCtx ctx wid liftE liftE $ \wrk ->
         liftHandler
-        $ W.signTransaction @_ @s @k wrk wid stubRwdAcct mPolicyKey pwd tx
+        $ W.signTransaction @_ @s @k wrk wid stubRwdAcct mPolicyIxHard pwd tx
 
     let W.SerialisedTxParts txBody txWits = getSerialisedTxParts signed
     pure $ Api.ApiSignedTransaction
@@ -1992,6 +2004,7 @@ constructTransaction ctx genChange (ApiT wid) body = do
         liftHandler $ throwE ErrConstructTxWrongPayload
     let md = body ^? #metadata . traverse . #getApiT
     let mTTL = Nothing --TODO: this will be tackled when transaction validity is supported
+    let mint = body ^? #mint
 
     (wdrl, _) <-
         mkRewardAccountBuilder @_ @s @_ @n ctx wid (body ^. #withdrawal)
@@ -2002,6 +2015,7 @@ constructTransaction ctx genChange (ApiT wid) body = do
             , txMetadata = md
             , txTimeToLive = ttl
             --, txDelegationAction --TODO: this will be tackled when delegations are supported
+            , txMintBurn = _f mint
             }
 
     let transform = \s sel ->

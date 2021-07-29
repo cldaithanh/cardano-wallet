@@ -421,6 +421,7 @@ import Web.HttpApiData
 
 import qualified Cardano.Crypto.Wallet as CC
 import qualified Cardano.Wallet.Primitive.AddressDerivation as AD
+import qualified Cardano.Wallet.Primitive.MintBurn as W
 import qualified Cardano.Wallet.Primitive.Types as W
 import qualified Cardano.Wallet.Primitive.Types.RewardAccount as W
 import qualified Cardano.Wallet.Primitive.Types.TokenBundle as W
@@ -435,6 +436,9 @@ import qualified Data.ByteString.Char8 as B8
 import qualified Data.ByteString.Lazy as BL
 import qualified Data.HashMap.Strict as HM
 import qualified Data.Map as Map
+import Data.Maybe
+    ( fromMaybe )
+import qualified Data.Set as Set
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as T
 import qualified Data.Text.Read as T
@@ -904,7 +908,7 @@ data ApiConstructTransactionData (n :: NetworkDiscriminant) = ApiConstructTransa
     { payments :: !(Maybe (ApiPaymentDestination n))
     , withdrawal :: !(Maybe ApiWithdrawalPostData)
     , metadata :: !(Maybe (ApiT TxMetadata))
-    , mint :: !(Maybe (ApiT W.TokenMap))
+    , mint :: !(Maybe (NonEmpty (ApiMintBurnData n)))
     , delegations :: !(Maybe (NonEmpty ApiMultiDelegationAction))
     , validityInterval :: !(Maybe ApiValidityInterval)
     } deriving (Eq, Generic, Show)
@@ -941,6 +945,7 @@ data ApiValidityBound
 data ApiSignTransactionPostData = ApiSignTransactionPostData
     { transaction :: !(ApiT SealedTx)
     , passphrase :: !(ApiT (Passphrase "lenient"))
+    , monetaryPolicyIndex :: !(Maybe (ApiT DerivationIndex))
     } deriving (Eq, Generic, Show)
 
 -- | Legacy transaction API.
@@ -1687,7 +1692,7 @@ newtype ApiMnemonicT (sizes :: [Nat]) =
 
 -- | A stake key belonging to the current wallet.
 data ApiOurStakeKey n = ApiOurStakeKey
-     { _index :: !Natural
+     { _index :: !Natural
     , _key :: !(ApiT W.RewardAccount, Proxy n)
     , _stake :: !(Quantity "lovelace" Natural)
       -- ^ The total ada this stake key controlls / is associated with. This
@@ -1703,7 +1708,7 @@ data ApiOurStakeKey n = ApiOurStakeKey
 -- We /could/ provide the current delegation status for foreign stake
 -- keys.
 data ApiForeignStakeKey n = ApiForeignStakeKey
-    { _key :: !(ApiT W.RewardAccount, Proxy n)
+    { _key :: !(ApiT W.RewardAccount, Proxy n)
     , _stake :: !(Quantity "lovelace" Natural)
       -- ^ The total ada this stake key controlls / is associated with. This
       -- also includes the reward balance.
@@ -3497,7 +3502,7 @@ data ApiMintBurnData (n :: NetworkDiscriminant) = ApiMintBurnData
     -- ^ The name of the asset to mint/burn.
     , operation           :: !(ApiMintBurnOperation n)
     -- ^ The minting or burning operation to perform.
-    } deriving (Eq, Generic, Show)
+    } deriving (Eq, Generic, Show, NFData)
 
 instance DecodeAddress n => FromJSON (ApiMintBurnData n) where
     parseJSON = genericParseJSON defaultRecordTypeOptions
@@ -3511,7 +3516,7 @@ data ApiMintBurnOperation (n :: NetworkDiscriminant)
     -- ^ Mint tokens.
     | ApiBurn ApiBurnData
     -- ^ Burn tokens.
-    deriving (Eq, Generic, Show)
+    deriving (Eq, Generic, Show, NFData)
 
 -- | The format of a minting request: mint "amount" and send it to the
 -- "address".
@@ -3521,7 +3526,7 @@ data ApiMintData (n :: NetworkDiscriminant) = ApiMintData
     , amount           :: Quantity "assets" Natural
     -- ^ Amount of assets to mint.
     }
-    deriving (Eq, Generic, Show)
+    deriving (Eq, Generic, Show, NFData)
 
 instance DecodeAddress n => FromJSON (ApiMintData n) where
     parseJSON = genericParseJSON defaultRecordTypeOptions
@@ -3533,7 +3538,7 @@ instance EncodeAddress n => ToJSON (ApiMintData n) where
 -- type of tokens to burn (policyId, assetName), and the amount, the exact
 -- tokens selected are up to the implementation.
 newtype ApiBurnData = ApiBurnData (Quantity "assets" Natural)
-    deriving (Eq, Generic, Show)
+    deriving (Eq, Generic, Show, NFData)
 
 instance FromJSON ApiBurnData where
     parseJSON = genericParseJSON defaultRecordTypeOptions
@@ -3569,3 +3574,28 @@ instance FromJSON (ApiT (Script KeyHash)) where
     parseJSON = fmap ApiT . parseJSON
 instance ToJSON (ApiT (Script KeyHash)) where
     toJSON = toJSON . getApiT
+
+instance ToJSON (ApiT W.TxMintBurn) where
+    toJSON (ApiT txMintBurn) =
+        let mint = W.toMint txMintBurn
+            burn = W.toBurn txMintBurn
+            scripts = W.scripts txMintBurn
+        in
+            Aeson.object
+            $  [ "scripts" .= scripts ]
+            <> [ "mint" .= (ApiT mint) | not (W.isEmpty mint) ]
+            <> [ "burn" .= (ApiT burn) | not (W.isEmpty burn) ]
+
+instance FromJSON (ApiT W.TxMintBurn) where
+    parseJSON = withObject "TxMintBurn" $ \obj -> do
+      scripts <- obj .: "scripts"
+      (ApiT mint) <- fromMaybe mempty <$> obj .:? "mint" 
+      (ApiT burn) <- fromMaybe mempty <$> obj .:? "burn"
+      case W.mkTxMintBurn mint burn scripts of
+          Left (W.ErrTxMintBurnMissingWitnesses policies) ->
+              fail $ "Missing script witnesses for the following policies: "
+                  <> show ((T.unpack . toText) <$> Set.toList policies)
+          Left (W.ErrTxMintBurnUneededWitnesses policies) ->
+              fail $ "The following script witnesses are not needed: "
+                  <> show ((T.unpack . toText) <$> Set.toList policies)
+          Right txMintBurn -> pure $ ApiT txMintBurn

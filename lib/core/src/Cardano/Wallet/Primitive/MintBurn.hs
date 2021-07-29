@@ -1,3 +1,5 @@
+{-# LANGUAGE DeriveAnyClass #-}
+{-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE RecordWildCards #-}
 -- |
 -- Copyright: © 2018-2021 IOHK
@@ -10,6 +12,7 @@ module Cardano.Wallet.Primitive.MintBurn
       TxMintBurn
     , ToMint
     , ToBurn
+    , ErrTxMintBurn(..)
     , toMint
     , toBurn
     , scripts
@@ -31,8 +34,12 @@ import Data.Set
 
 import qualified Cardano.Wallet.Primitive.Types.TokenMap as TokenMap
 import qualified Cardano.Wallet.Primitive.Types.TokenPolicy as TokenPolicy
+import Control.DeepSeq
+    ( NFData )
 import qualified Data.Map.Strict as Map
 import qualified Data.Set as Set
+import GHC.Generics
+    ( Generic )
 
 -- TokenMap can only hold positive values, so we create wrapper types to
 -- represent positive values (ToMint) and negative values (ToBurn).
@@ -50,7 +57,7 @@ data TxMintBurn = TxMintBurn
     , toBurn  :: ToBurn
     , scripts :: [Script KeyHash]
     }
-    deriving (Eq, Show)
+    deriving (Eq, Show, Generic, NFData)
 
 data ErrTxMintBurn
     = ErrTxMintBurnMissingWitnesses (Set TokenPolicyId)

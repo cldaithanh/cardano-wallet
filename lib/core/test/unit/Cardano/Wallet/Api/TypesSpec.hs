@@ -208,6 +208,8 @@ import Cardano.Wallet.Primitive.AddressDerivationSpec
     ()
 import Cardano.Wallet.Primitive.AddressDiscovery.Sequential
     ( AddressPoolGap, getAddressPoolGap )
+import Cardano.Wallet.Primitive.MintBurn
+    ( TxMintBurn, mkTxMintBurn )
 import Cardano.Wallet.Primitive.SyncProgress
     ( SyncProgress (..) )
 import Cardano.Wallet.Primitive.Types
@@ -242,25 +244,17 @@ import Cardano.Wallet.Primitive.Types.Hash
 import Cardano.Wallet.Primitive.Types.RewardAccount
     ( RewardAccount (..) )
 import Cardano.Wallet.Primitive.Types.TokenBundle
-    ( AssetId (..), TokenBundle )
+    ( TokenBundle )
 import Cardano.Wallet.Primitive.Types.TokenBundle.Gen
     ( genTokenBundleSmallRange, shrinkTokenBundleSmallRange )
-import Cardano.Wallet.Primitive.Types.TokenMap
-    ( TokenMap )
 import Cardano.Wallet.Primitive.Types.TokenMap.Gen
     ( genAssetId, genTokenMapSmallRange, shrinkTokenMapSmallRange )
-import Cardano.Wallet.Primitive.Types.TokenPolicy
-    ( AssetDecimals (..)
-    , AssetLogo (..)
-    , AssetMetadata (..)
-    , AssetURL (..)
-    , TokenFingerprint
-    , TokenName (..)
-    , TokenPolicyId (..)
-    , mkTokenFingerprint
-    )
 import Cardano.Wallet.Primitive.Types.TokenPolicy.Gen
     ( genTokenName )
+import Cardano.Wallet.Primitive.Types.TokenQuantity
+    ( TokenQuantity )
+import Cardano.Wallet.Primitive.Types.TokenQuantity.Gen
+    ( genTokenQuantityFullRange, shrinkTokenQuantityFullRange )
 import Cardano.Wallet.Primitive.Types.Tx
     ( Direction (..)
     , SealedTx
@@ -408,6 +402,8 @@ import Web.HttpApiData
     ( FromHttpApiData (..) )
 
 import qualified Cardano.Wallet.Api.Types as Api
+import Cardano.Wallet.Primitive.Types.TokenMap as TokenMap
+import Cardano.Wallet.Primitive.Types.TokenPolicy as TokenPolicy
 import qualified Data.Aeson as Aeson
 import qualified Data.Aeson.Types as Aeson
 import qualified Data.ByteArray as BA
@@ -1005,6 +1001,7 @@ spec = parallel $ do
                 x' = ApiSignTransactionPostData
                     { transaction = transaction (x :: ApiSignTransactionPostData)
                     , passphrase = passphrase (x :: ApiSignTransactionPostData)
+                    , monetaryPolicyIndex = monetaryPolicyIndex (x :: ApiSignTransactionPostData)
                     }
             in
                 x' === x .&&. show x' === show x
@@ -1690,6 +1687,29 @@ instance Arbitrary a => Arbitrary (NonEmpty a) where
     arbitrary = genericArbitrary
     shrink = genericShrink
 
+instance Arbitrary TxMintBurn where
+    arbitrary = do
+        (scripts :: [Script KeyHash]) <- arbitrary
+        n <- chooseInt (1, length scripts)
+        let
+            (mintScripts, burnScripts) = splitAt n scripts
+        toMint <- genTokenMapFromScripts mintScripts
+        toBurn <- genTokenMapFromScripts burnScripts
+        either (error . show) pure $ mkTxMintBurn toMint toBurn scripts
+
+        where
+            genTokenMapFromScripts :: [Script KeyHash] -> Gen TokenMap
+            genTokenMapFromScripts scripts =
+                 fmap mconcat $ forM scripts $ \script -> do
+                    let policyId = TokenPolicy.tokenPolicyIdFromScript script
+                    tokenName <- arbitrary
+                    let assetId = AssetId policyId tokenName
+                    TokenMap.singleton assetId <$> arbitrary
+
+instance Arbitrary TokenQuantity where
+    arbitrary = genTokenQuantityFullRange
+    shrink = shrinkTokenQuantityFullRange
+
 -- | The initial seed has to be vector or length multiple of 4 bytes and shorter
 -- than 64 bytes. Note that this is good for testing or examples, but probably
 -- not for generating truly random Mnemonic words.
@@ -1915,7 +1935,7 @@ instance Arbitrary a => Arbitrary (AddressAmount a) where
     shrink _ = []
 
 instance Arbitrary ApiSignTransactionPostData where
-    arbitrary = ApiSignTransactionPostData <$> arbitrary <*> arbitrary
+    arbitrary = applyArbitrary3 ApiSignTransactionPostData
 
 instance Arbitrary (PostTransactionOldData t) where
     arbitrary = PostTransactionOldData

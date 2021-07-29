@@ -2655,6 +2655,7 @@ components:
           <<: *lenientPassphrase
           description: The wallet's master passphrase.
         transaction: *serialisedTransaction
+        monetary_policy_index: *derivationSegment
 
     # ADP-908 Deprecated
     ApiPostTransactionDataByron: &ApiPostTransactionDataByron
@@ -3843,6 +3844,19 @@ x-errAssetNotPresent: &errAssetNotPresent
       type: string
       enum: ['asset_not_present']
 
+x-errMonetaryPolicyIndexNotRequired: &errMonetaryPolicyIndexNotRequired
+  <<: *responsesErr
+  title: monetary_policy_index_not_required
+  properties:
+    message:
+      type: string
+      description: |
+        Occurs when trying to sign a transaction with a monetary policy key that
+        is not required.
+    code:
+      type: string
+      enum: ['monetary_policy_index_not_required']
+
 x-responsesErr400: &responsesErr400
   400:
     description: Bad Request
@@ -4335,6 +4349,7 @@ x-responsesSignTransaction: &responsesSignTransaction
           oneOf:
             - <<: *errNoRootKey
             - <<: *errWrongEncryptionPassphrase
+            - <<: *errMonetaryPolicyIndexNotRequired
   <<: *responsesErr404WalletNotFound
   <<: *responsesErr406
   <<: *responsesErr415UnsupportedMediaType

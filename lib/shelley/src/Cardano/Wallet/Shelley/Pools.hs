@@ -128,9 +128,9 @@ import Data.Bifunctor
 import Data.Function
     ( (&) )
 import Data.Generics.Internal.VL.Lens
-    ( view )
+    ( set, view )
 import Data.List
-    ( nub, (\\) )
+    ( foldl', nub, (\\) )
 import Data.List.NonEmpty
     ( NonEmpty (..) )
 import Data.Map
@@ -448,53 +448,33 @@ combineDbAndLsqData ti nOpt lsqData =
 --
 -- Calculating e.g. the nonMyopicMemberRewards ourselves through chain-following
 -- would be completely impractical.
-combineLsqData
-    :: StakePoolsSummary
-    -> Map PoolId PoolLsqData
-combineLsqData
-    StakePoolsSummary{nOpt, desirabilities, rewards, stake, ownerStake}
-    = merged_all
+combineLsqData :: StakePoolsSummary -> Map PoolId PoolLsqData
+combineLsqData StakePoolsSummary{nOpt, desirabilities, rewards, stake, ownerStake}
+    = ($ defaultData) <$> foldl' (Map.unionWith (.)) mempty updates
   where
+    updates :: [Map PoolId (PoolLsqData -> PoolLsqData)]
+    updates =
+        [ set #nonMyopicMemberRewards <$> rewards
+        , set #relativeStake <$> stake
+        , set #saturation . sat <$> stake
+        , set #desirabilityScore . W.desirabilityScore <$> desirabilities
+        , set #ownerStake <$> ownerStake
+        ]
+
     -- calculate the saturation from the relative stake
-    sat s = fromRational $ (getPercentage s) / (1 / fromIntegral nOpt)
-
-    -- keep only the desirability scores
-    desirs = Map.map W.desirabilityScore desirabilities
-
-    -- In some cases, stake pools may be included in one map,
-    -- but not in the other. We have to merge these maps with suitable default
-    -- values.
-    merged_rs =
-        mergeWithDefaults default_r default_s (\r s -> (r,s)) rewards stake
-    merged_do =
-        mergeWithDefaults default_d default_o (\d o -> (d,o)) desirs ownerStake
-    merged_all =
-        mergeWithDefaults (default_r, default_s) (default_d, default_o) f
-            merged_rs merged_do
-        where
-        f (r,s) (d,o) = PoolLsqData
-            { nonMyopicMemberRewards = r
-            , desirabilityScore = d
-            , relativeStake = s
-            , ownerStake = o
-            , saturation = sat s
-            }
+    sat s = fromRational $ getPercentage s * fromIntegral nOpt
 
     -- Default values.
     -- If we fetch non-myopic member rewards of pools using the wallet
     -- balance of 0, the resulting map will be empty. So we set the rewards
     -- to 0.
-    default_r = Coin 0
-    -- TODO: The case of a pool that has no stake but shows rewards
-    -- seems impossible, but seems to happen on shelley-testnet.
-    -- Why and how should we treat it?
-    --
-    -- The pool with rewards but not stake didn't seem to be retiring.
-    default_s = noStake where noStake = unsafeMkPercentage 0
-    -- default desirability ranking
-    default_d = 0
-    -- default owner stake
-    default_o = Coin 0
+    defaultData = PoolLsqData
+        { nonMyopicMemberRewards = Coin 0
+        , desirabilityScore = 0
+        , ownerStake = Coin 0
+        , relativeStake = unsafeMkPercentage 0
+        , saturation = 0
+        }
 
 -- | Merge two maps with a combining function,
 -- Use default values at keys which are present in one map,

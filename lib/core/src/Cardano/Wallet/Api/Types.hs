@@ -1465,6 +1465,7 @@ data ApiErrorCode
     | SharedWalletCannotUpdateKey
     | SharedWalletScriptTemplateInvalid
     | TokensMintedButNotSpentOrBurned
+    | MonetaryPolicyIndexNotRequired
     deriving (Eq, Generic, Show, Data, Typeable)
     deriving anyclass NFData
 

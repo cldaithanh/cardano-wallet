@@ -69,9 +69,9 @@ mkTxMintBurn toMint toBurn scripts =
         uneeded = scriptWitnessesUnneeded txMintBurn
     in
         case (Set.toList missing, Set.toList uneeded) of
-            (_   , x:xs) -> Left $ ErrTxMintBurnUneededWitnesses uneeded
-            (x:xs,    _) -> Left $ ErrTxMintBurnMissingWitnesses missing
-            ([]  ,   []) -> Right txMintBurn
+            (_      , _x:_xs) -> Left $ ErrTxMintBurnUneededWitnesses uneeded
+            (_x:_xs ,    _  ) -> Left $ ErrTxMintBurnMissingWitnesses missing
+            ([]     ,   []  ) -> Right txMintBurn
 
 
 -- | Get the set of token policy IDs for which a script witness has not been
@@ -93,7 +93,7 @@ scriptWitnessesMissing txMintBurn =
 -- | Get the token policy IDs of script witnesses which have been provided but
 -- are not necessary.
 scriptWitnessesUnneeded :: TxMintBurn -> Set TokenPolicyId
-scriptWitnessesUnneeded (txMintBurn@TxMintBurn {..}) =
+scriptWitnessesUnneeded txMintBurn =
     let
         witnessesNeeded :: Set TokenPolicyId
         witnessesProvided :: Set TokenPolicyId

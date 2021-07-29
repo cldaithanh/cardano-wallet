@@ -50,7 +50,7 @@ import Prelude
 import Cardano.Address.Derivation
     ( XPrv, toXPub )
 import Cardano.Address.Script
-    ( KeyHash, Script (..) )
+    ( KeyHash, KeyRole (Payment), Script (..) )
 import Cardano.Api
     ( AnyCardanoEra (..)
     , ByronEra
@@ -71,7 +71,12 @@ import Cardano.Ledger.Crypto
 import Cardano.Ledger.Era
     ( Crypto, Era )
 import Cardano.Wallet.Primitive.AddressDerivation
-    ( Depth (..), Passphrase (..), RewardAccount (..), WalletKey (..) )
+    ( Depth (..)
+    , Passphrase (..)
+    , RewardAccount (..)
+    , WalletKey (..)
+    , hashVerificationKey
+    )
 import Cardano.Wallet.Primitive.AddressDerivation.Byron
     ( ByronKey )
 import Cardano.Wallet.Primitive.AddressDerivation.Icarus
@@ -120,7 +125,8 @@ import Cardano.Wallet.Primitive.Types.Tx
     , txSizeDistance
     )
 import Cardano.Wallet.Shelley.Compatibility
-    ( fromCardanoTx
+    ( fromCardanoKeyHash
+    , fromCardanoTx
     , fromShelleyTxId
     , maxTokenBundleSerializedLengthBytes
     , prettyPrintTxMintBurnConversionError
@@ -161,6 +167,8 @@ import Data.Either.Combinators
     ( mapLeft )
 import Data.Function
     ( (&) )
+import Data.Functor
+    ( (<&>) )
 import Data.Generics.Internal.VL.Lens
     ( view )
 import Data.Generics.Labels
@@ -200,6 +208,7 @@ import qualified Data.ByteString as BS
 import qualified Data.Foldable as F
 import qualified Data.List.NonEmpty as NE
 import qualified Data.Map as Map
+import qualified Data.Map.Strict as M
 import qualified Data.Set as Set
 import qualified Data.Text as T
 
@@ -293,9 +302,12 @@ constructSignedTx
     -- ^ Reward account
     -> (TxIn -> Maybe (k 'AddressK XPrv, Passphrase "encryption"))
     -- ^ Key store
+    -> Maybe (k 'PolicyK XPrv, Passphrase "encryption")
+    -- ^ Optional policy key to sign Tx with
     -> SealedTx
     -> Either ErrSignTx (Tx, SealedTx)
-constructSignedTx networkId (rewardAcnt, pwdAcnt) keyFrom sealed =
+constructSignedTx
+    networkId (rewardAcnt, pwdAcnt) keyFrom mPolicyKey sealed =
     case view #cardanoTx sealed of
         InAnyCardanoEra txEra tx -> case cardanoEraStyle txEra of
             Cardano.LegacyByronEra ->
@@ -320,6 +332,15 @@ constructSignedTx networkId (rewardAcnt, pwdAcnt) keyFrom sealed =
                 [ TxIn (fromShelleyTxId $ Cardano.toShelleyTxId txid) (fromIntegral ix)
                 | Cardano.TxIn txid (Cardano.TxIx ix) <- fst <$> (Cardano.txIns txBodyContent) ]
 
+        let mintValue = Cardano.txMintValue txBodyContent
+
+        case mPolicyKey of
+            Nothing -> pure ()
+            Just (policyK, _pwd) ->
+                if mintValue `mintValueRequiresPolicyKey` policyK
+                then pure ()
+                else Left ErrSignTxPolicyKeyNotRequired
+
         wits <- case txWitnessTagFor @k of
             TxWitnessShelleyUTxO -> do
                 addrWits <- forM selectedInputs $ \txin -> do
@@ -329,7 +350,14 @@ constructSignedTx networkId (rewardAcnt, pwdAcnt) keyFrom sealed =
                 let wdrlsWits =
                         ([mkShelleyWitness body (rewardAcnt, pwdAcnt) | areWdrls])
 
-                pure $ mkExtraWits body <> F.toList addrWits <> wdrlsWits
+                let policyWits =
+                        [ mkShelleyWitness body (getRawKey policyKey, pwdPolicy)
+                        | Just (policyKey, pwdPolicy) <- [mPolicyKey] ]
+
+                pure $ mkExtraWits body
+                     <> F.toList addrWits
+                     <> wdrlsWits
+                     <> policyWits
 
             TxWitnessByronUTxO{} -> do
                 bootstrapWits <- forM selectedInputs $ \txin -> do
@@ -347,6 +375,63 @@ constructSignedTx networkId (rewardAcnt, pwdAcnt) keyFrom sealed =
         :: TxIn
         -> Either ErrSignTx (k 'AddressK XPrv, Passphrase "encryption")
     lookupXPrv txin = maybe (Left $ ErrSignTxKeyNotFoundForAddress txin) Right (keyFrom txin)
+
+-- | Does the given script need to be signed by the given policy key?
+scriptRequiresPolicyKey
+    :: WalletKey k
+    => k 'PolicyK XPrv
+    -> Cardano.SimpleScript lang
+    -> Bool
+scriptRequiresPolicyKey policyKey = containsPolicyKeyHash policyKeyHash
+    where
+        policyKeyHash :: KeyHash
+        policyKeyHash = hashVerificationKey Payment (publicKey policyKey)
+
+        containsPolicyKeyHash
+            :: KeyHash
+            -> Cardano.SimpleScript lang
+            -> Bool
+        containsPolicyKeyHash policyHash = \case
+            Cardano.RequireSignature h ->
+                fromCardanoKeyHash h == policyHash
+            Cardano.RequireTimeBefore _ _ ->
+                False
+            Cardano.RequireTimeAfter _ _ ->
+                False
+            Cardano.RequireAllOf ss ->
+                or $ containsPolicyKeyHash policyHash <$> ss
+            Cardano.RequireAnyOf ss ->
+                or $ containsPolicyKeyHash policyHash <$> ss
+            Cardano.RequireMOf _m ss ->
+                or $ containsPolicyKeyHash policyHash <$> ss
+
+-- | Returns @True@ if the given mint value must be witnessed by the given
+-- policy key.
+mintValueRequiresPolicyKey
+    :: WalletKey k
+    => Cardano.TxMintValue build era
+    -> k 'PolicyK XPrv
+    -> Bool
+mintValueRequiresPolicyKey = \case
+    Cardano.TxMintNone ->
+        const False
+    Cardano.TxMintValue _era _val Cardano.ViewTx ->
+        const False
+    Cardano.TxMintValue _era _val (Cardano.BuildTxWith map) -> \pk ->
+        let
+            onSimpleScripts
+                :: (forall lang. Cardano.SimpleScript lang -> a) -> [a]
+            onSimpleScripts f =
+                M.elems map
+                <&> (\case
+                      (Cardano.SimpleScriptWitness _lang _ver s) ->
+                          [f s]
+                      (Cardano.PlutusScriptWitness {}) ->
+                          []
+                    )
+                & mconcat
+        in
+            or $ onSimpleScripts (scriptRequiresPolicyKey pk)
 
 sealedTxFromCardano' :: Cardano.IsCardanoEra era => Cardano.Tx era -> SealedTx
 sealedTxFromCardano' = sealedTxFromCardano . InAnyCardanoEra Cardano.cardanoEra

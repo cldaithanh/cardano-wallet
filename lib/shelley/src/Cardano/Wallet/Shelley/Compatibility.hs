@@ -80,6 +80,8 @@ module Cardano.Wallet.Shelley.Compatibility
     , rewardAccountFromAddress
     , fromShelleyTxId
     , toCardanoMintValue
+    , toCardanoKeyHash
+    , fromCardanoKeyHash
 
       -- ** Assessing sizes of token bundles
     , tokenBundleSizeAssessor
@@ -1300,6 +1302,12 @@ toCardanoKeyHash = \case
             Just h  -> Right
                 $ Cardano.PaymentKeyHash
                 $ SL.KeyHash h
+
+fromCardanoKeyHash
+  :: Cardano.Hash Cardano.PaymentKey
+  -> Cardano.Address.KeyHash
+fromCardanoKeyHash (Cardano.PaymentKeyHash (SL.KeyHash h)) =
+    Cardano.Address.KeyHash Cardano.Address.Payment $ Crypto.hashToBytes h
 
 toCardanoPolicyId :: W.TokenPolicyId -> Cardano.PolicyId
 toCardanoPolicyId (W.UnsafeTokenPolicyId (W.Hash pid)) = just "PolicyId" $

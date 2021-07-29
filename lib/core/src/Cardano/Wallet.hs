@@ -489,6 +489,8 @@ import UnliftIO.MVar
     ( modifyMVar_, newMVar )
 
 import qualified Cardano.Crypto.Wallet as CC
+import Cardano.Wallet.Primitive.AddressDerivation.MintBurn
+    ( derivePolicyKeyAndHash )
 import qualified Cardano.Wallet.Primitive.AddressDiscovery.Random as Rnd
 import qualified Cardano.Wallet.Primitive.AddressDiscovery.Sequential as Seq
 import qualified Cardano.Wallet.Primitive.AddressDiscovery.Shared as Shared
@@ -1529,15 +1531,18 @@ signTransaction
         ( HasTransactionLayer k ctx
         , HasDBLayer IO s k ctx
         , IsOwned s k
+        , WalletKey k
         )
     => ctx
     -> WalletId
     -> ((k 'RootK XPrv, Passphrase "encryption") -> (XPrv, Passphrase "encryption"))
-       -- ^ Reward account derived from the root key (or somewhere else).
+    -- ^ Reward account derived from the root key (or somewhere else).
+    -> Maybe (Index 'Hardened 'PolicyK)
+    -- ^ Optional index of policy key to sign this transaction with
     -> Passphrase "raw"
     -> SealedTx
     -> ExceptT ErrWitnessTx IO SealedTx
-signTransaction ctx wid mkRwdAcct pwd tx = do
+signTransaction ctx wid mkRwdAcct mPolicyKeyIx pwd tx = do
     (cp, _, pending) <- withExceptT
         ErrWitnessTxNoSuchWallet (readWallet @ctx @s @k ctx wid)
     let utxo = availableUTxO @s pending cp
@@ -1550,9 +1555,21 @@ signTransaction ctx wid mkRwdAcct pwd tx = do
                 let keyFrom txin = do
                         addr <- getAddrFromUTxO txin
                         isOwned (getState cp) (xprv, pwdP) addr
+                        
                 let rewardAcnt = mkRwdAcct (xprv, pwdP)
-                withExceptT ErrWitnessTxSignTx $ ExceptT $ pure $
-                    (snd <$> mkSignedTransaction tl rewardAcnt keyFrom tx)
+                let
+                    policyKey :: Index 'Hardened 'PolicyK -> ((k 'PolicyK XPrv, Passphrase "encryption"))
+                    policyKey index =
+                        (fst $ derivePolicyKeyAndHash pwdP xprv index, pwdP)
+                withExceptT ErrWitnessTxSignTx $ ExceptT $ pure
+                    (snd <$>
+                         mkSignedTransaction
+                             tl
+                             rewardAcnt
+                             keyFrom
+                             (policyKey <$> mPolicyKeyIx)
+                             tx
+                    )
 
   where
     db = ctx ^. dbLayer @IO @s @k

@@ -1799,12 +1799,14 @@ signTransaction
 signTransaction ctx (ApiT wid) body = do
     let pwd = coerce $ body ^. #passphrase . #getApiT
     let tx = body ^. #transaction . #getApiT
+    let mPolicyKey = Nothing
 
     -- (_, mkRwdAcct) <- mkRewardAccountBuilder @_ @s @_ @n ctx wid Nothing
     let stubRwdAcct = first getRawKey
 
     signed <- withWorkerCtx ctx wid liftE liftE $ \wrk ->
-        liftHandler $ W.signTransaction @_ @s @k wrk wid stubRwdAcct pwd tx
+        liftHandler
+        $ W.signTransaction @_ @s @k wrk wid stubRwdAcct mPolicyKey pwd tx
 
     let W.SerialisedTxParts txBody txWits = getSerialisedTxParts signed
     pure $ Api.ApiSignedTransaction
@@ -3332,6 +3334,13 @@ instance IsServerError ErrSignTx where
                 , "middle of other tasks. This is a pretty rare situation but "
                 , "as a result, I must throw-away what I was doing. Please "
                 , "retry whatever you were doing in a short delay."
+                ]
+        ErrSignTxPolicyKeyNotRequired ->
+            apiError err400 MonetaryPolicyIndexNotRequired $ mconcat
+                [ "The monetary policy index you provided was not required in "
+                , "order to sign the transaction. We ask that you resubmit your "
+                , "request with a different monetary policy index, "
+                , "or none at all."
                 ]
 
 

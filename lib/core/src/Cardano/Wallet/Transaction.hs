@@ -124,12 +124,13 @@ data TransactionLayer k = TransactionLayer
         -- multisignature transactions, etc.
         --
         -- The function returns CBOR-ed transaction body to be signed in another step.
-
     , mkSignedTransaction
         :: (XPrv, Passphrase "encryption")
             -- Reward account
         -> (TxIn -> Maybe (k 'AddressK XPrv, Passphrase "encryption"))
             -- Key store
+        -> Maybe (k 'PolicyK XPrv, Passphrase "encryption")
+            -- Monetary policy key to sign the transaction with
         -> SealedTx
             -- serialized unsigned transaction
         -> Either ErrSignTx (Tx, SealedTx)
@@ -276,4 +277,6 @@ data ErrSignTx
     | ErrSignTxInvalidEra
     -- ^ Should never happen, means that that we have programmatically provided
     -- an invalid era.
+    | ErrSignTxPolicyKeyNotRequired
+    -- ^ The provided policy key was not required to create a valid transaction.
     deriving (Eq, Show)

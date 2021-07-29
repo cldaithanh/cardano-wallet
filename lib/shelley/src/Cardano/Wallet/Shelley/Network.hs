@@ -70,14 +70,14 @@ import Cardano.Wallet.Shelley.Compatibility
     , fromCardanoHash
     , fromChainHash
     , fromNonMyopicMemberRewards
-    , getDesirabilities
-    , getOwnerStakes
     , fromPoolDistr
     , fromShelleyCoin
     , fromShelleyPParams
     , fromStakeCredential
     , fromTip
     , fromTip'
+    , getDesirabilities
+    , getOwnerStakes
     , nodeToClientVersion
     , optimumNumberOfPools
     , slottingParametersFromGenesis
@@ -502,11 +502,11 @@ withNetworkLayerBase tr np conn (versionData, _) tol action = do
                 (r3, r5) <- m3
                 W.StakePoolsSummary <$> m1 <*> m2 <*> pure r3 <*> m4 <*> pure r5
         let qry :: LSQ (CardanoBlock StandardCrypto) IO (Maybe W.StakePoolsSummary)
-            qry = liftA4 mkStakePoolsSummary4
-                getNOpt
-                queryNonMyopicMemberRewards
-                queryRewardsProvenance
-                stakeDistr
+            qry = mkStakePoolsSummary4
+                <$> getNOpt
+                <*> queryNonMyopicMemberRewards
+                <*> queryRewardsProvenance
+                <*> stakeDistr
 
         mres <- bracketQuery "stakePoolsSummary" tr $
             queue `send` (SomeLSQ qry)
@@ -611,12 +611,6 @@ withNetworkLayerBase tr np conn (versionData, _) tol action = do
                     -- db.
                     Left _pastHorizon -> return NotResponding
                     Right p -> return p
-
-liftA4
-    :: Applicative f
-    => (a1 -> a2 -> a3 -> a4 -> b)
-    -> f a1 -> f a2 -> f a3 -> f a4 -> f b
-liftA4 f a1 a2 a3 a4 = pure f <*> a1 <*> a2 <*> a3 <*> a4
 
 --------------------------------------------------------------------------------
 --

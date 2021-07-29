@@ -431,7 +431,7 @@ combineDbAndLsqData ti nOpt lsqData =
             , Api.cost =
                 Api.coinToQuantity $ poolCost $ registrationCert dbData
             , Api.pledge =
-                Api.coinToQuantity $ pledge
+                Api.coinToQuantity pledge
             , Api.margin =
                 Quantity $ poolMargin $ registrationCert dbData
             , Api.retirement =
@@ -476,15 +476,6 @@ combineLsqData StakePoolsSummary{nOpt, desirabilities, rewards, stake, ownerStak
         , saturation = 0
         }
 
--- | Merge two maps with a combining function,
--- Use default values at keys which are present in one map,
--- but not the other.
-mergeWithDefaults :: Ord k => a -> b -> (a -> b -> c) -> Map k a -> Map k b -> Map k c
-mergeWithDefaults defa defb f =
-    Map.merge
-        (Map.mapMissing $ \_k a -> f a defb)
-        (Map.mapMissing $ \_k b -> f defa b)
-        (Map.zipWithMatched $ \_k a b -> f a b)
 
 -- | Combines all the chain-following data into a single map
 combineChainData

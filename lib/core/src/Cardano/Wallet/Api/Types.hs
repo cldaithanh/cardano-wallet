@@ -76,6 +76,7 @@ module Cardano.Wallet.Api.Types
     , ApiBase64
     , ApiMintBurnData (..)
     , ApiStakePool (..)
+    , invariantApiStakePool
     , ApiStakePoolMetrics (..)
     , ApiStakePoolFlag (..)
     , ApiWallet (..)
@@ -768,6 +769,13 @@ data ApiStakePool = ApiStakePool
     , retirement :: !(Maybe ApiEpochInfo)
     , flags :: ![ApiStakePoolFlag]
     } deriving (Eq, Generic, Show)
+
+-- | The 'ApiStakePool' response contains redundant information
+-- and needs to satisfy this invariant.
+invariantApiStakePool :: ApiStakePool -> Bool
+invariantApiStakePool r = 
+    (OwnerStakeLowerThanPledge `elem` flags r)
+    == (pledge r < ownerStake (metrics r))
 
 data ApiStakePoolFlag
     = Delisted

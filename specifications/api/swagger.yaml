@@ -1457,10 +1457,8 @@ x-stakePoolSaturation: &stakePoolSaturation
   type: number
   minimum: 0
   description: |
-    Saturation-level of the pool based on the desired number of pools aimed by the network.
-    A value above `1` indicates that the pool is saturated.
-
-    The `non_myopic_member_rewards` take oversaturation into account, as specified by the [specs](https://hydra.iohk.io/job/Cardano/cardano-ledger-specs/delegationDesignSpec/latest/download-by-type/doc-pdf/delegation_design_spec).
+    Saturation-level of the pool based on the desired number `k` of pools aimed for by the network.
+    A value above `1` indicates that the pool is oversaturated.
 
     The saturation is based on the live `relative_stake`. The saturation at the end of epoch e,
     will affect the rewards paid out at the end of epoch e+3.
@@ -1470,12 +1468,36 @@ x-stakePoolSaturation: &stakePoolSaturation
 x-non-myopic-member-rewards: &nonMyopicMemberRewards
   <<: *amount
   description: |
-    The rewards the wallet can expect to receive at the end of an epoch, in the long term, if delegating to
-    this pool.
+    The rewards that the wallet can expect to receive at the end of each epoch, in the long term,
+    if it delegates to this pool.
+
+    In the long term, it is expected that only the first `k` pools
+    with the highest desirability scores will attract an equal share of the stake,
+    while the other pools loose all their delegators.
+    The parameter `k` is fixed by the protocol (e.g. `k = 500` as of 2021-07-30).
+    This expectation is taken into account by `non_myopic_member_rewards`:
+    When delegating to a pool that is oversaturated or has too low desirability,
+    the stake of this wallet will be the main influence on the rewarads.
 
     For more details, see the
     [Design Specification for Delegation and Incentives in Cardano](https://hydra.iohk.io/job/Cardano/cardano-ledger-specs/delegationDesignSpec/latest/download-by-type/doc-pdf/delegation_design_spec)
     document.
+
+x-desirability-score: &desirabilityScore
+  type: number
+  description: |
+      The desirability of a pool is equal to the rewards
+      that a wallet delegating to this pool would get
+      if the relative stake of the pool were precisely at saturation.
+
+      Thus, the desirability score reflects how cost-effective and reliable
+      the pool operator runs this pool.
+      The score provides additional ranking information for pools that
+      have not attracted many delegators yet. Higher scores are better.
+
+      For more details, see the
+      [Design Specification for Delegation and Incentives in Cardano](https://hydra.iohk.io/job/Cardano/cardano-ledger-specs/delegationDesignSpec/latest/download-by-type/doc-pdf/delegation_design_spec)
+      document.
 
 x-stakePoolMetrics: &stakePoolMetrics
   type: object
@@ -1488,12 +1510,7 @@ x-stakePoolMetrics: &stakePoolMetrics
     - owner_stake
   properties:
     non_myopic_member_rewards: *nonMyopicMemberRewards
-    desirability_score:
-      type: number
-      description: |
-        A score that provides additional ranking information
-        if the stake pool ranks 0 in `non_myopic_member_rewards`.
-        Higher desirability scores are better.
+    desirability_score: &desirabilityScore
     relative_stake:
       <<: *percentage
       description: |

@@ -2095,13 +2095,6 @@ quitStakePool ctx wid = db & \DBLayer{..} -> do
         $ withExceptT ErrQuitStakePoolNoSuchWallet
         $ withNoSuchWallet wid
         $ readWalletMeta wid
-
-    rewards <- liftIO
-        $ fetchRewardBalance @ctx @s @k ctx wid
-
-    withExceptT ErrQuitStakePoolCannotQuit $ except $
-        guardQuit (walMeta ^. #delegation) rewards
-
     pure Quit
   where
     db = ctx ^. dbLayer @IO @s @k

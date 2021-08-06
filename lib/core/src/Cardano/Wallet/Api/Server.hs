@@ -1594,7 +1594,9 @@ selectCoinsForQuit
         , ctx ~ ApiLayer s k
         , DelegationAddress n k
         , MkKeyFingerprint k (Proxy n, k 'AddressK XPub)
+        , Bounded (Index (AddressIndexDerivationType k) 'AddressK)
         , SoftDerivation k
+        , WalletKey k
         , Typeable n
         , Typeable s
         )
@@ -1605,8 +1607,12 @@ selectCoinsForQuit ctx (ApiT wid) = do
     withWorkerCtx ctx wid liftE liftE $ \wrk -> do
         action <- liftHandler $ W.quitStakePool @_ @s @k @n wrk wid
 
+        (wdrl, _mkRwdAcct) <-
+            mkRewardAccountBuilder @_ @s @_ @n ctx wid (Just $ SelfWithdrawal)
+
         let txCtx = defaultTransactionCtx
                 { txDelegationAction = Just action
+                , txWithdrawal = wdrl
                 }
 
         let transform = \s sel ->
@@ -2165,7 +2171,7 @@ quitStakePool ctx (ApiT wid) body = do
         action <- liftHandler
             $ W.quitStakePool @_ @s @k @n wrk wid
 
-        (wdrl, mkRwdAcct) <- mkRewardAccountBuilder @_ @s @_ @n ctx wid Nothing
+        (wdrl, mkRwdAcct) <- mkRewardAccountBuilder @_ @s @_ @n ctx wid (Just SelfWithdrawal)
         ttl <- liftIO $ W.getTxExpiry ti Nothing
         let txCtx = defaultTransactionCtx
                 { txWithdrawal = wdrl

@@ -292,6 +292,7 @@ import Cardano.Wallet.Primitive.CoinSelection.MA.RoundRobin
     , SelectionReportDetailed
     , SelectionReportSummarized
     , SelectionResult (..)
+    , SelectionSkeleton
     , UnableToConstructChangeError (..)
     , emptySkeleton
     , makeSelectionReportDetailed
@@ -366,6 +367,7 @@ import Cardano.Wallet.Primitive.Types.Tx
     , SealedTx (..)
     , SerialisedTx (..)
     , SerialisedTxParts (..)
+    , TokenBundleSizeAssessor
     , TransactionInfo (..)
     , Tx
     , TxChange (..)
@@ -1493,16 +1495,11 @@ selectAssets
 selectAssets ctx (utxo, cp, pending) tx outs transform = do
     guardPendingWithdrawal
 
-    pp <- liftIO $ currentProtocolParameters nl
     liftIO $ traceWith tr $ MsgSelectionStart utxo outs
+    pp <- liftIO $ currentProtocolParameters nl
     selectionCriteria <- withExceptT ErrSelectAssetsCriteriaError $ except $
         initSelectionCriteria tl pp tx utxo outs
-    mSel <- performSelection
-        (view #txOutputMinimumAdaQuantity $ constraints tl pp)
-        (calcMinimumCost tl pp tx)
-        (tokenBundleSizeAssessor tl
-            (pp ^. (#txParameters . #getTokenBundleMaxSize)))
-        (selectionCriteria)
+    mSel <- performSelectionWith pp selectionCriteria
     case mSel of
         Left e -> liftIO $
             traceWith tr $ MsgSelectionError e
@@ -1517,6 +1514,24 @@ selectAssets ctx (utxo, cp, pending) tx outs transform = do
     nl = ctx ^. networkLayer
     tl = ctx ^. transactionLayer @k
     tr = contramap MsgWallet $ ctx ^. logger
+
+    performSelectionWith pp selectionCriteria =
+        performSelection
+            computeMinimumAdaQuantity
+            computeMinimumCost
+            assessTokenBundleSize
+            selectionCriteria
+      where
+        computeMinimumAdaQuantity :: TokenMap -> Coin
+        computeMinimumAdaQuantity =
+            view #txOutputMinimumAdaQuantity $ constraints tl pp
+
+        computeMinimumCost :: SelectionSkeleton -> Coin
+        computeMinimumCost = calcMinimumCost tl pp tx
+
+        assessTokenBundleSize :: TokenBundleSizeAssessor
+        assessTokenBundleSize = tokenBundleSizeAssessor tl $
+            pp ^. (#txParameters . #getTokenBundleMaxSize)
 
     -- Ensure that there's no existing pending withdrawals. Indeed, a withdrawal
     -- is necessarily withdrawing rewards in their totality. So, after a first

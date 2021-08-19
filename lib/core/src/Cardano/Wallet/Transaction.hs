@@ -22,6 +22,7 @@ module Cardano.Wallet.Transaction
       TransactionLayer (..)
     , DelegationAction (..)
     , TransactionCtx (..)
+    , TxCollateralRequirement (..)
     , defaultTransactionCtx
     , Withdrawal (..)
     , withdrawalToCoin
@@ -173,7 +174,14 @@ data TransactionCtx = TransactionCtx
     -- ^ Transaction expiry (TTL) slot.
     , txDelegationAction :: Maybe DelegationAction
     -- ^ An additional delegation to take.
+    , txCollateralRequirement :: TxCollateralRequirement
+    -- ^ This transaction's collateral requirement.
     } deriving (Show, Generic, Eq)
+
+data TxCollateralRequirement
+    = TxCollateralRequired
+    | TxCollateralNotRequired
+    deriving (Eq, Generic, Show)
 
 data Withdrawal
     = WithdrawalSelf !RewardAccount !(NonEmpty DerivationIndex) !Coin
@@ -195,6 +203,7 @@ defaultTransactionCtx = TransactionCtx
     , txMetadata = Nothing
     , txTimeToLive = maxBound
     , txDelegationAction = Nothing
+    , txCollateralRequirement = TxCollateralNotRequired
     }
 
 -- | Whether the user is attempting any particular delegation action.

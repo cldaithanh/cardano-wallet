@@ -1492,13 +1492,13 @@ selectAssets
     -> NonEmpty TxOut
     -> (s -> SelectionResult TokenBundle -> result)
     -> ExceptT ErrSelectAssets IO result
-selectAssets ctx (utxo, cp, pending) tx outs transform = do
+selectAssets ctx (utxo, cp, pending) txCtx outs transform = do
     guardPendingWithdrawal
 
     liftIO $ traceWith tr $ MsgSelectionStart utxo outs
     pp <- liftIO $ currentProtocolParameters nl
     selectionCriteria <- withExceptT ErrSelectAssetsCriteriaError $ except $
-        initSelectionCriteria tl pp tx utxo outs
+        initSelectionCriteria tl pp txCtx utxo outs
     mSel <- performSelectionWith pp selectionCriteria
     case mSel of
         Left e -> liftIO $
@@ -1527,7 +1527,7 @@ selectAssets ctx (utxo, cp, pending) tx outs transform = do
             view #txOutputMinimumAdaQuantity $ constraints tl pp
 
         computeMinimumCost :: SelectionSkeleton -> Coin
-        computeMinimumCost = calcMinimumCost tl pp tx
+        computeMinimumCost = calcMinimumCost tl pp txCtx
 
         assessTokenBundleSize :: TokenBundleSizeAssessor
         assessTokenBundleSize = tokenBundleSizeAssessor tl $
@@ -1541,8 +1541,9 @@ selectAssets ctx (utxo, cp, pending) tx outs transform = do
     guardPendingWithdrawal :: ExceptT ErrSelectAssets IO ()
     guardPendingWithdrawal =
         case Set.lookupMin $ Set.filter hasWithdrawal pending of
-            Just pendingWithdrawal | withdrawalToCoin (txWithdrawal tx) /= Coin 0 ->
-                throwE $ ErrSelectAssetsAlreadyWithdrawing pendingWithdrawal
+            Just pendingWithdrawal |
+                withdrawalToCoin (txWithdrawal txCtx) /= Coin 0 ->
+                    throwE $ ErrSelectAssetsAlreadyWithdrawing pendingWithdrawal
             _otherwise ->
                 pure ()
       where

@@ -2678,6 +2678,7 @@ data ErrSelectAssets
     | ErrSelectAssetsNoSuchWallet ErrNoSuchWallet
     | ErrSelectAssetsAlreadyWithdrawing Tx
     | ErrSelectAssetsSelectionError SelectionError
+    | ErrSelectAssetsCollateralError
     deriving (Generic, Eq, Show)
 
 data ErrJoinStakePool

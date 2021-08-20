@@ -267,6 +267,16 @@ data SelectionResult change = SelectionResult
     }
     deriving (Generic, Eq, Show)
 
+selectionResultToSkeleton :: SelectionResult TokenBundle -> SelectionSkeleton
+selectionResultToSkeleton r = SelectionSkeleton
+    { skeletonInputCount =
+        F.length (view #inputsSelected r)
+    , skeletonOutputs =
+        view #outputsCovered r
+    , skeletonChange =
+        TokenBundle.getAssets <$> view #changeGenerated r
+    }
+
 -- | Calculate the actual difference between the total outputs (incl. change)
 -- and total inputs of a particular selection. By construction, this should be
 -- greater than total fees and deposits.

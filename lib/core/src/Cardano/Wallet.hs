@@ -392,6 +392,7 @@ import Cardano.Wallet.Transaction
     , ErrSelectionCriteria (..)
     , TransactionCtx (..)
     , TransactionLayer (..)
+    , TxCollateralRequirement (..)
     , Withdrawal (..)
     , defaultTransactionCtx
     , withdrawalToCoin
@@ -444,7 +445,7 @@ import Data.Function
 import Data.Functor
     ( ($>) )
 import Data.Generics.Internal.VL.Lens
-    ( Lens', view, (^.) )
+    ( Lens', over, view, (^.) )
 import Data.Generics.Labels
     ()
 import Data.Generics.Product.Typed
@@ -1527,7 +1528,15 @@ selectAssets ctx (utxo, cp, pending) txCtx outs transform = do
             view #txOutputMinimumAdaQuantity $ constraints tl pp
 
         computeMinimumCost :: SelectionSkeleton -> Coin
-        computeMinimumCost = calcMinimumCost tl pp txCtx
+        computeMinimumCost = calcMinimumCost tl pp txCtx . accountForCollateral
+          where
+            accountForCollateral :: SelectionSkeleton -> SelectionSkeleton
+            accountForCollateral = case txCtx ^. #txCollateralRequirement of
+                TxCollateralRequired ->
+                    over #skeletonInputCount
+                    (+ (fromIntegral $ pp ^. #maximumCollateralInputCount))
+                TxCollateralNotRequired ->
+                    id
 
         assessTokenBundleSize :: TokenBundleSizeAssessor
         assessTokenBundleSize = tokenBundleSizeAssessor tl $

@@ -104,19 +104,10 @@ import Cardano.Wallet.Primitive.Types.Tx
     , txSizeDistance
     )
 import Cardano.Wallet.Shelley.Compatibility
-    ( fromAllegraTx
-    , fromAlonzoTx
-    , fromCardanoTx
-    , fromMaryTx
-    , fromShelleyTx
+    ( fromCardanoTx
     , fromShelleyTxId
-    , maxTokenBundleSerializedLengthBytes
-<<<<<<< HEAD
-    , sealShelleyTx
-=======
     , rewardAccountFromStakeAddress
     , rewardAccountFromStakeCredential
->>>>>>> 4534be3d4... Rework, refactor, allow partial signing
     , toAllegraTxOut
     , toAlonzoTxOut
     , toCardanoLovelace

@@ -1582,7 +1582,7 @@ withKeyStore ctx wid mkRwdAcct pwd action = do
         rewardAcct <- readRewardAccount @ctx @s @k ctx wid
         pure (getState cp, totalUTxO @s pending cp, rewardAcct)
 
-    let resolver txin = view #address <$> Map.lookup txin (getUTxO utxo)
+    let resolver txin = view #address <$> Map.lookup txin (unUTxO utxo)
 
     withRootKey @_ @s ctx wid pwd ErrWitnessTxWithRootKey $ \xprv scheme -> do
         let pwdP = preparePassphrase scheme pwd

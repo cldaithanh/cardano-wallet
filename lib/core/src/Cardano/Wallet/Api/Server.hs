@@ -2659,7 +2659,7 @@ postExternalTransaction
     -> Handler ApiTxId
 postExternalTransaction ctx (ApiT sealed) = do
     tx <- liftHandler $ W.submitExternalTx @ctx @k ctx sealed
-    return $ ApiTxId (ApiT (txId tx))
+    return $ ApiTxId (ApiT (view #txId tx))
 
 signMetadata
     :: forall ctx s k n.
@@ -2852,8 +2852,7 @@ mkApiCoinSelection deps mcerts metadata unsignedTx =
             <$> unsignedTx ^. #unsignedCollateral
         , withdrawals = mkApiCoinSelectionWithdrawal
             <$> unsignedTx ^. #unsignedWithdrawals
-        , certificates = uncurry mkCertificates
-            <$> mcerts
+        , certificates = (fmap (uncurry mkCertificate)) <$> mcerts
         , deposits = mkApiCoin
             <$> deps
         , metadata = ApiBytesT. serialiseToCBOR

@@ -446,28 +446,25 @@ prefilterBlock b u0 = runState $ do
         ourWithdrawals <- Coin . sum . fmap (unCoin . snd) <$>
             mapMaybeM ourWithdrawal (Map.toList $ withdrawals tx)
 
-        let received = nextUTxO `difference` prevUTxO
-        let receivedBal = balance received
-        let ourIns = Set.fromList (inputs tx) `Set.intersection` dom nextUTxO
-        let spent = prevUTxO `difference` nextUTxO
-        let spentBal = balance spent `TB.add` TB.fromCoin ourWithdrawals
+        let received = balance (nextUTxO `difference` prevUTxO)
+        let spent =
+                balance (prevUTxO `difference` nextUTxO)
+                `TB.add` TB.fromCoin ourWithdrawals
 
+        -- A transaction has a known input if one of the transaction inputs
+        -- matches a transaction input we know about.
         let hasKnownInput =
                 Set.fromList (inputs tx) `Set.intersection` dom knownTxO
                 /= mempty
+        -- A transaction has a known output if one of the outputs exists in the
+        -- set of unspent transaction outputs we know about.
         let hasKnownOutput =
                 knownTxO `restrictedTo` Set.fromList (outputs tx)
                 /= mempty
-            -- or <$> traverse (fmap isJust . state . isOurs . address) (outputs tx)
         let hasKnownWithdrawal = ourWithdrawals /= mempty
         let failedScriptValidation = case tx ^. #isValidScript of
                 Just False -> True
                 _ -> False
-
-        -- _ <- Debug.trace (show (xu', u')) $ pure ()
-        -- _ <- Debug.trace (show (xreceived, receivedBal)) $ pure ()
-        -- _ <- Debug.trace (show (xspent, spentBal)) $ pure ()
-        -- _ <- Debug.trace (show (xhasKnownInput, hasKnownInput)) $ pure ()
 
         -- NOTE 1: The only case where fees can be 'Nothing' is when dealing with
         -- a Byron transaction. In which case fees can actually be calculated as
@@ -484,7 +481,7 @@ prefilterBlock b u0 = runState $ do
                     let
                         totalOut = sumCoins (txOutCoin <$> outputs tx)
 
-                        totalIn = TB.getCoin spentBal
+                        totalIn = TB.getCoin spent
                     in
                         Just $ distance totalIn totalOut
 
@@ -497,13 +494,13 @@ prefilterBlock b u0 = runState $ do
 
         return $ if hasKnownOutput && not hasKnownInput then
             let dir = Incoming in
-            ( (tx { fee = actualFee dir }, mkTxMeta (TB.getCoin receivedBal) dir) : txs
+            ( (tx { fee = actualFee dir }, mkTxMeta (TB.getCoin received) dir) : txs
             , nextUTxO
             )
         else if hasKnownInput || hasKnownWithdrawal then
             let
-                adaSpent = TB.getCoin spentBal
-                adaReceived = if failedScriptValidation then mempty else TB.getCoin receivedBal
+                adaSpent = TB.getCoin spent
+                adaReceived = if failedScriptValidation then mempty else TB.getCoin received
                 dir = if adaSpent > adaReceived then Outgoing else Incoming
                 amount = distance adaSpent adaReceived
             in

@@ -80,7 +80,7 @@ import Cardano.Wallet.Primitive.Types.Tx
     , txOutCoin
     )
 import Cardano.Wallet.Primitive.Types.UTxO
-    ( Dom (..), UTxO (..), balance, excluding, restrictedBy )
+    ( Dom (..), UTxO (..), balance, excluding, restrictedBy, restrictedTo )
 import Control.DeepSeq
     ( NFData (..), deepseq )
 import Control.Monad
@@ -435,35 +435,30 @@ prefilterBlock b u0 = runState $ do
         => ([(Tx, TxMeta)], UTxO)
         -> Tx
         -> State s ([(Tx, TxMeta)], UTxO)
-    applyTx (!txs, !u) tx = do
-        xourU <- state $ utxoOurs tx
-        xourWithdrawals <- Coin . sum . fmap (unCoin . snd) <$>
-            mapMaybeM ourWithdrawal (Map.toList $ withdrawals tx)
-        let xourIns = Set.fromList (inputs tx) `Set.intersection` dom (u <> xourU)
-        let xu' = (u <> xourU) `excluding` xourIns
-        let xreceived = balance xourU
-        let xspent = balance (u `restrictedBy` xourIns) `TB.add` TB.fromCoin xourWithdrawals
-        let xhasKnownInput = xourIns /= mempty
-        let xhasKnownOutput = xourU /= mempty
-
-        -- All UTxOs we know about
-        knownUTxO <- (u <>) <$> state (utxoOurs tx)
-        -- The next UTxO state (apply a state transition)
-        let nextUTxO = applyTxToUTxO tx knownUTxO
+    applyTx (!txs, !prevUTxO) tx = do
+        -- All transaction outputs we know about, that haven't been validated as
+        -- "unspent" yet.
+        knownTxO <- (prevUTxO <>) <$> state (utxoOurs tx)
+        -- The next UTxO state (apply a state transition) (e.g. remove
+        -- transaction outputs we've spent).
+        let nextUTxO = applyTxToUTxO tx knownTxO
 
         ourWithdrawals <- Coin . sum . fmap (unCoin . snd) <$>
             mapMaybeM ourWithdrawal (Map.toList $ withdrawals tx)
 
-        let received = nextUTxO `difference` u
+        let received = nextUTxO `difference` prevUTxO
         let receivedBal = balance received
         let ourIns = Set.fromList (inputs tx) `Set.intersection` dom nextUTxO
-        let spent = u `difference` nextUTxO
+        let spent = prevUTxO `difference` nextUTxO
         let spentBal = balance spent `TB.add` TB.fromCoin ourWithdrawals
 
         let hasKnownInput =
-                Set.fromList (inputs tx) `Set.intersection` dom knownUTxO /= mempty
-        hasKnownOutput <-
-            or <$> traverse (fmap isJust . state . isOurs . address) (outputs tx)
+                Set.fromList (inputs tx) `Set.intersection` dom knownTxO
+                /= mempty
+        let hasKnownOutput =
+                knownTxO `restrictedTo` Set.fromList (outputs tx)
+                /= mempty
+            -- or <$> traverse (fmap isJust . state . isOurs . address) (outputs tx)
         let hasKnownWithdrawal = ourWithdrawals /= mempty
         let failedScriptValidation = case tx ^. #isValidScript of
                 Just False -> True
@@ -516,7 +511,7 @@ prefilterBlock b u0 = runState $ do
                 , nextUTxO
                 )
         else
-            (txs, u)
+            (txs, prevUTxO)
 
 -- | Get the change UTxO
 --

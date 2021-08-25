@@ -107,9 +107,12 @@ import GHC.Generics
     ( Generic )
 
 import qualified Cardano.Wallet.Primitive.Types.TokenBundle as TB
+import qualified Cardano.Wallet.Primitive.Types.TokenBundle as TokenBundle
 import qualified Data.List.NonEmpty as NE
 import qualified Data.Map as Map
 import qualified Data.Set as Set
+
+import qualified Debug.Trace as Debug
 
 {-------------------------------------------------------------------------------
                                      Type
@@ -310,6 +313,62 @@ totalUTxO
 totalUTxO pending wallet@(Wallet _ _ s) =
     availableUTxO pending wallet <> changeUTxO pending s
 
+applyTxToUTxO
+    :: Tx
+    -> UTxO
+    -> UTxO
+applyTxToUTxO tx !u = do
+    let ourIns =
+            Set.fromList (inputs tx)
+                `Set.intersection`
+                    dom u
+    let ourCollateralIns =
+            Set.fromList (fst <$> tx ^. #resolvedCollateral)
+                `Set.intersection`
+                    dom u
+
+    case tx ^. #isValidScript of
+        -- If the transaction failed to validate, remove the
+        -- collateral inputs (that belonged to us) from our UTxO
+        -- set.
+        Just False ->
+            u `excluding` ourCollateralIns
+        -- Otherwise, if the transaction succeeded validation, or
+        -- did not make use of a script that needed to be validated,
+        -- remove the regular inputs (that belonged to us) from our
+        -- UTxO set.
+        _ ->
+            u `excluding` ourIns
+
+-- | From a transaction, get the set of transaction inputs that are also present
+-- in the UTxO.
+txInUTxO :: IsOurs s Address => Tx -> UTxO -> State s (Set TxIn)
+txInUTxO tx u = do
+    ourU <- state $ utxoOurs tx
+    pure $ Set.fromList (inputs tx) `Set.intersection` dom (u <> ourU)
+
+-- | Get the elements in u1 that are not in u2. In the case that elements are in
+-- both, get the difference of the value of the TxOut (the TokenBundle value) in
+-- both entries, removing any entries that are fully spent.
+difference :: UTxO -> UTxO -> UTxO
+difference u1 u2 =
+    let
+        u1' = getUTxO u1
+        u2' = getUTxO u2
+
+        diffFunc :: TxOut -> TxOut -> Maybe TxOut
+        diffFunc a b =
+            let
+                tokens1 = tokens a
+                tokens2 = tokens b
+                diff = tokens1 `TokenBundle.difference` tokens2
+            in
+                if diff == mempty
+                then Nothing
+                else Just $ TxOut (address a) diff
+    in
+        UTxO $ Map.differenceWith diffFunc u1' u2'
+
 {-------------------------------------------------------------------------------
                                Internals
 -------------------------------------------------------------------------------}
@@ -377,43 +436,43 @@ prefilterBlock b u0 = runState $ do
         -> Tx
         -> State s ([(Tx, TxMeta)], UTxO)
     applyTx (!txs, !u) tx = do
-        ourU <- state $ utxoOurs tx
-        let ourIns =
-                Set.fromList (inputs tx)
-                    `Set.intersection`
-                        dom (u <> ourU)
-        let ourCollateralIns =
-                Set.fromList (fst <$> tx ^. #resolvedCollateral)
-                    `Set.intersection`
-                        dom (u <> ourU)
-        let u' =
-                case tx ^. #isValidScript of
-                    -- If the transaction failed to validate, remove the
-                    -- collateral inputs (that belonged to us) from our UTxO
-                    -- set.
-                    Just False ->
-                        (u <> ourU) `excluding` ourCollateralIns
-                    -- Otherwise, if the transaction succeeded validation, or
-                    -- did not make use of a script that needed to be validated,
-                    -- remove the regular inputs (that belonged to us) from our
-                    -- UTxO set.
-                    _ ->
-                        (u <> ourU) `excluding` ourIns
+        xourU <- state $ utxoOurs tx
+        xourWithdrawals <- Coin . sum . fmap (unCoin . snd) <$>
+            mapMaybeM ourWithdrawal (Map.toList $ withdrawals tx)
+        let xourIns = Set.fromList (inputs tx) `Set.intersection` dom (u <> xourU)
+        let xu' = (u <> xourU) `excluding` xourIns
+        let xreceived = balance xourU
+        let xspent = balance (u `restrictedBy` xourIns) `TB.add` TB.fromCoin xourWithdrawals
+        let xhasKnownInput = xourIns /= mempty
+        let xhasKnownOutput = xourU /= mempty
+
+        -- All UTxOs we know about
+        knownUTxO <- (u <>) <$> state (utxoOurs tx)
+        -- The next UTxO state (apply a state transition)
+        let nextUTxO = applyTxToUTxO tx knownUTxO
+
         ourWithdrawals <- Coin . sum . fmap (unCoin . snd) <$>
             mapMaybeM ourWithdrawal (Map.toList $ withdrawals tx)
-        let received = balance ourU
-        let spent =
-                case tx ^. #isValidScript of
-                    Just False ->
-                        balance (u `restrictedBy` ourCollateralIns) `TB.add` TB.fromCoin ourWithdrawals
-                    _ ->
-                        balance (u `restrictedBy` ourIns) `TB.add` TB.fromCoin ourWithdrawals
-        let hasKnownInput = ourIns /= mempty
-        let hasKnownOutput = ourU /= mempty
+
+        let received = nextUTxO `difference` u
+        let receivedBal = balance received
+        let ourIns = Set.fromList (inputs tx) `Set.intersection` dom nextUTxO
+        let spent = u `difference` nextUTxO
+        let spentBal = balance spent `TB.add` TB.fromCoin ourWithdrawals
+
+        let hasKnownInput =
+                Set.fromList (inputs tx) `Set.intersection` dom knownUTxO /= mempty
+        hasKnownOutput <-
+            or <$> traverse (fmap isJust . state . isOurs . address) (outputs tx)
         let hasKnownWithdrawal = ourWithdrawals /= mempty
         let failedScriptValidation = case tx ^. #isValidScript of
                 Just False -> True
                 _ -> False
+
+        -- _ <- Debug.trace (show (xu', u')) $ pure ()
+        -- _ <- Debug.trace (show (xreceived, receivedBal)) $ pure ()
+        -- _ <- Debug.trace (show (xspent, spentBal)) $ pure ()
+        -- _ <- Debug.trace (show (xhasKnownInput, hasKnownInput)) $ pure ()
 
         -- NOTE 1: The only case where fees can be 'Nothing' is when dealing with
         -- a Byron transaction. In which case fees can actually be calculated as
@@ -430,27 +489,31 @@ prefilterBlock b u0 = runState $ do
                     let
                         totalOut = sumCoins (txOutCoin <$> outputs tx)
 
-                        totalIn = TB.getCoin spent
+                        totalIn = TB.getCoin spentBal
                     in
                         Just $ distance totalIn totalOut
 
                 (_, Incoming) ->
                     Nothing
 
+        -- _ <- Debug.trace (show (spentBal, receivedBal)) (pure ())
+        -- _ <- Debug.trace (show (txInUTxO tx u')) (pure ())
+        -- _ <- Debug.trace (show (hasKnownInput, hasKnownOutput)) (pure ())
+
         return $ if hasKnownOutput && not hasKnownInput then
             let dir = Incoming in
-            ( (tx { fee = actualFee dir }, mkTxMeta (TB.getCoin received) dir) : txs
-            , u'
+            ( (tx { fee = actualFee dir }, mkTxMeta (TB.getCoin receivedBal) dir) : txs
+            , nextUTxO
             )
         else if hasKnownInput || hasKnownWithdrawal then
             let
-                adaSpent = TB.getCoin spent
-                adaReceived = if failedScriptValidation then mempty else TB.getCoin received
+                adaSpent = TB.getCoin spentBal
+                adaReceived = if failedScriptValidation then mempty else TB.getCoin receivedBal
                 dir = if adaSpent > adaReceived then Outgoing else Incoming
                 amount = distance adaSpent adaReceived
             in
                 ( (tx { fee = actualFee dir }, mkTxMeta amount dir) : txs
-                , u'
+                , nextUTxO
                 )
         else
             (txs, u)

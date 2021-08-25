@@ -544,7 +544,6 @@ fileModeSpec =  do
                             mockTxs
                             mempty
                     let (FilteredBlock _ txs, cpB) = applyBlock fakeBlock cpA
-                    print $ utxo cpB
                     atomically $ do
                         unsafeRunExceptT $ putCheckpoint testWid cpB
                         unsafeRunExceptT $ putTxHistory testWid txs
@@ -655,8 +654,8 @@ fileModeSpec =  do
                         -- TODO: (ADP-957)
                         , resolvedCollateral = []
                         , outputs =
-                            [ TxOut (dummyAddr "faucetAddr2") (coinToBundle 2)
-                            , TxOut (fst $ ourAddrs !! 1) (coinToBundle 2)
+                            [ TxOut (dummyAddr "faucetAddr2") (coinToBundle 1)
+                            , TxOut (fst $ ourAddrs !! 1) (coinToBundle 3)
                             ]
                         , withdrawals = mempty
                         , metadata = Nothing
@@ -666,8 +665,8 @@ fileModeSpec =  do
 
                 -- Slot 300
                 mockApply db (dummyHash "block3a") []
-                getAvailableBalance db `shouldReturn` 2
-                getTxsInLedger db `shouldReturn` [(Outgoing, 2), (Incoming, 4)]
+                getAvailableBalance db `shouldReturn` 3
+                getTxsInLedger db `shouldReturn` [(Outgoing, 1), (Incoming, 4)]
 
                 atomically . void . unsafeRunExceptT $
                     rollbackTo testWid (SlotNo 200)

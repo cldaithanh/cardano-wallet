@@ -3,12 +3,15 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE OverloadedLabels #-}
+{- HLINT ignore "Use newtype instead of data" -}
 
 module Cardano.Wallet.Primitive.CoinSelection.Integrated
     ( performSelection
+    , SelectionCollateralRequirement (..)
     , SelectionConstraints (..)
     , SelectionData (..)
     , SelectionError (..)
+    , SelectionOptions (..)
 
     , prepareOutputs
     , ErrPrepareOutputs (..)
@@ -68,9 +71,10 @@ import qualified Data.Set as Set
 performSelection
     :: (HasCallStack, MonadRandom m)
     => SelectionConstraints
+    -> SelectionOptions
     -> SelectionData
     -> m (Either SelectionError (SelectionResult TokenBundle))
-performSelection selectionConstraints selectionData =
+performSelection selectionConstraints _selectionOptions selectionData =
     case prepareOutputs selectionConstraints outputsToCover of
         Left e ->
             pure $ Left $ SelectionOutputsError e
@@ -115,6 +119,13 @@ data SelectionConstraints = SelectionConstraints
     , maximumCollateralInputCount
         :: Word16
     }
+    deriving Generic
+
+data SelectionOptions = SelectionOptions
+    { collateralRequirement
+        :: !SelectionCollateralRequirement
+    }
+    deriving Generic
 
 data SelectionData = SelectionData
     { assetsToBurn
@@ -129,6 +140,10 @@ data SelectionData = SelectionData
         :: !UTxOIndex
     }
     deriving (Eq, Generic, Show)
+
+data SelectionCollateralRequirement
+    = SelectionCollateralRequired
+    | SelectionCollateralNotRequired                                                                                                                                                      deriving (Eq, Show)
 
 data SelectionError
     = SelectionBalanceError Balanced.SelectionError

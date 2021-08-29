@@ -298,9 +298,11 @@ import Cardano.Wallet.Primitive.CoinSelection.Balanced
     )
 import Cardano.Wallet.Primitive.CoinSelection.Integrated
     ( ErrPrepareOutputs (..)
+    , SelectionCollateralRequirement (..)
     , SelectionConstraints (..)
     , SelectionData (..)
     , SelectionError (..)
+    , SelectionOptions (..)
     , performSelection
     )
 import Cardano.Wallet.Primitive.Migration
@@ -1513,6 +1515,11 @@ selectAssets ctx (utxoAvailable, cp, pending) tx outputsToCover transform = do
                 view #computeSelectionLimit tl pp tx
             , maximumCollateralInputCount =
                 view #maximumCollateralInputCount pp
+            }
+        SelectionOptions
+            { -- Until we properly support collateral, specify that collateral
+              -- is not required:
+              collateralRequirement = SelectionCollateralNotRequired
             }
         SelectionData
             { -- Until we properly support minting and burning, set to empty:

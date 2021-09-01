@@ -6,7 +6,7 @@ steps:
   - label: 'Restore benchmark - cardano mainnet'
     command: "./.buildkite/bench-restore.sh mainnet"
     env:
-      HOME: "/cache/cardano-wallet.home"
+      HOME: "/cache/cardano-wallet.home2"
     timeout_in_minutes: 600
     agents:
       system: x86_64-linux

@@ -17,6 +17,7 @@ module Test.QuickCheck.Extra
     , reasonablySized
     , shrinkInterleaved
     , shrinkMapWith
+    , NotNull (..)
     ) where
 
 import Prelude
@@ -24,13 +25,15 @@ import Prelude
 import Data.Map.Strict
     ( Map )
 import Test.QuickCheck
-    ( Gen
+    ( Arbitrary (..)
+    , Gen
     , liftArbitrary2
     , liftShrink2
     , listOf
     , scale
     , shrinkList
     , shrinkMapBy
+    , suchThat
     )
 
 import qualified Data.List as L
@@ -180,3 +183,14 @@ shrinkMapWith shrinkKey shrinkValue
     = shrinkMapBy Map.fromList Map.toList
     $ shrinkList
     $ liftShrink2 shrinkKey shrinkValue
+
+--------------------------------------------------------------------------------
+-- Non-null values
+--------------------------------------------------------------------------------
+
+newtype NotNull a = NotNull { unNotNull :: a }
+    deriving (Eq, Show)
+
+instance (Arbitrary a, Eq a, Monoid a) => Arbitrary (NotNull a) where
+    arbitrary = NotNull <$> arbitrary `suchThat` (/= mempty)
+    shrink (NotNull u) = NotNull <$> filter (/= mempty) (shrink u)

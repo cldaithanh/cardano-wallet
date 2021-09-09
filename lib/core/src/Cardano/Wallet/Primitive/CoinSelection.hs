@@ -62,8 +62,6 @@ import Cardano.Wallet.Primitive.Types.Tx
     )
 import Cardano.Wallet.Primitive.Types.UTxOIndex
     ( UTxOIndex )
-import Control.Monad
-    ( (<=<) )
 import Control.Monad.Random.Class
     ( MonadRandom )
 import Control.Monad.Trans.Except
@@ -142,20 +140,17 @@ runWalletCoinSelection sc@SelectionConstraints{..} SelectionParams{..} = do
         extraCoinSink `above` extraCoinSource
 
     prepareOutputs :: [TxOut] -> Either ErrPrepareOutputs (NonEmpty TxOut)
-    prepareOutputs = (validateTxOutsForSelection sc <=< ensureNonEmptyOutputs)
+    prepareOutputs
+        = validateTxOutsForSelection sc
         . addExtraValueSinkToOutputs
 
-    -- At present, the coin selection algorithm does not permit an empty output
-    -- list, so validate for this precondition.
-    ensureNonEmptyOutputs =
-        maybe (Left ErrPrepareOutputsTxOutMissing) Right . NE.nonEmpty
-
-    addExtraValueSinkToOutputs os
-        | null os && extraValueSink /= mempty =
-            (TxOut dummyAddress extraValueSink : os)
-        | null os =
-            (TxOut dummyAddress dummyValue : os)
-        | otherwise = os
+    addExtraValueSinkToOutputs :: [TxOut] -> NonEmpty TxOut
+    addExtraValueSinkToOutputs mos = case NE.nonEmpty mos of
+        Nothing | extraValueSink /= mempty ->
+            TxOut dummyAddress extraValueSink :| []
+        Nothing ->
+            TxOut dummyAddress dummyValue :| []
+        Just os -> os
     dummyAddress = Address ""
     dummyValue = TokenBundle.fromCoin $ computeMinimumAdaQuantity mempty
 
@@ -324,7 +319,6 @@ data ErrPrepareOutputs
         ErrOutputTokenBundleSizeExceedsLimit
     | ErrPrepareOutputsTokenQuantityExceedsLimit
         ErrOutputTokenQuantityExceedsLimit
-    | ErrPrepareOutputsTxOutMissing
     deriving (Eq, Generic, Show)
 
 data ErrOutputTokenBundleSizeExceedsLimit = ErrOutputTokenBundleSizeExceedsLimit

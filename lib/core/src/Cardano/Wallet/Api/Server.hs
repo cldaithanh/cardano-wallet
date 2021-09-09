@@ -3733,9 +3733,6 @@ instance IsServerError ErrPrepareOutputs where
             toServerError e
         ErrPrepareOutputsTokenQuantityExceedsLimit e ->
             toServerError e
-        ErrPrepareOutputsTxOutMissing ->
-            apiError err400 InvalidCoinSelection
-                "The coin selection request did not include any outputs."
 
 instance IsServerError ErrOutputTokenBundleSizeExceedsLimit where
     toServerError e = apiError err403 OutputTokenBundleSizeExceedsLimit $ mconcat

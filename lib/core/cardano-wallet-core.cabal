@@ -305,6 +305,7 @@ test-suite unit
     , http-client-tls
     , http-media
     , http-types
+    , HUnit
     , iohk-monitoring
     , io-classes
     , io-sim
@@ -327,6 +328,7 @@ test-suite unit
     , random
     , retry
     , safe
+    , safe-exceptions
     , scrypt
     , servant
     , servant-server

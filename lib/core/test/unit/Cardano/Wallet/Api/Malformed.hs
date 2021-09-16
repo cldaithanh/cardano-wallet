@@ -113,7 +113,9 @@ import Servant
 
 import qualified Data.Aeson as Aeson
 import qualified Data.ByteString as BS
+import qualified Data.ByteString.Lazy as BSL
 import qualified Data.Text as T
+import qualified Data.Text.Encoding as T
 
 --
 -- Parameter Data Types
@@ -1513,7 +1515,12 @@ instance Malformed (BodyParam (ApiBytesT 'Base64 SerialisedTx))
 -- in Server.hs. Tested by integration tests.
 
 instance Malformed (BodyParam (ApiT SealedTx)) where
-    malformed = [] -- fixme: add a couple things
+    malformed = first BodyParam <$>
+        [ ("", "DecoderErrorDeserialiseFailure 'Shelley Tx' (DeserialiseFailure 0 'end of input')")
+        , ("hello", "DecoderErrorDeserialiseFailure 'Shelley Tx' (DeserialiseFailure 0 'expected list len or indef')")
+        , ("cafecafe", "DecoderErrorDeserialiseFailure 'Shelley Tx' (DeserialiseFailure 0 'expected list len or indef')")
+        , (BSL.fromStrict . T.encodeUtf8 $ validSealedTxBase64, "")
+        ]
 
 instance Malformed (BodyParam ApiPostRandomAddressData) where
     malformed = first (BodyParam . Aeson.encode) <$>

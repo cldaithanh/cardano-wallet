@@ -1519,7 +1519,6 @@ instance Malformed (BodyParam (ApiT SealedTx)) where
         [ ("", "DecoderErrorDeserialiseFailure 'Shelley Tx' (DeserialiseFailure 0 'end of input')")
         , ("hello", "DecoderErrorDeserialiseFailure 'Shelley Tx' (DeserialiseFailure 0 'expected list len or indef')")
         , ("cafecafe", "DecoderErrorDeserialiseFailure 'Shelley Tx' (DeserialiseFailure 0 'expected list len or indef')")
-        , (BSL.fromStrict . T.encodeUtf8 $ validSealedTxBase64, "")
         ]
 
 instance Malformed (BodyParam ApiPostRandomAddressData) where

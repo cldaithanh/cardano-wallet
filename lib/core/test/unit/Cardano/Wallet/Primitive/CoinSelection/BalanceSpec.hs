@@ -71,6 +71,7 @@ import Cardano.Wallet.Primitive.CoinSelection.Balance
     , runSelectionStep
     , selectionDeltaAllAssets
     , selectionHasValidSurplus
+    , selectionMinimumCost
     , splitBundleIfAssetCountExcessive
     , splitBundlesWithExcessiveAssetCounts
     , splitBundlesWithExcessiveTokenQuantities
@@ -939,7 +940,7 @@ prop_performSelection mockConstraints (Blind params) coverage =
             SelectionDeficit d -> error $ unwords
                 ["Unexpected deficit:", show d]
         minExpectedCoinSurplus :: Coin
-        minExpectedCoinSurplus = view #computeMinimumCost constraints skeleton
+        minExpectedCoinSurplus = selectionMinimumCost constraints result
         maxExpectedCoinSurplus :: Coin
         maxExpectedCoinSurplus = minExpectedCoinSurplus `addCoin` toAdd
           where
@@ -952,14 +953,6 @@ prop_performSelection mockConstraints (Blind params) coverage =
             , changeGenerated
             , outputsCovered
             } = result
-        skeleton = SelectionSkeleton
-            { skeletonInputCount =
-                length inputsSelected
-            , skeletonOutputs =
-                NE.toList outputsToCover
-            , skeletonChange =
-                fmap (TokenMap.getAssets . view #tokens) changeGenerated
-            }
         utxoSelected :: UTxO
         utxoSelected = UTxO $ Map.fromList $ F.toList inputsSelected
         balanceChange =

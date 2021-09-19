@@ -2172,7 +2172,7 @@ instance Ord (AssetCount TokenMap) where
             GT -> GT
             EQ -> comparing TokenMap.toNestedList m1 m2
       where
-        assetCount = Set.size . TokenMap.getAssets
+        assetCount = TokenMap.size
 
 newtype AssetCount a = AssetCount
     { unAssetCount :: a }

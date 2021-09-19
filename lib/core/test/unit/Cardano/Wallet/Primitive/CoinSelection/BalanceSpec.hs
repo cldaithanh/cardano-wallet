@@ -36,7 +36,7 @@ import Cardano.Wallet.Primitive.CoinSelection.Balance
     , SelectionLimitOf (..)
     , SelectionParams
     , SelectionParamsOf (..)
-    , SelectionResult
+    , SelectionResultOf (..)
     , SelectionSkeleton (..)
     , SelectionState (..)
     , UnableToConstructChangeError (..)
@@ -58,7 +58,7 @@ import Cardano.Wallet.Primitive.CoinSelection.Balance
     , makeChangeForNonUserSpecifiedAssets
     , makeChangeForUserSpecifiedAsset
     , mapMaybe
-    , performSelection
+    , performSelectionNonEmpty
     , prepareOutputsWith
     , reduceTokenQuantities
     , removeBurnValueFromChangeMaps
@@ -604,7 +604,7 @@ prop_prepareOutputsWith_preparedOrExistedBefore minCoinValueDef outs =
 -- We define this type alias to shorten type signatures.
 --
 type PerformSelectionResult =
-    Either SelectionError (SelectionResult TokenBundle)
+    Either SelectionError (SelectionResultOf (NonEmpty TxOut) TokenBundle)
 
 genSelectionParams :: Gen UTxOIndex -> Gen SelectionParams
 genSelectionParams genUTxOIndex' = do
@@ -832,7 +832,7 @@ prop_performSelection_huge_inner utxoAvailable mockConstraints (Large params) =
 
 prop_performSelection
     :: MockSelectionConstraints
-    -> Blind SelectionParams
+    -> Blind (SelectionParamsOf (NonEmpty TxOut))
     -> (PerformSelectionResult -> Property -> Property)
     -> Property
 prop_performSelection mockConstraints (Blind params) coverage =
@@ -849,7 +849,7 @@ prop_performSelection mockConstraints (Blind params) coverage =
             , "assetsToBurn:"
             , pretty (Flat assetsToBurn)
             ]
-        result <- run $ performSelection constraints params
+        result <- run $ performSelectionNonEmpty constraints params
         monitor (coverage result)
         either onFailure onSuccess result
   where
@@ -892,8 +892,8 @@ prop_performSelection mockConstraints (Blind params) coverage =
             "utxoSelected `UTxO.isSubsetOf` UTxOIndex.toUTxO utxoAvailable"
             (utxoSelected `UTxO.isSubsetOf` UTxOIndex.toUTxO utxoAvailable)
         assertOnSuccess
-            "view #outputsCovered result == NE.toList outputsToCover"
-            (view #outputsCovered result == NE.toList outputsToCover)
+            "view #outputsCovered result == view #outputsToCover params"
+            (view #outputsCovered result == view #outputsToCover params)
         assertOnSuccess
             "view #assetsToMint result == view #assetsToMint params"
             (view #assetsToMint result == view #assetsToMint params)
@@ -1009,7 +1009,7 @@ prop_performSelection mockConstraints (Blind params) coverage =
                 , computeMinimumCost = computeMinimumCostZero
                 , computeSelectionLimit = const NoLimit
                 }
-        let performSelection' = performSelection constraints' params
+        let performSelection' = performSelectionNonEmpty constraints' params
         run performSelection' >>= \case
             Left e' -> do
                 monitor $ counterexample $ unlines
@@ -1502,7 +1502,7 @@ type BoundaryTestEntry = (Coin, [(AssetId, TokenQuantity)])
 
 mkBoundaryTestExpectation :: BoundaryTestData -> Expectation
 mkBoundaryTestExpectation (BoundaryTestData params expectedResult) = do
-    actualResult <- performSelection constraints
+    actualResult <- performSelectionNonEmpty constraints
         (encodeBoundaryTestCriteria params)
     fmap decodeBoundaryTestResult actualResult `shouldBe` Right expectedResult
   where
@@ -1540,7 +1540,8 @@ encodeBoundaryTestCriteria c = SelectionParams
     dummyTxIns :: [TxIn]
     dummyTxIns = [TxIn (Hash "") x | x <- [0 ..]]
 
-decodeBoundaryTestResult :: SelectionResult TokenBundle -> BoundaryTestResult
+decodeBoundaryTestResult
+    :: SelectionResultOf (NonEmpty TxOut) TokenBundle -> BoundaryTestResult
 decodeBoundaryTestResult r = BoundaryTestResult
     { boundaryTestInputs = L.sort $ NE.toList $
         TokenBundle.toFlatList . view #tokens . snd <$> view #inputsSelected r

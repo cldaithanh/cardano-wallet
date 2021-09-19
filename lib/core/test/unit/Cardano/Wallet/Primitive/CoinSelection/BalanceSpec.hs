@@ -58,6 +58,7 @@ import Cardano.Wallet.Primitive.CoinSelection.Balance
     , makeChangeForNonUserSpecifiedAssets
     , makeChangeForUserSpecifiedAsset
     , mapMaybe
+    , performSelection
     , performSelectionNonEmpty
     , prepareOutputsWith
     , reduceTokenQuantities
@@ -181,6 +182,7 @@ import Test.QuickCheck
     , counterexample
     , cover
     , disjoin
+    , elements
     , forAll
     , frequency
     , generate
@@ -604,14 +606,14 @@ prop_prepareOutputsWith_preparedOrExistedBefore minCoinValueDef outs =
 -- We define this type alias to shorten type signatures.
 --
 type PerformSelectionResult =
-    Either SelectionError (SelectionResultOf (NonEmpty TxOut) TokenBundle)
+    Either SelectionError (SelectionResultOf [TxOut] TokenBundle)
 
-genSelectionParams :: Gen UTxOIndex -> Gen SelectionParams
+genSelectionParams :: Gen UTxOIndex -> Gen (SelectionParamsOf [TxOut])
 genSelectionParams genUTxOIndex' = do
     utxoAvailable <- genUTxOIndex'
-    outputCount <- max 1 <$>
-        choose (1, UTxOIndex.size utxoAvailable `div` 8)
-    outputsToCover <- NE.fromList <$>
+    outputCount <- elements
+        [0, 1, max 2 $ UTxOIndex.size utxoAvailable `div` 8]
+    outputsToCover <-
         replicateM outputCount genTxOut
     extraCoinSource <-
         oneof [pure $ Coin 0, genCoinPositive]
@@ -640,7 +642,7 @@ genSelectionParams genUTxOIndex' = do
 
 prop_performSelection_small
     :: MockSelectionConstraints
-    -> Blind (Small SelectionParams)
+    -> Blind (Small (SelectionParamsOf [TxOut]))
     -> Property
 prop_performSelection_small mockConstraints (Blind (Small params)) =
     checkCoverage $
@@ -658,6 +660,12 @@ prop_performSelection_small mockConstraints (Blind (Small params)) =
         "No assets to cover" $
     cover 2 (outputsHaveAtLeastOneAsset && not utxoHasAtLeastOneAsset)
         "Assets to cover, but no assets in UTxO" $
+    cover 10 (null (view #outputsToCover params))
+        "Outputs to cover = 0" $
+    cover 10 (length (view #outputsToCover params) == 1)
+        "Outputs to cover = 1" $
+    cover 10 (length (view #outputsToCover params) > 1)
+        "Outputs to cover > 1" $
 
     -- Inspect the extra coin source and sink:
     let nonZeroExtraCoinSource =
@@ -801,7 +809,7 @@ prop_performSelection_small mockConstraints (Blind (Small params)) =
 
 prop_performSelection_large
     :: MockSelectionConstraints
-    -> Blind (Large SelectionParams)
+    -> Blind (Large (SelectionParamsOf [TxOut]))
     -> Property
 prop_performSelection_large mockConstraints (Blind (Large params)) =
     -- Generation of large UTxO sets takes longer, so limit the number of runs:
@@ -822,7 +830,7 @@ prop_performSelection_huge = ioProperty $
 prop_performSelection_huge_inner
     :: UTxOIndex
     -> MockSelectionConstraints
-    -> Large SelectionParams
+    -> Large (SelectionParamsOf [TxOut])
     -> Property
 prop_performSelection_huge_inner utxoAvailable mockConstraints (Large params) =
     withMaxSuccess 5 $
@@ -832,7 +840,7 @@ prop_performSelection_huge_inner utxoAvailable mockConstraints (Large params) =
 
 prop_performSelection
     :: MockSelectionConstraints
-    -> Blind (SelectionParamsOf (NonEmpty TxOut))
+    -> Blind (SelectionParamsOf [TxOut])
     -> (PerformSelectionResult -> Property -> Property)
     -> Property
 prop_performSelection mockConstraints (Blind params) coverage =
@@ -849,7 +857,7 @@ prop_performSelection mockConstraints (Blind params) coverage =
             , "assetsToBurn:"
             , pretty (Flat assetsToBurn)
             ]
-        result <- run $ performSelectionNonEmpty constraints params
+        result <- run $ performSelection constraints params
         monitor (coverage result)
         either onFailure onSuccess result
   where
@@ -1009,7 +1017,7 @@ prop_performSelection mockConstraints (Blind params) coverage =
                 , computeMinimumCost = computeMinimumCostZero
                 , computeSelectionLimit = const NoLimit
                 }
-        let performSelection' = performSelectionNonEmpty constraints' params
+        let performSelection' = performSelection constraints' params
         run performSelection' >>= \case
             Left e' -> do
                 monitor $ counterexample $ unlines
@@ -3831,11 +3839,11 @@ newtype Small a = Small
     { getSmall:: a }
     deriving (Eq, Show)
 
-instance Arbitrary (Large SelectionParams) where
+instance Arbitrary (Large (SelectionParamsOf [TxOut])) where
     arbitrary = Large <$> genSelectionParams genUTxOIndexLarge
     -- No shrinking
 
-instance Arbitrary (Small SelectionParams) where
+instance Arbitrary (Small (SelectionParamsOf [TxOut])) where
     arbitrary = Small <$> genSelectionParams genUTxOIndex
     -- No shrinking
 

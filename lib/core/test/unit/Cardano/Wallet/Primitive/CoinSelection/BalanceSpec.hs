@@ -2057,15 +2057,10 @@ data MockAssessTokenBundleSize
     deriving (Eq, Show)
 
 genMockAssessTokenBundleSize :: Gen MockAssessTokenBundleSize
-genMockAssessTokenBundleSize =
-    -- TODO:
-    --
-    -- We currently only test with constraints where the token bundle size is
-    -- unlimited.
-    --
-    -- We should add coverage of the case where token bundle sizes are limited.
-    --
-    pure MockAssessTokenBundleSizeUnlimited
+genMockAssessTokenBundleSize = oneof
+    [ pure MockAssessTokenBundleSizeUnlimited
+    , MockAssessTokenBundleSizeUpperLimit <$> sized (\n -> choose (1, max 1 n))
+    ]
 
 shrinkMockAssessTokenBundleSize
     :: MockAssessTokenBundleSize -> [MockAssessTokenBundleSize]

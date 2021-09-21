@@ -1124,13 +1124,13 @@ prop_performSelectionEmpty mockConstraints (Small params) =
     resultTransformed :: SelectionResultOf [TxOut] TokenBundle
     resultTransformed = expectRight $ view #resultTransformed report
 
-    report = performSelectionEmpty performSelectionNonEmptyFn constraints params
-
-    performSelectionNonEmptyFn constraints' params' =
-        Report params' result' result'
+    report =
+        performSelectionEmpty performSelectionNonEmptyFn constraints params
       where
-        result' = runIdentity $
-            mockPerformSelectionNonEmpty constraints' params'
+        performSelectionNonEmptyFn constraints' params' =
+            withReport params'
+                $ runIdentity
+                $ mockPerformSelectionNonEmpty constraints' params'
 
 data Report paramsTransformed result resultTransformed = Report
     { paramsTransformed :: paramsTransformed
@@ -1142,6 +1142,9 @@ data Report paramsTransformed result resultTransformed = Report
 instance Functor (Report paramsTransformed result) where
     fmap f (Report paramsTransformed result resultUntransformed) =
         Report paramsTransformed result (f resultUntransformed)
+
+withReport :: params -> result -> Report params result result
+withReport p r = Report p r r
 
 mockPerformSelectionNonEmpty
     :: PerformSelection Identity (NonEmpty TxOut) TokenBundle

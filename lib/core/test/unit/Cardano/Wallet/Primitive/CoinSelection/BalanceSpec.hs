@@ -1139,11 +1139,10 @@ data ReportOf report result = ReportOf
 instance Functor (ReportOf report) where
     fmap f (ReportOf report result) = ReportOf report (f result)
 
-data PerformSelectionNonEmptyReport = PerformSelectionNonEmptyReport
-    { params :: SelectionParamsOf (NonEmpty TxOut)
-    , result :: Either
-        (SelectionError)
-        (SelectionResultOf (NonEmpty TxOut) TokenBundle)
+data PerformSelectionNonEmptyReport paramsTransformed result =
+    PerformSelectionNonEmptyReport
+    { params :: paramsTransformed
+    , result :: result
     }
     deriving Generic
 

@@ -13,8 +13,7 @@
 {- HLINT ignore "Use camelCase" -}
 
 module Cardano.Wallet.Primitive.CoinSelection.BalanceSpec
-    ( spec
-    ) where
+    where
 
 import Prelude
 
@@ -27,6 +26,7 @@ import Cardano.Wallet.Primitive.CoinSelection.Balance
     , BalanceInsufficientError (..)
     , InsufficientMinCoinValueError (..)
     , MakeChangeCriteria (..)
+    , PerformSelection
     , RunSelectionParams (..)
     , SelectionConstraints (..)
     , SelectionError (..)
@@ -37,6 +37,7 @@ import Cardano.Wallet.Primitive.CoinSelection.Balance
     , SelectionParams
     , SelectionParamsOf (..)
     , SelectionResult
+    , SelectionResultOf (..)
     , SelectionSkeleton (..)
     , SelectionState (..)
     , UnableToConstructChangeError (..)
@@ -47,6 +48,7 @@ import Cardano.Wallet.Primitive.CoinSelection.Balance
     , balanceMissing
     , coinSelectionLens
     , collateNonUserSpecifiedAssetQuantities
+    , computeDeficitInOut
     , computeUTxOBalanceAvailable
     , computeUTxOBalanceRequired
     , computeUTxOBalanceSufficiencyInfo
@@ -59,6 +61,7 @@ import Cardano.Wallet.Primitive.CoinSelection.Balance
     , makeChangeForUserSpecifiedAsset
     , mapMaybe
     , performSelection
+    , performSelectionEmpty
     , prepareOutputsWith
     , reduceTokenQuantities
     , removeBurnValueFromChangeMaps
@@ -203,7 +206,7 @@ import Test.QuickCheck
 import Test.QuickCheck.Classes
     ( eqLaws, ordLaws )
 import Test.QuickCheck.Extra
-    ( liftShrink4, liftShrink6 )
+    ( liftShrink4, liftShrink6, verify )
 import Test.QuickCheck.Monadic
     ( PropertyM (..), assert, monadicIO, monitor, run )
 import Test.Utils.Laws
@@ -269,6 +272,11 @@ spec = describe "Cardano.Wallet.Primitive.CoinSelection.BalanceSpec" $
             property prop_performSelection_large
         it "prop_performSelection_huge" $
             property prop_performSelection_huge
+
+    parallel $ describe "Performing a selection with zero outputs" $ do
+
+        it "prop_performSelectionEmpty" $
+            property prop_performSelectionEmpty
 
     parallel $ describe "Selection states" $ do
 
@@ -1052,6 +1060,123 @@ prop_performSelection mockConstraints (Blind params) coverage =
     utxoBalanceAvailable = computeUTxOBalanceAvailable params
     utxoBalanceRequired = computeUTxOBalanceRequired params
     utxoBalanceSufficiencyInfo = computeUTxOBalanceSufficiencyInfo params
+
+--------------------------------------------------------------------------------
+-- Performing a selection with an empty output list
+--------------------------------------------------------------------------------
+
+prop_performSelectionEmpty
+    :: MockSelectionConstraints -> Small SelectionParams -> Property
+prop_performSelectionEmpty mockConstraints (Small params) =
+    checkCoverage $
+    cover 10
+        (null (view #outputsToCover params))
+        "number of outputs = 0" $
+    cover 10
+        (not $ null (view #outputsToCover params))
+        "number of outputs > 0" $
+    cover 20
+        (isUTxOBalanceSufficient params)
+        "UTxO balance is sufficient" $
+    -- Use verify here
+    conjoin
+        [ computeUTxOBalanceSufficiencyInfo params ===
+          computeUTxOBalanceSufficiencyInfo paramsTransformed
+        , computeDeficitInOut params ===
+          computeDeficitInOut paramsTransformed
+        , selectionDeltaAllAssets result ===
+          selectionDeltaAllAssets resultTransformed
+        , view #extraCoinSource params ===
+          view #extraCoinSource resultTransformed
+        , view #extraCoinSink params ===
+          view #extraCoinSink resultTransformed
+        , view #assetsToMint params ===
+          view #assetsToMint resultTransformed
+        , view #assetsToBurn params ===
+          view #assetsToBurn resultTransformed
+        , view #outputsToCover params ===
+          view #outputsCovered resultTransformed
+        , conjoin
+            [ -- assert that it's the minimum
+              selectionHasValidSurplus constraints result
+            , selectionHasValidSurplus constraints resultTransformed
+            ]
+        , if null (view #outputsToCover params)
+          then conjoin
+            [ length (view #outputsToCover paramsTransformed) === 1
+            , length (view #outputsCovered resultTransformed) === 0
+            ]
+          else conjoin
+            [ params === (paramsTransformed & over #outputsToCover F.toList)
+            , resultTransformed === (result & over #outputsCovered F.toList)
+            ]
+        ]
+  where
+    constraints :: SelectionConstraints
+    constraints = unMockSelectionConstraints mockConstraints
+
+    paramsTransformed :: SelectionParamsOf (NonEmpty TxOut)
+    paramsTransformed = view (#report . #params) report
+
+    result :: SelectionResultOf (NonEmpty TxOut) TokenBundle
+    result = expectRight $ view (#report . #result) report
+
+    resultTransformed :: SelectionResultOf [TxOut] TokenBundle
+    resultTransformed = expectRight $ view #result report
+
+    report = performSelectionEmpty runReport constraints params
+    runReport constraints params =
+        ReportOf (PerformSelectionNonEmptyReport params result) result
+      where
+        result = runIdentity (mockPerformSelectionNonEmpty constraints params)
+
+data ReportOf report result = ReportOf
+    { report :: report
+    , result :: result
+    }
+    deriving Generic
+
+instance Functor (ReportOf report) where
+    fmap f (ReportOf report result) = ReportOf report (f result)
+
+data PerformSelectionNonEmptyReport = PerformSelectionNonEmptyReport
+    { params :: SelectionParamsOf (NonEmpty TxOut)
+    , result :: Either
+        (SelectionError)
+        (SelectionResultOf (NonEmpty TxOut) TokenBundle)
+    }
+    deriving Generic
+
+mockPerformSelectionNonEmpty
+    :: PerformSelection Identity (NonEmpty TxOut) TokenBundle
+mockPerformSelectionNonEmpty constraints params = Identity $ Right result
+  where
+    result :: SelectionResultOf (NonEmpty TxOut) TokenBundle
+    result = resultWithoutDelta & set #inputsSelected
+        (makeInputsOfValue $ deficitIn <> TokenBundle.fromCoin minimumCost)
+      where
+        minimumCost :: Coin
+        minimumCost = selectionMinimumCost constraints resultWithoutDelta
+
+    resultWithoutDelta :: SelectionResultOf (NonEmpty TxOut) TokenBundle
+    resultWithoutDelta = SelectionResult
+        { inputsSelected = makeInputsOfValue deficitIn
+        , changeGenerated = makeChangeOfValue deficitOut
+        , assetsToBurn = view #assetsToBurn params
+        , assetsToMint = view #assetsToMint params
+        , extraCoinSink = view #extraCoinSink params
+        , extraCoinSource = view #extraCoinSource params
+        , outputsCovered = view #outputsToCover params
+        }
+
+    makeChangeOfValue :: TokenBundle -> [TokenBundle]
+    makeChangeOfValue v = [v]
+
+    makeInputsOfValue :: TokenBundle -> NonEmpty (TxIn, TxOut)
+    makeInputsOfValue v = (TxIn (Hash "") 0, TxOut (Address "") v) :| []
+
+    deficitIn, deficitOut :: TokenBundle
+    (deficitIn, deficitOut) = computeDeficitInOut params
 
 --------------------------------------------------------------------------------
 -- Selection states
@@ -2061,9 +2186,12 @@ unMockComputeSelectionLimit
     :: MockComputeSelectionLimit -> ([TxOut] -> SelectionLimit)
 unMockComputeSelectionLimit = \case
     MockComputeSelectionLimitNone ->
-        const NoLimit
+        computeSelectionLimitNone
     MockComputeSelectionLimit n ->
         const $ MaximumInputLimit n
+
+computeSelectionLimitNone :: [TxOut] -> SelectionLimit
+computeSelectionLimitNone = const NoLimit
 
 --------------------------------------------------------------------------------
 -- Assessing token bundle sizes
@@ -2097,7 +2225,7 @@ unMockAssessTokenBundleSize
     :: MockAssessTokenBundleSize -> (TokenBundle -> TokenBundleSizeAssessment)
 unMockAssessTokenBundleSize = \case
     MockAssessTokenBundleSizeUnlimited ->
-        const TokenBundleSizeWithinLimit
+        assessTokenBundleSizeUnlimited
     MockAssessTokenBundleSizeUpperLimit upperLimit ->
         \bundle ->
             let assetCount = Set.size $ TokenBundle.getAssets bundle in
@@ -2110,6 +2238,9 @@ mkTokenBundleSizeAssessor
     :: MockAssessTokenBundleSize -> TokenBundleSizeAssessor
 mkTokenBundleSizeAssessor =
     TokenBundleSizeAssessor . unMockAssessTokenBundleSize
+
+assessTokenBundleSizeUnlimited :: TokenBundle -> TokenBundleSizeAssessment
+assessTokenBundleSizeUnlimited = const TokenBundleSizeWithinLimit
 
 --------------------------------------------------------------------------------
 -- Making change
@@ -3763,6 +3894,11 @@ consecutivePairs :: [a] -> [(a, a)]
 consecutivePairs xs = case tailMay xs of
     Nothing -> []
     Just ys -> xs `zip` ys
+
+expectRight :: Either a b -> b
+expectRight = \case
+    Left _a -> error "Expected right"
+    Right b -> b
 
 matchSingletonList :: [a] -> Maybe a
 matchSingletonList = \case

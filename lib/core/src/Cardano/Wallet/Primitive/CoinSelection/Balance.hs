@@ -28,7 +28,9 @@
 module Cardano.Wallet.Primitive.CoinSelection.Balance
     (
     -- * Performing a selection
-      performSelection
+      PerformSelection
+    , performSelection
+    , performSelectionEmpty
     , prepareOutputsWith
     , emptySkeleton
     , SelectionConstraints (..)
@@ -54,9 +56,11 @@ module Cardano.Wallet.Primitive.CoinSelection.Balance
     , selectionMinimumCost
     , selectionSkeleton
 
-    -- * UTxO balance sufficiency
+    -- * Querying parameters
     , UTxOBalanceSufficiency (..)
     , UTxOBalanceSufficiencyInfo (..)
+    , computeBalanceInOut
+    , computeDeficitInOut
     , computeUTxOBalanceAvailable
     , computeUTxOBalanceRequired
     , computeUTxOBalanceSufficiency
@@ -300,8 +304,14 @@ computeUTxOBalanceRequired
     :: Foldable f
     => SelectionParamsOf (f TxOut)
     -> TokenBundle
-computeUTxOBalanceRequired params =
-    balanceOut `TokenBundle.difference` balanceIn
+computeUTxOBalanceRequired = fst . computeDeficitInOut
+
+computeBalanceInOut
+    :: Foldable f
+    => SelectionParamsOf (f TxOut)
+    -> (TokenBundle, TokenBundle)
+computeBalanceInOut params =
+    (balanceIn, balanceOut)
   where
     balanceIn =
         TokenBundle.fromTokenMap (view #assetsToMint params)
@@ -313,6 +323,17 @@ computeUTxOBalanceRequired params =
         TokenBundle.fromCoin (view #extraCoinSink params)
         `TokenBundle.add`
         F.foldMap (view #tokens) (view #outputsToCover params)
+
+computeDeficitInOut
+    :: Foldable f
+    => SelectionParamsOf (f TxOut)
+    -> (TokenBundle, TokenBundle)
+computeDeficitInOut params =
+    (deficitIn, deficitOut)
+  where
+    deficitIn = TokenBundle.difference balanceOut balanceIn
+    deficitOut = TokenBundle.difference balanceIn balanceOut
+    (balanceIn, balanceOut) = computeBalanceInOut params
 
 -- | Computes the UTxO balance sufficiency.
 --
@@ -727,19 +748,25 @@ performSelection = performSelectionEmpty performSelectionNonEmpty
 --   outputs into a function that accepts an empty list of outputs.
 --
 -- If the original list is already non-empty, this function does not alter the
--- parameters or the result in any way.
+-- parameters or the result in any way, such that:
+--
+--    params == transformParams params
+--    result == transformResult result
 --
 -- If the original list is empty, this function:
 --
---   -  applies a balance-preserving transformation to the parameters, adding
+--   1. applies a balance-preserving transformation to the parameters, adding
 --      a single minimal ada-only output to act as a change generation target,
---      where:
+--      such that:
 --
---          computeUTxOBalanceSufficiency params =
---          computeUTxOBalanceSufficiency (transformParams params)
+--          computeUTxOBalanceSufficiencyInfo params ==
+--          computeUTxOBalanceSufficiencyInfo (transformParams params)
 --
---   -  applies an inverse transformation to the result, removing the output,
---      where:
+--   2. applies an inverse transformation to the result, removing the output,
+--      such that:
+--
+--          selectionSurplus result ==
+--          selectionSurplus (transformResult result)
 --
 --          selectionHasValidSurplus constraints result ==>
 --          selectionHasValidSurplus constraints (transformResult result)

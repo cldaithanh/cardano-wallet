@@ -1116,35 +1116,32 @@ prop_performSelectionEmpty mockConstraints (Small params) =
     constraints = unMockSelectionConstraints mockConstraints
 
     paramsTransformed :: SelectionParamsOf (NonEmpty TxOut)
-    paramsTransformed = view (#report . #params) report
+    paramsTransformed = view #paramsTransformed report
 
     result :: SelectionResultOf (NonEmpty TxOut) TokenBundle
-    result = expectRight $ view (#report . #result) report
+    result = expectRight $ view #result report
 
     resultTransformed :: SelectionResultOf [TxOut] TokenBundle
-    resultTransformed = expectRight $ view #result report
+    resultTransformed = expectRight $ view #resultTransformed report
 
-    report = performSelectionEmpty runReport constraints params
-    runReport constraints params =
-        ReportOf (PerformSelectionNonEmptyReport params result) result
+    report = performSelectionEmpty performSelectionNonEmptyFn constraints params
+
+    performSelectionNonEmptyFn constraints' params' =
+        Report params' result' result'
       where
-        result = runIdentity (mockPerformSelectionNonEmpty constraints params)
+        result' = runIdentity $
+            mockPerformSelectionNonEmpty constraints' params'
 
-data ReportOf report result = ReportOf
-    { report :: report
+data Report paramsTransformed result resultTransformed = Report
+    { paramsTransformed :: paramsTransformed
     , result :: result
+    , resultTransformed :: resultTransformed
     }
     deriving Generic
 
-instance Functor (ReportOf report) where
-    fmap f (ReportOf report result) = ReportOf report (f result)
-
-data PerformSelectionNonEmptyReport paramsTransformed result =
-    PerformSelectionNonEmptyReport
-    { params :: paramsTransformed
-    , result :: result
-    }
-    deriving Generic
+instance Functor (Report paramsTransformed result) where
+    fmap f (Report paramsTransformed result resultUntransformed) =
+        Report paramsTransformed result (f resultUntransformed)
 
 mockPerformSelectionNonEmpty
     :: PerformSelection Identity (NonEmpty TxOut) TokenBundle

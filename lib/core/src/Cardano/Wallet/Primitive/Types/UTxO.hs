@@ -38,12 +38,14 @@ module Cardano.Wallet.Primitive.Types.UTxO
     , restrictedBy
     , restrictedTo
     , size
+    , filter
     , filterByAddressM
     , filterByAddress
+    , partition
     ) where
 
 import Prelude hiding
-    ( null )
+    ( filter, null )
 
 import Cardano.Wallet.Primitive.Types.Address
     ( Address )
@@ -56,7 +58,7 @@ import Cardano.Wallet.Primitive.Types.Tx
 import Control.DeepSeq
     ( NFData (..) )
 import Data.Bifunctor
-    ( first )
+    ( bimap, first )
 import Data.Functor.Identity
     ( runIdentity )
 import Data.Generics.Internal.VL.Lens
@@ -152,6 +154,11 @@ null (UTxO u) = Map.null u
 size :: UTxO -> Int
 size (UTxO u) = Map.size u
 
+-- | Filters a UTxO set according to a condition.
+--
+filter :: (TxIn -> Bool) -> UTxO -> UTxO
+filter f (UTxO u) = UTxO $ Map.filterWithKey (const . f) u
+
 -- | Filters a 'UTxO' set with an indicator function on 'Address' values.
 --
 -- Returns the subset of UTxO entries that have addresses for which the given
@@ -177,6 +184,11 @@ filterByAddressM isOursF (UTxO m) =
 -- filterByAddress f u `isSubsetOf` u
 filterByAddress :: (Address -> Bool) -> UTxO -> UTxO
 filterByAddress f = runIdentity . filterByAddressM (pure . f)
+
+-- | Partitions a UTxO set according to a condition.
+--
+partition :: (TxIn -> Bool) -> UTxO -> (UTxO, UTxO)
+partition f (UTxO u) = bimap UTxO UTxO $ Map.partitionWithKey (const . f) u
 
 data UTxOStatistics = UTxOStatistics
     { histogram :: ![HistogramBar]

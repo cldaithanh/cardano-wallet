@@ -37,6 +37,8 @@ module Cardano.Wallet.Primitive.Types.UTxOIndex
     , insertMany
     , delete
     , deleteMany
+    , filter
+    , partition
 
     -- * Queries
     , assets

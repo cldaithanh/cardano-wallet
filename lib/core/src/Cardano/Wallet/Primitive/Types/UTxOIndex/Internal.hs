@@ -51,6 +51,8 @@ module Cardano.Wallet.Primitive.Types.UTxOIndex.Internal
     , insertMany
     , delete
     , deleteMany
+    , filter
+    , partition
 
     -- * Queries
     , assets
@@ -82,7 +84,7 @@ module Cardano.Wallet.Primitive.Types.UTxOIndex.Internal
     ) where
 
 import Prelude hiding
-    ( lookup, null )
+    ( filter, lookup, null )
 
 import Cardano.Wallet.Primitive.Types.TokenBundle
     ( TokenBundle )
@@ -98,6 +100,8 @@ import Control.Monad.Extra
     ( firstJustM )
 import Control.Monad.Random.Class
     ( MonadRandom (..) )
+import Data.Bifunctor
+    ( bimap )
 import Data.Function
     ( (&) )
 import Data.Generics.Internal.VL.Lens
@@ -294,6 +298,16 @@ delete i u =
 --
 deleteMany :: Foldable f => f TxIn -> UTxOIndex -> UTxOIndex
 deleteMany = flip $ F.foldl' $ \u i -> delete i u
+
+-- | Filters an index.
+--
+filter :: (TxIn -> Bool) -> UTxOIndex -> UTxOIndex
+filter f = fromUTxO . UTxO.filter f . toUTxO
+
+-- | Partitions an index.
+--
+partition :: (TxIn -> Bool) -> UTxOIndex -> (UTxOIndex, UTxOIndex)
+partition f = bimap fromUTxO fromUTxO . UTxO.partition f . toUTxO
 
 --------------------------------------------------------------------------------
 -- Queries

@@ -44,6 +44,9 @@ module Cardano.Api.Typed.Gen
   , genTxOutDatumHash
 
   , genRational
+
+  , genWitness
+  , genWitnesses
   ) where
 
 import Prelude
@@ -572,6 +575,15 @@ genTx era =
   makeSignedTransaction
     <$> genWitnesses era
     <*> genTxBody era
+
+genWitness :: CardanoEra era -> Gen (KeyWitness era)
+genWitness era =
+  case cardanoEraStyle era of
+    LegacyByronEra    -> genByronKeyWitness
+    ShelleyBasedEra _ ->
+      Gen.choice [ genShelleyBootstrapWitness era
+                 , genShelleyKeyWitness era
+                 ]
 
 genWitnesses :: CardanoEra era -> Gen [KeyWitness era]
 genWitnesses era =

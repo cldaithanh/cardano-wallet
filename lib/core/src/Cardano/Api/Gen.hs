@@ -69,6 +69,7 @@ module Cardano.Api.Gen
   , genByronKeyWitness
   , genShelleyWitnessSigningKey
   , genWitnesses
+  , genTxBody
   , genTxBodyContent
   , genTx
   , genNat
@@ -91,6 +92,7 @@ module Cardano.Api.Gen
   , genProtocolParametersUpdate
   , genUpdateProposal
   , genExtraScriptData
+  , genWitness
   ) where
 
 import Prelude
@@ -1251,6 +1253,15 @@ genWitnesses era =
               , (1, pure [])
               ]
           return $ bsWits ++ keyWits
+
+genWitness :: CardanoEra era -> Gen (KeyWitness era)
+genWitness era =
+  case cardanoEraStyle era of
+    LegacyByronEra    -> genByronKeyWitness
+    ShelleyBasedEra _ ->
+      oneof [ genShelleyBootstrapWitness era
+            , genShelleyKeyWitness era
+            ]
 
 genTx :: forall era. IsCardanoEra era => CardanoEra era -> Gen (Tx era)
 genTx era =

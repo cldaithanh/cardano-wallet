@@ -95,6 +95,7 @@ library
       src
   exposed-modules:
       Cardano.Wallet.Byron.Compatibility
+      Cardano.Wallet.Lookup
       Cardano.Wallet.Shelley
       Cardano.Wallet.Shelley.Api.Server
       Cardano.Wallet.Shelley.Compatibility

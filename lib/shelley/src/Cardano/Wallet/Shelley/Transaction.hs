@@ -34,6 +34,7 @@ module Cardano.Wallet.Shelley.Transaction
     , TxSkeleton (..)
     , TxWitnessTag (..)
     , TxWitnessTagFor (..)
+    , WalletStyle(..)
     , _decodeSealedTx
     , _estimateMaxNumberOfInputs
     , _calcScriptExecutionCost
@@ -319,7 +320,7 @@ mkTx networkId payload ttl (rewardAcnt, pwdAcnt) keyFrom wdrl cs fees era = do
         TxWitnessByronUTxO{} -> do
             bootstrapWits <- forM (inputsSelected cs) $ \(_, TxOut addr _) -> do
                 (k, pwd) <- lookupPrivateKey keyFrom addr
-                pure $ mkByronWitness unsigned networkId addr (getRawKey k, pwd)
+                pure $ mkByronWitness unsigned networkId (Just addr) (getRawKey k, pwd)
             pure $ F.toList bootstrapWits <> mkExtraWits unsigned
 
     let signed = Cardano.makeSignedTransaction wits unsigned
@@ -1307,25 +1308,17 @@ mkShelleyWitness body key =
         $ Crypto.HD.xPrvChangePass pwd BS.empty xprv
 
 mkByronWitness
-    :: forall era. (EraConstraints era)
+    :: forall era. IsShelleyBasedEra era
     => Cardano.TxBody era
     -> Cardano.NetworkId
-    -> Address
+    -> Maybe Address
     -> (XPrv, Passphrase "encryption")
     -> Cardano.KeyWitness era
-mkByronWitness
-    (Cardano.ShelleyTxBody era body _scripts _scriptData _auxData _scriptValidity)
-    nw
-    addr
-    encryptedKey =
-    Cardano.ShelleyBootstrapWitness era $
-        SL.makeBootstrapWitness txHash (unencrypt encryptedKey) addrAttr
+mkByronWitness body net addr (sk, pwd) =
+    Cardano.makeShelleyBootstrapWitness addrNet body key'
   where
-    txHash = Crypto.castHash $ Crypto.hashWith serialize' body
+    addrNet = maybe (Byron.WitnessNetworkId net) Byron.WitnessByronAddress (addr >>= toCardanoByronAddr)
+    key' = Cardano.ByronSigningKey $ CC.SigningKey $ Crypto.HD.xPrvChangePass pwd BS.empty sk
 
-    unencrypt (xprv, pwd) = CC.SigningKey
-        $ Crypto.HD.xPrvChangePass pwd BS.empty xprv
-
-    addrAttr = Byron.mkAttributes $ Byron.AddrAttributes
-        (toHDPayloadAddress addr)
-        (Byron.toByronNetworkMagic nw)
+toCardanoByronAddr :: Address -> Maybe (Cardano.Address Cardano.ByronAddr)
+toCardanoByronAddr = Cardano.deserialiseFromRawBytes Cardano.AsByronAddress . unAddress

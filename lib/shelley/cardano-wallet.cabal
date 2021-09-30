@@ -63,6 +63,7 @@ library
     , io-classes
     , iohk-monitoring
     , memory
+    , mtl
     , network
     , network-mux
     , network-uri

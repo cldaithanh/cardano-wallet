@@ -79,6 +79,7 @@ module Cardano.Wallet.Shelley.Compatibility
     , fromCardanoValue
     , rewardAccountFromAddress
     , fromShelleyPParams
+    , fromShelleyTxId
     , fromAlonzoPParams
     , fromLedgerExUnits
 

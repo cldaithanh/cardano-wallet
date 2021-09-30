@@ -41,6 +41,8 @@ import qualified Cardano.Api as Cardano
 import qualified Cardano.Api.Shelley as Cardano
     ( toShelleyTxId )
 
+import Cardano.Api.Shelley
+    ( makeShelleyKeyWitness )
 import Cardano.Wallet
     ( ErrWitnessTx (..)
     , HasDBLayer
@@ -179,45 +181,65 @@ handler ctx wid pwd networkId txBody = do
             keyFrom addr = do
                 (key :: k 'AddressK XPrv , keyPwd :: Passphrase "encryption")
                     <- isOwned adState (xprv, pwdP) addr
-                pure $ mkWitnessData addr key keyPwd
+                pure $ mkAddressWitnessData addr key keyPwd
 
             stakeCreds acct =
                 if Just acct == rewardAcct
                 -- using stake credentials from self
-                then mkStakeWitnessData xprv pwdP
+                then mkStakeAddressWitnessData xprv pwdP
                 -- using external stake credentials
-                else mkStakeWitnessData xprv mempty
+                else mkStakeAddressWitnessData xprv mempty
 
 
         pure (keyFrom, stakeCreds)
 
-    txIns <- lookupTxIns utxo (pure . keyFrom) txBody
-    pure $ fmap (toKeyWitness networkId txBody) txIns
+    txInWitData <- lookupTxIns utxo (pure . keyFrom) txBody
+    let
+        wdrlsWitData = stakeCreds <$> lookupWithdrawalAddress txBody
+        certsWitData = stakeCreds <$> lookupCertificates txBody
 
-    let wdrls = stakeCreds <$> lookupWithdrawalAddress txBody
-    pure $ mapMaybe (toStakeKeyWitness txBody) wdrls
+    pure $ mapMaybe (toKeyWitness networkId txBody) [ txInWitData
+                                                    , wdrlsWitData
+                                                    , certsWitData
+                                                    ]
 
 data WitnessData
+    = StakeKeyWitness TxWitnessTag XPrv (Passphrase "encryption")
+    | AddressKeyWitness TxWitnessTag XPrv (Passphrase "encryption") W.Address
 
-mkStakeWitnessData
-    :: k 'RootK XPrv
+mkStakeAddressWitnessData
+    :: forall k
+     . k 'RootK XPrv
     -> Passphrase "encryption"
     -> WitnessData
-mkStakeWitnessData = undefined
+mkStakeAddressWitnessData key =
+    StakeKeyWitness (txWitnessTagFor @k) (getRawKey key)
 
-toStakeKeyWitness :: TxBody era -> WitnessData -> Maybe (KeyWitness era)
-toStakeKeyWitness = undefined
-    -- case txWitnessTagFor byron -> Nothing
-
-mkWitnessData
-    :: W.Address
+mkAddressWitnessData
+    :: forall k
+     . W.Address
     -> k 'AddressK XPrv
     -> Passphrase "encryption"
     -> WitnessData
-mkWitnessData = undefined
+mkAddressWitnessData addr key pwd =
+    AddressKeyWitness (txWitnessTagFor @k) (getRawKey key) pwd addr
 
-toKeyWitness :: NetworkId -> TxBody era -> WitnessData -> KeyWitness era
-toKeyWitness = undefined
+toKeyWitness :: NetworkId -> TxBody era -> WitnessData -> Maybe (KeyWitness era)
+toKeyWitness networkId txBody = \case
+    StakeKeyWitness tag sk pwd ->
+        case tag of
+            TxWitnessShelleyUTxO ->
+                Just $ mkShelleyWitness txBody (sk, pwd)
+            TxWitnessByronUTxO{} ->
+                Nothing
+    AddressKeyWitness tag sk pwd addr ->
+        case tag of
+            TxWitnessShelleyUTxO ->
+                Just $ mkShelleyWitness txBody (sk, pwd)
+            TxWitnessByronUTxO Icarus ->
+                Just $ mkByronWitness txBody networkId Nothing (sk, pwd)
+            TxWitnessByronUTxO Byron ->
+                Just $ mkByronWitness txBody networkId (Just addr) (sk, pwd)
 
 lookupWithdrawalAddress :: TxBody era -> [W.RewardAccount]
 lookupWithdrawalAddress (Cardano.TxBody txBodyContent) =
@@ -226,6 +248,26 @@ lookupWithdrawalAddress (Cardano.TxBody txBodyContent) =
         Cardano.TxWithdrawals _era ws ->
             [ W.rewardAccountFromStakeAddress stakeAddr
             | (stakeAddr, _, _) <- ws ]
+
+lookupCertificates :: TxBody era -> [W.RewardAccount]
+lookupCertificates (Cardano.TxBody txBodyContent) =
+   case Cardano.txCertificates txBodyContent of
+       Cardano.TxCertificatesNone ->
+           []
+       Cardano.TxCertificates _era cs _buildTx ->
+           W.rewardAccountFromStakeCredential
+           <$> mapMaybe certToStakeCredential cs
+
+certToStakeCredential :: Cardano.Certificate -> Maybe Cardano.StakeCredential
+certToStakeCredential = \case
+    Cardano.StakeAddressRegistrationCertificate stakeCredential ->
+        Just stakeCredential
+    Cardano.StakeAddressDeregistrationCertificate stakeCredential ->
+        Just stakeCredential
+    Cardano.StakeAddressDelegationCertificate stakeCredential _poolId ->
+        Just stakeCredential
+    _ ->
+        Nothing
 
 -- lookupRewardAccountXPrv :: (W.RewardAccount -> f (Maybe key))
 

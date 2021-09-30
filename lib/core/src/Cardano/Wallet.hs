@@ -243,6 +243,7 @@ import Cardano.Wallet.Primitive.AddressDerivation
     , DerivationPrefix (..)
     , DerivationType (..)
     , ErrWrongPassphrase (..)
+    , GetRewardAccount (..)
     , HardDerivation (..)
     , Index (..)
     , MkKeyFingerprint (..)
@@ -1053,32 +1054,32 @@ readNextWithdrawal ctx (Coin withdrawal) = do
         dummyPath =
             DerivationIndex 0 :| []
 
-readRewardAccount
-    :: forall ctx s k (n :: NetworkDiscriminant) shelley.
+readRewardAccountDerivation
+    :: forall ctx s k.
         ( HasDBLayer IO s k ctx
-        , shelley ~ SeqState n ShelleyKey
-        , Typeable n
-        , Typeable s
+        , GetRewardAccount s k
         )
     => ctx
     -> WalletId
-    -> ExceptT ErrReadRewardAccount IO (RewardAccount, XPub, NonEmpty DerivationIndex)
-readRewardAccount ctx wid = db & \DBLayer{..} -> do
-    cp <- withExceptT ErrReadRewardAccountNoSuchWallet
-        $ mapExceptT atomically
-        $ withNoSuchWallet wid
-        $ readCheckpoint wid
-    case testEquality (typeRep @s) (typeRep @shelley) of
-        Nothing ->
-            throwE ErrReadRewardAccountNotAShelleyWallet
-        Just Refl -> do
-            let s = getState cp
-            let xpub = Seq.rewardAccountKey s
-            let acct = toRewardAccount xpub
-            let path = stakeDerivationPath $ Seq.derivationPrefix s
-            pure (acct, getRawKey xpub, path)
+    -> ExceptT ErrNoSuchWallet IO (Maybe (NonEmpty DerivationIndex, (k 'AddressK XPub, RewardAccount)))
+readRewardAccountDerivation ctx wid = db & \DBLayer{..} ->
+    fmap (getRewardAccount @s @k . getState) $
+    mapExceptT atomically $
+    withNoSuchWallet wid $
+    readCheckpoint wid
   where
     db = ctx ^. dbLayer @IO @s @k
+
+readRewardAccount
+    :: forall ctx s k.
+        ( HasDBLayer IO s k ctx
+        , GetRewardAccount s k
+        )
+    => ctx
+    -> WalletId
+    -> ExceptT ErrNoSuchWallet IO (Maybe RewardAccount)
+readRewardAccount ctx wid = fmap (snd . snd) <$>
+    readRewardAccountDerivation @_ @s @k ctx wid
 
 -- | Query the node for the reward balance of a given wallet.
 --
@@ -1097,36 +1098,35 @@ queryRewardBalance ctx acct = do
     nw = ctx ^. networkLayer
 
 manageRewardBalance
-    :: forall ctx s k (n :: NetworkDiscriminant).
+    :: forall ctx s k.
         ( HasLogger WalletWorkerLog ctx
         , HasNetworkLayer IO ctx
         , HasDBLayer IO s k ctx
-        , Typeable s
-        , Typeable n
+        , GetRewardAccount s k
         )
-    => Proxy n
-    -> ctx
+    => ctx
     -> WalletId
     -> IO ()
-manageRewardBalance _ ctx wid = db & \DBLayer{..} -> do
+manageRewardBalance ctx wid = db & \DBLayer{..} -> do
     watchNodeTip $ \bh -> do
          traceWith tr $ MsgRewardBalanceQuery bh
-         query <- runExceptT $ do
-            (acct, _, _) <- withExceptT ErrFetchRewardsReadRewardAccount $
-                readRewardAccount @ctx @s @k @n ctx wid
-            queryRewardBalance @ctx ctx acct
-         traceWith tr $ MsgRewardBalanceResult query
-         case query of
+         ra <- runExceptT (readRewardAccount @ctx @s @k ctx wid)
+         res <- case ra of
+             Right (Just acct) ->
+                 Right <$> getCachedRewardAccountBalance acct
+             Right Nothing -> pure $ Left $
+                 ErrFetchRewardsReadRewardAccount ErrReadRewardAccountNotAShelleyWallet
+             Left e -> pure $ Left $
+                 ErrFetchRewardsReadRewardAccount $ ErrReadRewardAccountNoSuchWallet e
+         traceWith tr $ MsgRewardBalanceResult res
+         case res of
             Right amt -> do
-                res <- atomically $ runExceptT $
-                    putDelegationRewardBalance wid amt
+                bal <- atomically $ runExceptT $ putDelegationRewardBalance wid amt
                 -- It can happen that the wallet doesn't exist _yet_, whereas we
                 -- already have a reward balance. If that's the case, we log and
                 -- move on.
-                case res of
-                    Left err -> traceWith tr $ MsgRewardBalanceNoSuchWallet err
-                    Right () -> pure ()
-            Left _err ->
+                either (traceWith tr . MsgRewardBalanceNoSuchWallet) pure bal
+            Left _ ->
                 -- Occasionaly failing to query is generally not fatal. It will
                 -- just update the balance next time the tip changes.
                 pure ()
@@ -1134,7 +1134,7 @@ manageRewardBalance _ ctx wid = db & \DBLayer{..} -> do
 
   where
     db = ctx ^. dbLayer @IO @s @k
-    NetworkLayer{watchNodeTip} = ctx ^. networkLayer
+    NetworkLayer{watchNodeTip,getCachedRewardAccountBalance} = ctx ^. networkLayer
     tr = contramap MsgWallet $ ctx ^. logger @WalletWorkerLog
 
 {-------------------------------------------------------------------------------
@@ -1640,30 +1640,16 @@ buildAndSignTransaction ctx wid mkRwdAcct pwd txCtx sel = db & \DBLayer{..} -> d
 
 -- | Construct an unsigned transaction from a given selection.
 constructTransaction
-    :: forall ctx s k (n :: NetworkDiscriminant).
+    :: forall ctx k.
         ( HasTransactionLayer k ctx
-        , HasDBLayer IO s k ctx
         , HasNetworkLayer IO ctx
-        , Typeable s
-        , Typeable n
+        , HasLogger WalletWorkerLog ctx
         )
     => ctx
-    -> WalletId
     -> TransactionCtx
     -> SelectionResult TxOut
     -> ExceptT ErrConstructTx IO SealedTx
-constructTransaction ctx wid txCtx sel = db & \DBLayer{..} -> do
-    era <- liftIO $ currentNodeEra nl
-    (_, xpub, _) <- withExceptT ErrConstructTxReadRewardAccount $
-        readRewardAccount @ctx @s @k @n ctx wid
-    mapExceptT atomically $ do
-        pp <- liftIO $ currentProtocolParameters nl
-        withExceptT ErrConstructTxBody $ ExceptT $ pure $
-            mkUnsignedTransaction tl era xpub pp txCtx sel
-  where
-    db = ctx ^. dbLayer @IO @s @k
-    tl = ctx ^. transactionLayer @k
-    nl = ctx ^. networkLayer
+constructTransaction ctx txCtx sel = undefined
 
 -- | Calculate the transaction expiry slot, given a 'TimeInterpreter', and an
 -- optional TTL in seconds.

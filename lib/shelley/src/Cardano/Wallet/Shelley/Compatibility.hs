@@ -78,6 +78,8 @@ module Cardano.Wallet.Shelley.Compatibility
     , toCardanoValue
     , fromCardanoValue
     , rewardAccountFromAddress
+    , rewardAccountFromStakeAddress
+    , rewardAccountFromStakeCredential
     , fromShelleyPParams
     , fromShelleyTxId
     , fromAlonzoPParams
@@ -1398,6 +1400,21 @@ rewardAccountFromAddress (W.Address bytes) = refToAccount . ref =<< parseAddr by
     refToAccount (SL.StakeRefBase cred) = Just $ fromStakeCredential cred
     refToAccount (SL.StakeRefPtr _) = Nothing
     refToAccount SL.StakeRefNull = Nothing
+
+rewardAccountFromStakeAddress :: Cardano.StakeAddress -> W.RewardAccount
+rewardAccountFromStakeAddress (Cardano.StakeAddress _net cred) =
+    case Cardano.fromShelleyStakeCredential cred of
+        Cardano.StakeCredentialByKey keyHash ->
+            W.RewardAccount $ Cardano.serialiseToRawBytes keyHash
+        Cardano.StakeCredentialByScript scriptHash ->
+            W.RewardAccount $ Cardano.serialiseToRawBytes scriptHash
+
+rewardAccountFromStakeCredential :: Cardano.StakeCredential -> W.RewardAccount
+rewardAccountFromStakeCredential = \case
+    Cardano.StakeCredentialByKey keyHash ->
+        W.RewardAccount $ Cardano.serialiseToRawBytes keyHash
+    Cardano.StakeCredentialByScript scriptHash ->
+        W.RewardAccount $ Cardano.serialiseToRawBytes scriptHash
 
 -- | Converts 'SealedTx' to something that can be submitted with the
 -- 'Cardano.Api' local tx submission client.

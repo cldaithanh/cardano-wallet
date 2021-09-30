@@ -70,10 +70,11 @@ import Cardano.Wallet.Primitive.Model
 import Cardano.Wallet.Primitive.Types
     ( WalletId )
 import qualified Cardano.Wallet.Primitive.Types.Address as W
+import qualified Cardano.Wallet.Primitive.Types.RewardAccount as W
 import qualified Cardano.Wallet.Primitive.Types.Tx as W
 import qualified Cardano.Wallet.Primitive.Types.UTxO as W
 import Cardano.Wallet.Shelley.Compatibility
-    ( NetworkId )
+    ( NetworkId, rewardAccountFromStakeAddress )
 import qualified Cardano.Wallet.Shelley.Compatibility as W
 import Cardano.Wallet.Shelley.Transaction
     ( TxWitnessTag (..)
@@ -167,19 +168,46 @@ handler ctx wid pwd networkId txBody = do
         (cp, _, pending) <- readWallet @ctx @s @k ctx wid
         pure (getState cp, totalUTxO @s pending cp)
 
-    keyFrom <- withRootKey @_ @s ctx wid pwd ErrWitnessTxWithRootKey $ \xprv scheme -> do
-        let pwdP = preparePassphrase scheme pwd
+    (rewardAcct, _, _) <- withExceptT ErrWitnessTxNoSuchWallet $
+        readRewardAccount @ctx @s @k ctx wid
+
+    (keyFrom, stakeCreds) <- withRootKey @_ @s ctx wid pwd ErrWitnessTxWithRootKey $ \xprv scheme -> do
+        let
+            pwdP = preparePassphrase scheme pwd
+
             keyFrom :: W.Address -> Maybe WitnessData
             keyFrom addr = do
                 (key :: k 'AddressK XPrv , keyPwd :: Passphrase "encryption")
                     <- isOwned adState (xprv, pwdP) addr
                 pure $ mkWitnessData addr key keyPwd
-        pure keyFrom
+
+            stakeCreds acct =
+                if Just acct == rewardAcct
+                -- using stake credentials from self
+                then mkStakeWitnessData xprv pwdP
+                -- using external stake credentials
+                else mkStakeWitnessData xprv mempty
+
+
+        pure (keyFrom, stakeCreds)
 
     txIns <- lookupTxIns utxo (pure . keyFrom) txBody
     pure $ fmap (toKeyWitness networkId txBody) txIns
 
+    let wdrls = stakeCreds <$> lookupWithdrawalAddress txBody
+    pure $ mapMaybe (toStakeKeyWitness txBody) wdrls
+
 data WitnessData
+
+mkStakeWitnessData
+    :: k 'RootK XPrv
+    -> Passphrase "encryption"
+    -> WitnessData
+mkStakeWitnessData = undefined
+
+toStakeKeyWitness :: TxBody era -> WitnessData -> Maybe (KeyWitness era)
+toStakeKeyWitness = undefined
+    -- case txWitnessTagFor byron -> Nothing
 
 mkWitnessData
     :: W.Address
@@ -191,10 +219,16 @@ mkWitnessData = undefined
 toKeyWitness :: NetworkId -> TxBody era -> WitnessData -> KeyWitness era
 toKeyWitness = undefined
 
--- x :: Applicative f => W.UTxO -> (W.Address -> f (Maybe XPrv)) -> TxBody era -> f [KeyWitness era]
--- x u f txBody =
---     fmap (\(addr, xprv) -> makeWitnessFromXPrv addr xprv txBody)
---     <$> lookupTxIns u f txBody
+lookupWithdrawalAddress :: TxBody era -> [W.RewardAccount]
+lookupWithdrawalAddress (Cardano.TxBody txBodyContent) =
+    case Cardano.txWithdrawals txBodyContent of
+        Cardano.TxWithdrawalsNone -> []
+        Cardano.TxWithdrawals _era ws ->
+            [ W.rewardAccountFromStakeAddress stakeAddr
+            | (stakeAddr, _, _) <- ws ]
+
+-- lookupRewardAccountXPrv :: (W.RewardAccount -> f (Maybe key))
+
 
 -- Now we can simply define a set of functions with the type:
 --   f :: TxBody era -> f [XPrv]
@@ -236,6 +270,7 @@ lookupTxIns utxo lookupFn =
 --     ∀txBody. lookupTxInAddresses mempty txBody = mempty
 -- lookup/txins/empty-txins:
 --     ∀utxo. lookupTxInAddresses utxo txBody { txIns = mempty } = mempty
+-- - we return all addresses associated with txins of txbody
 lookupTxInAddresses :: W.UTxO -> TxBody era -> [W.Address]
 lookupTxInAddresses utxo (Cardano.TxBody txBodyContent) =
     let

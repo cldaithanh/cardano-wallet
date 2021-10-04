@@ -147,6 +147,8 @@ import Data.Generics.Internal.VL.Lens
     ( over, set, view )
 import Data.Generics.Labels
     ()
+import Data.Int
+    ( Int64 )
 import Data.List.NonEmpty
     ( NonEmpty (..) )
 import Data.Map.Strict
@@ -227,6 +229,7 @@ import qualified Data.List.NonEmpty as NE
 import qualified Data.Map.Strict as Map
 import qualified Data.Maybe as Maybe
 import qualified Data.Set as Set
+import qualified Data.Text.Lazy as TL
 
 spec :: Spec
 spec = describe "Cardano.Wallet.Primitive.CoinSelection.BalanceSpec" $
@@ -2106,14 +2109,17 @@ computeMinimumCostZero :: SelectionSkeleton -> Coin
 computeMinimumCostZero = const $ Coin 0
 
 computeMinimumCostLinear :: SelectionSkeleton -> Coin
-computeMinimumCostLinear s
-    = Coin
-    $ fromIntegral
-    $ skeletonInputCount s
-    + F.length (TokenMap.size . view (#tokens . #tokens) <$> skeletonOutputs s)
-    + F.sum (Set.size <$> skeletonChange s)
-    + TokenMap.size (skeletonAssetsToMint s)
-    + TokenMap.size (skeletonAssetsToBurn s)
+computeMinimumCostLinear =
+    -- By using 'pretty', we guarantee that all fields of a 'SelectionSkeleton'
+    -- contribute to the cost, provided of course that the 'Buildable' instance
+    -- for 'SelectionSkeleton' includes all fields.
+    Coin . fromIntegral . (`div` costScalingFactor) . TL.length . pretty
+  where
+    -- To keep costs reasonable with respect to the size of generated token
+    -- bundles and ensure that a large enough proportion of selections will
+    -- succeed, we divide by a constant scaling factor.
+    costScalingFactor :: Int64
+    costScalingFactor = 16
 
 --------------------------------------------------------------------------------
 -- Computing selection limits

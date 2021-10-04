@@ -132,7 +132,7 @@ import Data.Set
 import Data.Text.Class
     ( toText )
 import Fmt
-    ( Buildable (..), Builder, blockListF', blockMapF )
+    ( Buildable (..), Builder, GenericBuildable (..), blockListF', blockMapF )
 import GHC.Generics
     ( Generic )
 import GHC.TypeLits
@@ -247,6 +247,7 @@ data AssetId = AssetId
         :: !TokenName
     }
     deriving stock (Eq, Generic, Ord, Read, Show)
+    deriving Buildable via GenericBuildable AssetId
 
 instance NFData AssetId
 

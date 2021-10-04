@@ -176,13 +176,7 @@ import Data.Semigroup
 import Data.Set
     ( Set )
 import Fmt
-    ( Buildable (..)
-    , Builder
-    , GenericBuildable (..)
-    , blockMapF
-    , nameF
-    , unlinesF
-    )
+    ( Buildable (..), Builder, GenericBuildable (..), blockMapF )
 import GHC.Generics
     ( Generic )
 import GHC.Stack
@@ -706,13 +700,9 @@ data InsufficientMinCoinValueError = InsufficientMinCoinValueError
     , expectedMinCoinValue
         :: !Coin
         -- ^ The minimum coin quantity expected for this output.
-    } deriving (Generic, Eq, Show)
-
-instance Buildable InsufficientMinCoinValueError where
-    build (InsufficientMinCoinValueError o c) = unlinesF
-        [ nameF "Expected min coin value" (build c)
-        , nameF "TxOut" (build o)
-        ]
+    }
+    deriving (Generic, Eq, Show)
+    deriving Buildable via GenericBuildable InsufficientMinCoinValueError
 
 data UnableToConstructChangeError = UnableToConstructChangeError
     { requiredCost

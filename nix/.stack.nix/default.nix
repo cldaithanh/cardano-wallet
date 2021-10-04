@@ -4,6 +4,7 @@
       packages = {
         "OddWord" = (((hackage.OddWord)."1.0.2.0").revisions).default;
         "command" = (((hackage.command)."0.1.1").revisions).default;
+        "fmt" = (((hackage.fmt)."0.6.3.0").revisions).default;
         "hspec" = (((hackage.hspec)."2.8.2").revisions).default;
         "hspec-core" = (((hackage.hspec-core)."2.8.2").revisions).default;
         "hspec-discover" = (((hackage.hspec-discover)."2.8.2").revisions).default;

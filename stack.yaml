@@ -65,6 +65,7 @@ extra-deps:
 
 - OddWord-1.0.2.0
 - command-0.1.1
+- fmt-0.6.3.0
 - hspec-2.8.2
 - hspec-core-2.8.2
 - hspec-discover-2.8.2

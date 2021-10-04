@@ -924,7 +924,7 @@ spec = describe "NEW_SHELLEY_TRANSACTIONS" $ do
         -- Construct tx
         payload <- mkTxPayload ctx w amt
         let constructEndpoint = Link.createUnsignedTransaction @'Shelley w
-        sealedTx <- getFromResponse #transaction <$>
+        sealedTx <- getFromResponse (#transaction . #getApiT . #serialisedTx) <$>
             request @(ApiConstructTransaction n) ctx constructEndpoint Default payload
 
         -- Submit tx
@@ -935,7 +935,7 @@ spec = describe "NEW_SHELLEY_TRANSACTIONS" $ do
                 ]
         r <- request @ApiTxId ctx submitEndpoint headers (NonJson $ BL.fromStrict sealedTx)
         verify r
-            [ expectResponseCode HTTP.status403
+            [ expectResponseCode HTTP.status500
             ]
 
     -- TODO: Moar tests scenarios to cover in the context of sign-transactions

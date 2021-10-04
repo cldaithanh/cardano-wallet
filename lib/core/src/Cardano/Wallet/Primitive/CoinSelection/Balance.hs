@@ -1,6 +1,7 @@
 {-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE DeriveFunctor #-}
 {-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE DerivingVia #-}
 {-# LANGUAGE DuplicateRecordFields #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
@@ -175,7 +176,13 @@ import Data.Semigroup
 import Data.Set
     ( Set )
 import Fmt
-    ( Buildable (..), Builder, blockMapF, nameF, unlinesF )
+    ( Buildable (..)
+    , Builder
+    , GenericBuildable (..)
+    , blockMapF
+    , nameF
+    , unlinesF
+    )
 import GHC.Generics
     ( Generic )
 import GHC.Stack
@@ -411,6 +418,7 @@ data SelectionSkeleton = SelectionSkeleton
         :: !TokenMap
     }
     deriving (Eq, Generic, Show)
+    deriving Buildable via GenericBuildable SelectionSkeleton
 
 -- | Creates an empty 'SelectionSkeleton'.
 --

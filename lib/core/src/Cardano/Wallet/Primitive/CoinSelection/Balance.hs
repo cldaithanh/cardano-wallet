@@ -176,7 +176,7 @@ import Data.Semigroup
 import Data.Set
     ( Set )
 import Fmt
-    ( Buildable (..), Builder, GenericBuildable (..), blockMapF )
+    ( Buildable (..), GenericBuildable (..) )
 import GHC.Generics
     ( Generic )
 import GHC.Stack
@@ -497,15 +497,8 @@ data SelectionResultOf outputs = SelectionResult
 data SelectionDelta a
     = SelectionSurplus a
     | SelectionDeficit a
-    deriving (Eq, Functor, Show)
-
-instance Buildable a => Buildable (SelectionDelta a) where
-    build d = case d of
-        SelectionSurplus surplus -> buildMap [("surplus", build surplus)]
-        SelectionDeficit deficit -> buildMap [("deficit", build deficit)]
-      where
-        buildMap :: [(String, Builder)] -> Builder
-        buildMap = blockMapF . fmap (first $ id @String)
+    deriving (Eq, Functor, Generic, Show)
+    deriving Buildable via GenericBuildable (SelectionDelta a)
 
 -- | Calculates the selection delta for all assets.
 --

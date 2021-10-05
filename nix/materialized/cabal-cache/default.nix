@@ -36,7 +36,7 @@
         "integer-gmp".revision = (((hackage."integer-gmp")."1.0.3.0").revisions).default;
         "mono-traversable".revision = (((hackage."mono-traversable")."1.0.15.1").revisions).default;
         "conduit-extra".revision = (((hackage."conduit-extra")."1.3.5").revisions).default;
-        "call-stack".revision = (((hackage."call-stack")."0.3.0").revisions).default;
+        "call-stack".revision = (((hackage."call-stack")."0.4.0").revisions).default;
         "template-haskell".revision = (((hackage."template-haskell")."2.16.0.0").revisions).default;
         "hsc2hs".revision = (((hackage."hsc2hs")."0.68.7").revisions).default;
         "hsc2hs".flags.in-ghc-tree = false;
@@ -180,7 +180,7 @@
         "memory".flags.support_deepseq = true;
         "profunctors".revision = (((hackage."profunctors")."5.6").revisions).default;
         "th-abstraction".revision = (((hackage."th-abstraction")."0.3.2.0").revisions).default;
-        "hw-hspec-hedgehog".revision = (((hackage."hw-hspec-hedgehog")."0.1.1.0").revisions).default;
+        "hw-hspec-hedgehog".revision = (((hackage."hw-hspec-hedgehog")."0.1.0.4").revisions).default;
         "resourcet".revision = (((hackage."resourcet")."1.2.4.2").revisions).default;
         "aeson".revision = (((hackage."aeson")."1.4.7.1").revisions).default;
         "aeson".flags.developer = false;
@@ -214,7 +214,7 @@
         "stringsearch".revision = (((hackage."stringsearch")."0.3.6.6").revisions).default;
         "stringsearch".flags.base4 = true;
         "stringsearch".flags.base3 = false;
-        "hspec-core".revision = (((hackage."hspec-core")."2.7.10").revisions).default;
+        "hspec-core".revision = (((hackage."hspec-core")."2.8.2").revisions).default;
         "asn1-types".revision = (((hackage."asn1-types")."0.3.4").revisions).default;
         "filepath".revision = (((hackage."filepath")."1.4.2.1").revisions).default;
         "asn1-encoding".revision = (((hackage."asn1-encoding")."0.9.6").revisions).default;
@@ -248,7 +248,7 @@
         "type-equality".revision = (((hackage."type-equality")."1").revisions).default;
         "antiope-s3".revision = (((hackage."antiope-s3")."7.5.3").revisions).default;
         "Cabal".revision = (((hackage."Cabal")."3.2.1.0").revisions).default;
-        "hspec".revision = (((hackage."hspec")."2.7.10").revisions).default;
+        "hspec".revision = (((hackage."hspec")."2.8.2").revisions).default;
         "cryptonite".revision = (((hackage."cryptonite")."0.29").revisions).default;
         "cryptonite".flags.old_toolchain_inliner = false;
         "cryptonite".flags.support_pclmuldq = false;

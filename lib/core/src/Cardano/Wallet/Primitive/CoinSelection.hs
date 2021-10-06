@@ -49,6 +49,13 @@ module Cardano.Wallet.Primitive.CoinSelection
     , makeSelectionReport
     , makeSelectionReportSummarized
     , makeSelectionReportDetailed
+
+    -- * Internal utility functions
+    , collateralRequired
+    , toBalanceConstraintsParams
+    , toBalanceSelection
+    , toCollateralConstraintsParams
+
     ) where
 
 import Prelude

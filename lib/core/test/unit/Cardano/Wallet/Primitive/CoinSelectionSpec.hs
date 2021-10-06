@@ -2,6 +2,8 @@
 {-# LANGUAGE DuplicateRecordFields #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE OverloadedLabels #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# OPTIONS_GHC -fno-warn-orphans #-}
 
 module Cardano.Wallet.Primitive.CoinSelectionSpec
     where
@@ -11,8 +13,15 @@ import Prelude
 import Cardano.Wallet.Primitive.CoinSelection
     ( SelectionCollateralRequirement (..)
     , SelectionConstraints (..)
+    , SelectionError (..)
     , SelectionParams (..)
+    , Selection
+    , collateralRequired
+    , performSelection
     , prepareOutputsWith
+    , toBalanceConstraintsParams
+    , toBalanceSelection
+    , toCollateralConstraintsParams
     )
 import Cardano.Wallet.Primitive.CoinSelection.BalanceSpec
     ( MockAssessTokenBundleSize
@@ -36,6 +45,8 @@ import Cardano.Wallet.Primitive.Types.Coin
     ( Coin (..) )
 import Cardano.Wallet.Primitive.Types.Coin.Gen
     ( genCoin, genCoinPositive, shrinkCoin, shrinkCoinPositive )
+import Cardano.Wallet.Primitive.Types.TokenBundle
+    ( TokenBundle )
 import Cardano.Wallet.Primitive.Types.TokenMap
     ( TokenMap )
 import Cardano.Wallet.Primitive.Types.TokenMap.Gen
@@ -52,8 +63,14 @@ import Cardano.Wallet.Primitive.Types.UTxOSelection
     ( UTxOSelection )
 import Cardano.Wallet.Primitive.Types.UTxOSelection.Gen
     ( genUTxOSelection, shrinkUTxOSelection )
+import Control.Monad.Trans.Except
+    ( runExceptT )
+import Data.Either
+    ( isLeft, isRight )
 import Data.Generics.Internal.VL.Lens
     ( view )
+import Data.Maybe
+    ( isJust )
 import GHC.Generics
     ( Generic )
 import Numeric.Natural
@@ -63,26 +80,57 @@ import Test.Hspec
 import Test.Hspec.Extra
     ( parallel )
 import Test.QuickCheck
-    ( Gen
+    ( Arbitrary (..)
+    , Gen
     , Property
     , arbitraryBoundedEnum
+    , checkCoverage
     , choose
+    , conjoin
+    , cover
     , genericShrink
     , listOf
     , property
+    , scale
     , shrink
     , shrinkList
     , shrinkMapBy
     , (===)
+    , (==>)
     )
+import Test.QuickCheck.Monadic
+    ( monadicIO, run )
 import Test.QuickCheck.Extra
-    ( chooseNatural, liftShrink8, liftShrink9, shrinkNatural )
+    ( Pretty (..)
+    , chooseNatural
+    , liftShrink8
+    , liftShrink9
+    , report
+    , shrinkNatural
+    )
 
+import qualified Cardano.Wallet.Primitive.CoinSelection.Balance as Balance
+import qualified Cardano.Wallet.Primitive.CoinSelection.Collateral as Collateral
 import qualified Cardano.Wallet.Primitive.Types.TokenBundle as TokenBundle
 import qualified Data.Foldable as F
 
 spec :: Spec
-spec = describe "Cardano.Wallet.Primitive.CoinSelectionSpec" $
+spec = describe "Cardano.Wallet.Primitive.CoinSelectionSpec" $ do
+
+    parallel $ describe "Performing selections" $ do
+
+        it "prop_performSelection_onSuccess_hasValidSurplus" $
+            property $
+            prop_performSelection_onSuccess
+            prop_performSelection_onSuccess_hasValidSurplus
+        it "prop_performSelection_onSuccess_hasSufficientCollateral" $
+            property $
+            prop_performSelection_onSuccess
+            prop_performSelection_onSuccess_hasSufficientCollateral
+        it "prop_performSelection_onSuccess_hasSuitableCollateral" $
+            property $
+            prop_performSelection_onSuccess
+            prop_performSelection_onSuccess_hasSuitableCollateral
 
     parallel $ describe "Preparing outputs" $ do
 
@@ -94,6 +142,129 @@ spec = describe "Cardano.Wallet.Primitive.CoinSelectionSpec" $
             property prop_prepareOutputsWith_assetsUnchanged
         it "prop_prepareOutputsWith_preparedOrExistedBefore" $
             property prop_prepareOutputsWith_preparedOrExistedBefore
+
+--------------------------------------------------------------------------------
+-- Performing selections
+--------------------------------------------------------------------------------
+
+type PerformSelectionProperty =
+    Pretty MockSelectionConstraints ->
+    Pretty SelectionParams ->
+    Property
+
+type PerformSelectionPropertyInner =
+    SelectionConstraints ->
+    SelectionParams ->
+    Either SelectionError Selection ->
+    Property
+
+type PerformSelectionPropertyOnSuccess =
+    SelectionConstraints ->
+    SelectionParams ->
+    Selection ->
+    Property
+
+prop_performSelection_with
+    :: PerformSelectionPropertyInner
+    -> PerformSelectionProperty
+prop_performSelection_with mkProperty (Pretty mockConstraints) (Pretty params) =
+    monadicIO $ do
+        result <- run $ runExceptT $ performSelection constraints params
+        pure $ conjoin
+            [ prop_performSelection_coverage constraints params result
+            , mkProperty constraints params result
+            ]
+  where
+    constraints = unMockSelectionConstraints mockConstraints
+
+prop_performSelection_coverage :: PerformSelectionPropertyInner
+prop_performSelection_coverage _constraints params result =
+    checkCoverage $
+    cover 10 (isLeft result)
+        "failure" $
+    cover 10 (isRight result)
+        "success" $
+    cover 10 (collateralRequired params)
+        "collateral required: yes" $
+    cover 10 (not $ collateralRequired params)
+        "collateral required: no" $
+    case result of
+        Left e ->
+            cover 2.0 (isBalanceError e)
+                "failure: balance" $
+            cover 2.0 (isCollateralError e)
+                "failure: collateral" $
+            cover 0.5 (isOutputError e)
+                "failure: output" $
+            property True
+        Right _ ->
+            property True
+  where
+    isBalanceError :: SelectionError -> Bool
+    isBalanceError = \case
+        SelectionBalanceError _ -> True
+        _ -> False
+    isCollateralError :: SelectionError -> Bool
+    isCollateralError = \case
+        SelectionCollateralError _ -> True
+        _ -> False
+    isOutputError :: SelectionError -> Bool
+    isOutputError = \case
+        SelectionOutputError _ -> True
+        _ -> False
+
+prop_performSelection_onSuccess
+    :: PerformSelectionPropertyOnSuccess
+    -> PerformSelectionProperty
+prop_performSelection_onSuccess onSuccess =
+    prop_performSelection_with $ \constraints params ->
+        either (const $ property True) (onSuccess constraints params)
+
+prop_performSelection_onSuccess_hasValidSurplus
+    :: PerformSelectionPropertyOnSuccess
+prop_performSelection_onSuccess_hasValidSurplus cs ps selection =
+    report selectionDelta
+        "selectionDelta" $
+    report selectionMinimumCost
+        "selectionMinimumCost" $
+    Balance.selectionHasValidSurplus balanceConstraints balanceSelection
+  where
+    balanceConstraints :: Balance.SelectionConstraints
+    balanceConstraints = fst $ toBalanceConstraintsParams (cs, ps)
+    balanceSelection :: Balance.SelectionResult
+    balanceSelection = toBalanceSelection selection
+    selectionDelta :: Balance.SelectionDelta TokenBundle
+    selectionDelta = Balance.selectionDeltaAllAssets balanceSelection
+    selectionMinimumCost :: Coin
+    selectionMinimumCost = Balance.selectionMinimumCost
+        balanceConstraints balanceSelection
+
+prop_performSelection_onSuccess_hasSufficientCollateral
+    :: PerformSelectionPropertyOnSuccess
+prop_performSelection_onSuccess_hasSufficientCollateral cs ps selection =
+    report collateralBalance
+        "collateralBalance" $
+    report collateralBalanceRequired
+        "collateralBalanceRequired" $
+    collateralRequired ps ==>
+        collateralBalance >= collateralBalanceRequired
+  where
+    collateralBalance :: Coin
+    collateralBalance = F.foldMap (txOutCoin . snd) (view #collateral selection)
+    collateralBalanceRequired :: Coin
+    collateralBalanceRequired = view #minimumSelectionAmount collateralParams
+    collateralParams :: Collateral.SelectionParams
+    collateralParams = snd $
+        toCollateralConstraintsParams (toBalanceSelection selection) (cs, ps)
+
+prop_performSelection_onSuccess_hasSuitableCollateral
+    :: PerformSelectionPropertyOnSuccess
+prop_performSelection_onSuccess_hasSuitableCollateral cs ps selection =
+    collateralRequired ps ==>
+        all suitableForCollateral (view #collateral selection)
+  where
+    suitableForCollateral :: (TxIn, TxOut) -> Bool
+    suitableForCollateral = isJust . view #utxoSuitableForCollateral cs
 
 --------------------------------------------------------------------------------
 -- Preparing outputs
@@ -314,7 +485,7 @@ genAssetsToMint :: Gen TokenMap
 genAssetsToMint = genTokenMap
 
 genAssetsToBurn :: Gen TokenMap
-genAssetsToBurn = genTokenMap
+genAssetsToBurn = scale (`mod` 4) genTokenMap
 
 shrinkAssetsToMint :: TokenMap -> [TokenMap]
 shrinkAssetsToMint = shrinkTokenMap
@@ -327,7 +498,7 @@ shrinkAssetsToBurn = shrinkTokenMap
 --------------------------------------------------------------------------------
 
 genOutputsToCover :: Gen [TxOut]
-genOutputsToCover = listOf genTxOut
+genOutputsToCover = scale (`mod` 4) $ listOf (scale (* 8) genTxOut)
 
 shrinkOutputsToCover :: [TxOut] -> [[TxOut]]
 shrinkOutputsToCover = shrinkList shrinkTxOut
@@ -384,3 +555,15 @@ shrinkUTxOAvailableForCollateral = shrinkUTxO
 
 shrinkUTxOAvailableForInputs :: UTxOSelection -> [UTxOSelection]
 shrinkUTxOAvailableForInputs = shrinkUTxOSelection
+
+--------------------------------------------------------------------------------
+-- Arbitrary instances
+--------------------------------------------------------------------------------
+
+instance Arbitrary MockSelectionConstraints where
+    arbitrary = genMockSelectionConstraints
+    shrink = shrinkMockSelectionConstraints
+
+instance Arbitrary SelectionParams where
+    arbitrary = genSelectionParams
+    shrink = shrinkSelectionParams

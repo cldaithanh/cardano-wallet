@@ -154,7 +154,7 @@ makeWitnessFromXPrv networkId (k, pwd) addr body =
             TxWitnessByronUTxO Byron ->
                 mkByronWitness body networkId (Just addr) sk
 
-handler
+getWalletWitnesses
     :: forall ctx s k a era.
         ( HasDBLayer IO s k ctx
         , IsOwned s k
@@ -165,7 +165,7 @@ handler
     -> NetworkId
     -> TxBody era
     -> ExceptT ErrWitnessTx IO [KeyWitness era]
-handler ctx wid pwd networkId txBody = do
+getWalletWitnesses ctx wid pwd networkId txBody = do
     (adState, utxo) <- withExceptT ErrWitnessTxNoSuchWallet $ do
         (cp, _, pending) <- readWallet @ctx @s @k ctx wid
         pure (getState cp, totalUTxO @s pending cp)
@@ -179,10 +179,11 @@ handler ctx wid pwd networkId txBody = do
 
             keyFrom :: W.Address -> Maybe WitnessData
             keyFrom addr = do
-                (key :: k 'AddressK XPrv , keyPwd :: Passphrase "encryption")
+                (key :: k 'AddressK XPrv, keyPwd :: Passphrase "encryption")
                     <- isOwned adState (xprv, pwdP) addr
                 pure $ mkAddressWitnessData addr key keyPwd
 
+            stakeCreds :: W.RewardAccount -> WitnessData
             stakeCreds acct =
                 if Just acct == rewardAcct
                 -- using stake credentials from self

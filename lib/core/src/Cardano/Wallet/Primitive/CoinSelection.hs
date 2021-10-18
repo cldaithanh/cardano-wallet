@@ -562,19 +562,16 @@ data SelectionOutputCoinInsufficientError =
 
 verifySelectionOutputCoinsSufficient
     :: VerifySelectionProperty VerifySelectionOutputCoinsSufficientError
-verifySelectionOutputCoinsSufficient cs _ps selection
-    | errorsNonEmpty <- NE.nonEmpty errors =
-        Just $ VerifySelectionOutputCoinsSufficientError errorsNonEmpty
-    | otherwise =
-        Nothing
+verifySelectionOutputCoinsSufficient cs _ps selection =
+    VerifySelectionOutputCoinsSufficientError <$> NE.nonEmpty errors
   where
-    errors :: [VerifySelectionOutputCoinSufficientError]
+    errors :: [SelectionOutputCoinInsufficientError]
     errors = mapMaybe maybeError (selectionAllOutputs selection)
 
-    maybeError :: TxOut -> Maybe VerifySelectionOutputCoinSufficientError
+    maybeError :: TxOut -> Maybe SelectionOutputCoinInsufficientError
     maybeError output
         | output ^. (#tokens . #coin) < minimumExpectedCoin =
-            Just VerifySelectionOutputCoinsSufficientError
+            Just SelectionOutputCoinInsufficientError
                 {minimumExpectedCoin, output}
         | otherwise =
             Nothing
@@ -595,11 +592,8 @@ newtype VerifySelectionOutputSizesWithinLimitError =
 
 verifySelectionOutputSizesWithinLimit
     :: VerifySelectionProperty VerifySelectionOutputSizesWithinLimitError
-verifySelectionOutputSizesWithinLimit cs _ps selection
-    | errorsNonEmpty <- NE.nonEmpty errors =
-        Just $ VerifySelectionOutputSizesWithinLimitError errorsNonEmpty
-    | otherwise =
-        Nothing
+verifySelectionOutputSizesWithinLimit cs _ps selection =
+    VerifySelectionOutputSizesWithinLimitError <$> NE.nonEmpty errors
   where
     errors :: [SelectionOutputSizeExceedsLimitError]
     errors = mapMaybe (verifyOutputSize cs) (selectionAllOutputs selection)
@@ -616,12 +610,8 @@ newtype VerifySelectionOutputTokenQuantitiesWithinLimitError =
 verifySelectionOutputTokenQuantitiesWithinLimit ::
     VerifySelectionProperty
     VerifySelectionOutputTokenQuantitiesWithinLimitError
-verifySelectionOutputTokenQuantitiesWithinLimit _cs _ps selection
-    | errorsNonEmpty <- NE.nonEpmyt errors =
-        Just $ VerifySelectionOutputTokenQuantitiesWithinLimitError
-        errorsNonEmpty
-    | otherwise =
-        Nothing
+verifySelectionOutputTokenQuantitiesWithinLimit _cs _ps selection =
+    VerifySelectionOutputTokenQuantitiesWithinLimitError <$> NE.nonEmpty errors
   where
     errors :: [SelectionOutputTokenQuantityExceedsLimitError]
     errors = verifyOutputTokenQuantities =<< selectionAllOutputs selection

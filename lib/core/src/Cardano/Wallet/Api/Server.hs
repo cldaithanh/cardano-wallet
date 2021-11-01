@@ -535,7 +535,7 @@ import Data.Type.Equality
 import Data.Word
     ( Word32 )
 import Fmt
-    ( blockListF, indentF, pretty )
+    ( blockListF, indentF, listF, pretty )
 import GHC.Generics
     ( Generic )
 import GHC.Stack
@@ -4249,7 +4249,8 @@ instance IsServerError (Collateral.SelectionError) where
             , "I need an ada amount of at least:"
             , pretty (view #minimumSelectionAmount e)
             , "The largest combination of pure ada UTxOs I could find is:"
-            , pretty (F.toList $ view #largestCombinationAvailable e)
+            , pretty $ listF $ L.sort $ F.toList $
+                view #largestCombinationAvailable e
             , "To fix this, you'll need to add one or more pure ada UTxOs"
             , "to your wallet that can cover the minimum amount required."
             ]

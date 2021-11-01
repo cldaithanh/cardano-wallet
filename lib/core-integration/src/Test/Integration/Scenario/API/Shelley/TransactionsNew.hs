@@ -1195,7 +1195,8 @@ spec = describe "NEW_SHELLEY_TRANSACTIONS" $ do
             , expectResponseCode HTTP.status202
             ]
 
-    it "TRANS_NEW_BALANCE_02a - Cannot balance on empty wallet" $ \ctx -> runResourceT $ do
+    it "TRANS_NEW_BALANCE_02a - Cannot balance on empty wallet" $
+        \ctx -> runResourceT $ do
         wa <- emptyWallet ctx
         let balancePayload = Json PlutusScenario.pingPong_1
         rTx <- request @ApiSerialisedTransaction ctx
@@ -1205,7 +1206,8 @@ spec = describe "NEW_SHELLEY_TRANSACTIONS" $ do
             , expectErrorMessage errMsg403NotEnoughMoney
             ]
 
-    it "TRANS_NEW_BALANCE_02b - Cannot balance on when I cannot afford fee" $ \ctx -> runResourceT $ do
+    it "TRANS_NEW_BALANCE_02b - Cannot balance on when I cannot afford fee" $
+        \ctx -> runResourceT $ do
         wa <- fixtureWalletWith @n ctx [2 * 1_000_000]
         let balancePayload = Json PlutusScenario.pingPong_1
         rTx <- request @ApiSerialisedTransaction ctx
@@ -1215,7 +1217,9 @@ spec = describe "NEW_SHELLEY_TRANSACTIONS" $ do
             , expectErrorMessage errMsg403Fee
             ]
 
-    it "TRANS_NEW_BALANCE_02c - Cannot balance on when I cannot afford collateral" $ \ctx -> runResourceT $ do
+    it "TRANS_NEW_BALANCE_02c - \
+        \Cannot balance on when I cannot afford collateral" $
+        \ctx -> runResourceT $ do
         -- TODO: adjust when ADP-1227 is fixed
         wa <- fixtureWalletWith @n ctx [600 * 1_000_000]
         let toBalance = Json PlutusScenario.pingPong_1
@@ -1230,7 +1234,8 @@ spec = describe "NEW_SHELLEY_TRANSACTIONS" $ do
         txId <- submitTx ctx signedTx [ expectResponseCode HTTP.status202 ]
 
         waitForTxImmutability ctx
-        partialTx' <- PlutusScenario.pingPong_2 $ Aeson.object [ "transactionId" .= view #id txId ]
+        partialTx' <- PlutusScenario.pingPong_2 $ Aeson.object
+            [ "transactionId" .= view #id txId ]
         let toBalance' = Json (toJSON partialTx')
 
         rTx' <- request @ApiSerialisedTransaction ctx
@@ -1240,7 +1245,8 @@ spec = describe "NEW_SHELLEY_TRANSACTIONS" $ do
             , expectErrorMessage errMsg403Collateral
             ]
 
-    it "TRANS_NEW_BALANCE_03 - I can balance base-64 encoded tx" $ \ctx -> runResourceT $ do
+    it "TRANS_NEW_BALANCE_03 - I can balance base-64 encoded tx" $
+        \ctx -> runResourceT $ do
         wa <- fixtureWallet ctx
         let pingPong1Base64 = Json [json|{
             "transaction": "hKUAgA2AAYGDWB1xTXLPVpozmhin2TAjE5g/VuDZbNRb3LHWUS3KahoAHoSAWCCSORjkA79Dw0tO9rSOsu4Eur7RcyDY0bn/mtCG6G9E7AIADoChBIHYeYD19g==",
@@ -1260,7 +1266,9 @@ spec = describe "NEW_SHELLEY_TRANSACTIONS" $ do
 
         void $ submitTx ctx signedTx [ expectResponseCode HTTP.status202 ]
 
-    it "TRANS_NEW_BALANCE_04a - I get proper error message when payload is not hex or base64 encoded" $ \ctx -> runResourceT $ do
+    it "TRANS_NEW_BALANCE_04a - \
+        \I get proper error message when payload is not hex or base64 encoded" $
+        \ctx -> runResourceT $ do
         wa <- fixtureWallet ctx
         -- transaction is invalid hex / base64
         let payload = Json [json|{
@@ -1276,7 +1284,9 @@ spec = describe "NEW_SHELLEY_TRANSACTIONS" $ do
             -- returns: Parse error. Expecting Base64-encoded format.
             ]
 
-    it "TRANS_NEW_BALANCE_04b - I get proper error message when payload cannot be decoded" $ \ctx -> runResourceT $ do
+    it "TRANS_NEW_BALANCE_04b - \
+        \I get proper error message when payload cannot be decoded" $
+        \ctx -> runResourceT $ do
         wa <- fixtureWallet ctx
         -- transaction is a VALID hex, but invalid transaction format
         let payload = Json [json|{
@@ -1292,7 +1302,9 @@ spec = describe "NEW_SHELLEY_TRANSACTIONS" $ do
             -- returns: Parse error. Expecting Base64-encoded format.
             ]
 
-    it "TRANS_NEW_BALANCE_04c - I get proper error message when payload cannot be decoded" $ \ctx -> runResourceT $ do
+    it "TRANS_NEW_BALANCE_04c - \
+        \I get proper error message when payload cannot be decoded" $
+        \ctx -> runResourceT $ do
         wa <- fixtureWallet ctx
         -- transaction is a VALID hex, but invalid transaction format
         let payload = Json [json|{
@@ -1308,7 +1320,9 @@ spec = describe "NEW_SHELLEY_TRANSACTIONS" $ do
             -- returns: Parse error. Expecting Base64-encoded format.
             ]
 
-    it "TRANS_NEW_BALANCE_04d - I get proper error message when payload cannot be decoded" $ \ctx -> runResourceT $ do
+    it "TRANS_NEW_BALANCE_04d - \
+        \I get proper error message when payload cannot be decoded" $
+        \ctx -> runResourceT $ do
         wa <- fixtureWallet ctx
         -- transaction is a VALID base64, but invalid transaction format
         let payload = Json [json|{

@@ -32,7 +32,8 @@
 --           `diff` getTxWitnesses (toSigned x)
 --           = [w]
 -- sign/never-modifies-tx-body
---     ∀f x. getTxBody (toSigned (f x)) = getTxBody (toSigned x)
+--     ∀(f :: Sign era -> Sign era) (x :: Sign era)
+--      . getTxBody (toSigned (f x)) = getTxBody (toSigned x)
 module Cardano.Wallet.Sign
     (
     -- * Abstract algebra type

@@ -1808,6 +1808,7 @@ selectAssets ctx pp params transform = do
     lift $ traceWith tr $ MsgSelectionStart
         (UTxOSelection.availableUTxO $ params ^. #utxoAvailableForInputs)
         (params ^. #outputs)
+    _randomSeed <- lift $ initRandomSeed $ view #randomSeed params
     mSel <- runExceptT $ performSelection
         SelectionConstraints
             { assessTokenBundleSize =
@@ -1885,6 +1886,17 @@ selectAssets ctx pp params transform = do
 
         txWithdrawal :: Withdrawal
         txWithdrawal = params ^. (#txContext . #txWithdrawal)
+
+    -- | Initializes the seed used for random number generation.
+    --
+    -- If a seed was specified by the caller, then we use that.
+    --
+    -- Returns the random seed that is now in effect.
+    --
+    initRandomSeed :: Maybe (RandomSeed m) -> m (RandomSeed m)
+    initRandomSeed mRandomSeed = do
+        mapM_ setRandomSeed mRandomSeed
+        getRandomSeed
 
 signTransaction
     :: forall ctx s k.

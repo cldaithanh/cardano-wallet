@@ -417,6 +417,13 @@ ourWithdrawal (acct, amt) =
         Nothing -> Nothing
         Just{}  -> Just (acct, amt)
 
+ourWithdrawalSumFromTx
+    :: IsOurs s RewardAccount
+    => Tx
+    -> State s Coin
+ourWithdrawalSumFromTx tx = F.foldMap snd <$>
+    mapMaybeM ourWithdrawal (Map.toList $ withdrawals tx)
+
 {-------------------------------------------------------------------------------
                                Internals
 -------------------------------------------------------------------------------}
@@ -482,8 +489,7 @@ prefilterBlock b u0 = runState $ do
             (spendTx tx prevUTxO <>)
             <$> filterByAddressM isOurAddress (utxoFromTx tx)
 
-        ourWithdrawalSum :: Coin <- F.foldMap snd <$>
-            mapMaybeM ourWithdrawal (Map.toList $ withdrawals tx)
+        ourWithdrawalSum <- ourWithdrawalSumFromTx tx
 
         let received = balance (ourNextUTxO `excluding` dom prevUTxO)
         let spent =

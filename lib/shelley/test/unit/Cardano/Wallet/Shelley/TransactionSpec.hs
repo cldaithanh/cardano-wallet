@@ -183,6 +183,7 @@ import Cardano.Wallet.Primitive.Types.UTxOIndex
 import Cardano.Wallet.Shelley.Compatibility
     ( AnyShelleyBasedEra (..)
     , computeTokenBundleSerializedLengthBytes
+    , fromCardanoLovelace
     , fromCardanoTxIn
     , fromCardanoTxOut
     , getScriptIntegrityHash
@@ -247,7 +248,7 @@ import Data.List.NonEmpty
 import Data.Map.Strict
     ( Map )
 import Data.Maybe
-    ( fromJust, isJust )
+    ( fromJust, fromMaybe, isJust )
 import Data.Proxy
     ( Proxy (..) )
 import Data.Quantity
@@ -1988,7 +1989,7 @@ balanceTransactionSpec = do
 
         -- TODO: Fix balancing issues which are presumably due to
         -- variable-length coin encoding boundary cases.
-        xit "produces balanced transactions or fails"
+        it "produces balanced transactions or fails"
             $ property prop_balanceTransactionBalanced
 
         describe "when passed unresolved inputs" $ do
@@ -2127,11 +2128,6 @@ resolvedInputsUTxO era (PartialTx _ resolvedInputs _) =
     convertUTxO (_, _, Just _) =
         error "resolvedInputsUTxO: todo: handle datum hash"
 
-toCardanoUTxO :: UTxO -> Cardano.UTxO Cardano.AlonzoEra
-toCardanoUTxO utxo = Cardano.UTxO $ Map.fromList $ map convertUTxO $ UTxO.toList utxo
-  where
-    convertUTxO (i, o) = (toCardanoTxIn i, toCardanoTxOut Cardano.ShelleyBasedEraAlonzo o)
-
 instance Semigroup (Cardano.UTxO era) where
     Cardano.UTxO a <> Cardano.UTxO b = Cardano.UTxO (a <> b)
 
@@ -2199,6 +2195,7 @@ shrinkTxBody (Cardano.ShelleyTxBody e bod scripts scriptData aux val) = tail
             { Alonzo.mint = mint' }
             { Alonzo.reqSignerHashes = rsh' }
             { Alonzo.txUpdates = updates' }
+            { Alonzo.txfee = txfee' }
         | updates' <- prependOriginal shrinkUpdates (Alonzo.txUpdates body)
         , wdrls' <- prependOriginal shrinkWdrl (Alonzo.txwdrls body)
         , outs' <- prependOriginal (shrinkSeq (const [])) (Alonzo.outputs body)
@@ -2208,6 +2205,7 @@ shrinkTxBody (Cardano.ShelleyTxBody e bod scripts scriptData aux val) = tail
         , rsh' <- prependOriginal
             (shrinkSet (const []))
             (Alonzo.reqSignerHashes body)
+        , txfee' <- prependOriginal shrinkFee (Alonzo.txfee body)
         ]
 
     shrinkValue v = filter (/= v) [v0]
@@ -2218,6 +2216,10 @@ shrinkTxBody (Cardano.ShelleyTxBody e bod scripts scriptData aux val) = tail
     shrinkSet shrinkElem = map Set.fromList . shrinkList shrinkElem . F.toList
 
     shrinkSeq shrinkElem = map StrictSeq.fromList . shrinkList shrinkElem . F.toList
+
+    shrinkFee :: Ledger.Coin -> [Ledger.Coin]
+    shrinkFee (Ledger.Coin 0) = []
+    shrinkFee _ = [Ledger.Coin 0]
 
     shrinkWdrl :: Wdrl era -> [Wdrl era]
     shrinkWdrl (Wdrl m) = map (Wdrl . Map.fromList) $ shrinkList shrinkWdrl' (Map.toList m)
@@ -2279,11 +2281,11 @@ prop_balanceTransactionBalanced
     :: Wallet'
     -> ShowBuildable PartialTx
     -> Property
-prop_balanceTransactionBalanced (Wallet' utxo wal pending) (ShowBuildable partialTx)
-    = withMaxSuccess 200 $ do
+prop_balanceTransactionBalanced (Wallet' utxo wal pending) (ShowBuildable partialTx')
+    = withMaxSuccess 5000 $ do
         let combinedUTxO = mconcat
                 [ resolvedInputsUTxO Cardano.ShelleyBasedEraAlonzo partialTx
-                , toCardanoUTxO (view #utxo wal)
+                , toCardanoUTxO tl $ Map.toList $ unUTxO $ view #utxo wal
                 ]
         let originalBalance = txBalance (sealedTx partialTx) combinedUTxO
         forAllShow (runExceptT $ balanceTransaction
@@ -2304,10 +2306,14 @@ prop_balanceTransactionBalanced (Wallet' utxo wal pending) (ShowBuildable partia
                     $ classify (hasCollateral sealedTx)
                         "balanced tx has collateral"
                     (txBalance sealedTx combinedUTxO === 0)
-                    .&&. (abs (txFee sealedTx) .<= 4_000_000)
+--                    .&&. (abs (txFee sealedTx) .<= 8_000_000)
                     -- Fee limit chosen at a hunch for the sake of sanity. As
                     -- long as the property uses mainnet PParams, this is
                     -- useful.
+                    .&&.
+                        (lovelaceToRational (txFee sealedTx)
+                        / lovelaceToRational (txMinFee sealedTx))
+                        .<= 1.1
             Left
                 (ErrBalanceTxSelectAssets
                 (ErrSelectAssetsSelectionError
@@ -2330,12 +2336,14 @@ prop_balanceTransactionBalanced (Wallet' utxo wal pending) (ShowBuildable partia
                 label ("not yet supported: deposits") True
             Left (ErrBalanceTxExistingCollateral) ->
                 label "existing collateral" True
-            Left (ErrBalanceTxNotYetSupported (UnderestimatedFee _)) ->
-                label "underestimated fee" $ property True
+            Left (ErrBalanceTxNotYetSupported (UnderestimatedFee _ _)) ->
+                label "underestimated fee" $ property False
             Left (ErrBalanceTxNotYetSupported ZeroAdaOutput) ->
                 label "not yet supported: zero ada output" $ property True
             Left (ErrBalanceTxNotYetSupported ConflictingNetworks) ->
                 label "not yet supported: conflicting networks" $ property True
+            Left (ErrBalanceTxNotYetSupported NoChangeNeeded) ->
+                label "not yet supported: too small change" $ property True
             Left
                 (ErrBalanceTxSelectAssets
                 (ErrSelectAssetsSelectionError
@@ -2347,6 +2355,8 @@ prop_balanceTransactionBalanced (Wallet' utxo wal pending) (ShowBuildable partia
                 (SelectionBalanceError
                 (SelectionLimitReached _)))) ->
                 label "selection limit reached" $ property True
+            Left ErrBalanceTxOverlappingInputResolution ->
+                label "resolved input conflicts with wallet UTxO" $ property True
             Left
                 (ErrBalanceTxSelectAssets
                 (ErrSelectAssetsSelectionError
@@ -2357,6 +2367,16 @@ prop_balanceTransactionBalanced (Wallet' utxo wal pending) (ShowBuildable partia
   where
     a .<= b = counterexample (show a <> " /<= " <> show b) $ property $ a <= b
     tl = testTxLayer
+
+
+    -- FIXME: TMP Hack; tweak generators instead?
+    partialTx = PartialTx s ins' r
+      where
+        PartialTx s ins r = partialTx'
+        ins' = flip map ins $ \(i,o,dh) ->
+            case UTxOIndex.lookup i utxo of
+                Just o' -> (i,o',Nothing)
+                Nothing -> (i,o,dh)
 
     hasCollateral :: SealedTx -> Bool
     hasCollateral tx = withAlonzoBod tx $ \(Cardano.TxBody content) ->
@@ -2370,6 +2390,14 @@ prop_balanceTransactionBalanced (Wallet' utxo wal pending) (ShowBuildable partia
         case Cardano.txFee content of
             Cardano.TxFeeExplicit _ c -> c
             Cardano.TxFeeImplicit _ -> error "implicit fee"
+
+    lovelaceToRational :: Cardano.Lovelace -> Rational
+    lovelaceToRational (Cardano.Lovelace l) = toRational l
+
+    txMinFee :: SealedTx -> Cardano.Lovelace
+    txMinFee = toCardanoLovelace
+        . fromMaybe (error "evaluateMinimumFee returned nothing!")
+        . evaluateMinimumFee tl nodePParams
 
     txBalance :: SealedTx -> Cardano.UTxO Cardano.AlonzoEra -> Cardano.Lovelace
     txBalance tx u = withAlonzoBod tx $ \bod ->

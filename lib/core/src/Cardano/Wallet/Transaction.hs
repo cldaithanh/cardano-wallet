@@ -72,13 +72,16 @@ import Cardano.Wallet.Primitive.Types.RewardAccount
 import Cardano.Wallet.Primitive.Types.TokenMap
     ( TokenMap )
 import Cardano.Wallet.Primitive.Types.Tx
-    ( TokenBundleSizeAssessor
+    ( SealedTx
+    , TokenBundleSizeAssessor
     , Tx (..)
     , TxConstraints
     , TxIn
     , TxMetadata
     , TxOut
     )
+import Cardano.Wallet.Primitive.Types.UTxO
+    ( UTxO )
 import Data.List.NonEmpty
     ( NonEmpty )
 import Data.Text
@@ -185,6 +188,17 @@ data TransactionLayer k tx = TransactionLayer
         --
         -- Returns `Nothing` for ByronEra transactions.
 
+    , toCardanoUTxO
+        :: [(TxIn, TxOut)] -> Node.UTxO Node.AlonzoEra
+        -- for balanceTransaction
+
+    , evaluateTransactionBalance
+        :: SealedTx
+        -> Bool -- ^ If true, set fee to zero
+        -> Node.ProtocolParameters
+        -> UTxO
+        -> Node.Value
+
     , computeSelectionLimit
         :: ProtocolParameters
         -> TransactionCtx
@@ -243,6 +257,60 @@ data TxUpdate = TxUpdate
     , feeUpdate :: TxFeeUpdate
         -- ^ Set a new fee or use the old one.
     }
+
+{-
+
+-- | "Balance Tx" Monad
+data BTX a
+
+instance Monad BTX
+
+
+-- Wrong but useful assumptions:
+-- 1. Execution cost
+-- 2. changing coin values
+
+addInputs :: [(TxIn, TxOut)] -> BTX ()
+addInputs = error "todo"
+
+addCollateral :: [(TxIn, TxOut)] -> BTX ()
+addCollateral = error "todo"
+
+addOutputs :: [TxOut] -> BTX ()
+addOutputs = error "todo"
+
+evaluateMinFee :: BTX Coin
+evaluateMinFee = error "todo"
+
+-- TODO: Can be negative
+evaluateBalance :: BTX Coin
+evaluateBalance = error "todo"
+
+-- WARNING: Setting the fee may change the minimum fee
+setFee :: Coin -> BTX Coin
+setFee = error "todo"
+
+-- | TODO: Ensure this goes to the first /wallet/ output.
+--
+-- WARNING: Distributing surplus may change the minimum fee.
+distributeSurplus :: Coin -> BTX ()
+distributeSurplus = error "todo"
+
+
+-- NOTE1: A naive "evaluateBalance >>= distributeSurplus" until balanced may not
+-- necessarily work. We may get stuck in a loop.
+distributeSurplus' :: Coin -> BTX Coin
+distributeSurplus' = do
+    surplus <- evaluateBalance
+
+
+
+-}
+
+
+
+
+
 
 -- | Some additional context about a transaction. This typically contains
 -- details that are known upfront about the transaction and are used to

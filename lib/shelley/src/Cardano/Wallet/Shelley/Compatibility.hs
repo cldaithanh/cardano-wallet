@@ -79,6 +79,7 @@ module Cardano.Wallet.Shelley.Compatibility
     , toCardanoValue
     , fromCardanoValue
     , fromCardanoLovelace
+    , posAndNegFromCardanoValue
     , rewardAccountFromAddress
     , fromShelleyPParams
     , fromAlonzoPParams
@@ -365,6 +366,8 @@ import qualified Data.Array as Array
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Lazy as BL
 import qualified Data.ByteString.Short as SBS
+import Data.Either
+    ( lefts, rights )
 import qualified Data.Map.Strict as Map
 import qualified Data.Map.Strict.NonEmptyMap as NonEmptyMap
 import qualified Data.Set as Set
@@ -1558,6 +1561,41 @@ fromCardanoValue = uncurry TokenBundle.fromFlatList . extract
         [ (TokenBundle.AssetId (mkPolicyId p) (mkTokenName n) , mkQuantity q)
         | (Cardano.AssetId p n, Cardano.Quantity q) <- assets
         ]
+
+    mkPolicyId = W.UnsafeTokenPolicyId . W.Hash . Cardano.serialiseToRawBytes
+    mkTokenName = W.UnsafeTokenName . Cardano.serialiseToRawBytes
+
+-- | Convert a 'Cardano.Value' into a positive and negative component. Useful
+-- to convert the potentially negative balance of a partial tx into
+-- TokenBundles.
+posAndNegFromCardanoValue
+    :: HasCallStack
+    => Cardano.Value
+    -> (TokenBundle.TokenBundle, TokenBundle.TokenBundle)
+posAndNegFromCardanoValue = foldMap go . Cardano.valueToList
+  where
+    go :: (Cardano.AssetId, Cardano.Quantity)
+       -> (TokenBundle.TokenBundle, TokenBundle.TokenBundle)
+    go (Cardano.AdaAssetId, q) = partition q $
+        TokenBundle.fromCoin . Coin.fromNatural
+    go ((Cardano.AssetId policy name), q) = partition q $ \n ->
+        TokenBundle.fromFlatList (W.Coin 0)
+            [ ( TokenBundle.AssetId (mkPolicyId policy) (mkTokenName name)
+              , W.TokenQuantity n
+              )
+            ]
+
+    -- | Convert a 'Cardano.Quantity' to a 'TokenBundle' using the supplied
+    -- function. The result is stored in 'fst' for positive quantities, and
+    -- 'snd' for negative quantities.
+    partition
+        :: Cardano.Quantity
+        -> (Natural -> TokenBundle.TokenBundle)
+        -> (TokenBundle.TokenBundle, TokenBundle.TokenBundle)
+    partition (Cardano.Quantity q) f
+        | q > 0     = (f $ fromIntegral q, mempty)
+        | q < 0     = (mempty, f $ fromIntegral $ abs q)
+        | otherwise = (mempty, mempty)
 
     mkPolicyId = W.UnsafeTokenPolicyId . W.Hash . Cardano.serialiseToRawBytes
     mkTokenName = W.UnsafeTokenName . Cardano.serialiseToRawBytes

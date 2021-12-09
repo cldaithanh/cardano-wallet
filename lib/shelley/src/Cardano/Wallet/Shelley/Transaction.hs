@@ -135,6 +135,8 @@ import Cardano.Wallet.Primitive.Types.Tx
     , txOutCoin
     , txSizeDistance
     )
+import Cardano.Wallet.Primitive.Types.UTxO
+    ( UTxO (..) )
 import Cardano.Wallet.Shelley.Compatibility
     ( fromCardanoAddress
     , fromCardanoLovelace
@@ -198,7 +200,7 @@ import Data.Kind
 import Data.Map.Strict
     ( Map, (!) )
 import Data.Maybe
-    ( mapMaybe )
+    ( fromMaybe, mapMaybe )
 import Data.Quantity
     ( Quantity (..) )
 import Data.Set
@@ -238,6 +240,8 @@ import qualified Cardano.Wallet.Primitive.Types.TokenMap as TokenMap
 import qualified Cardano.Wallet.Shelley.Compatibility as Compatibility
 import qualified Codec.CBOR.Encoding as CBOR
 import qualified Codec.CBOR.Write as CBOR
+import Data.Bifunctor
+    ( bimap )
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Lazy as BL
 import qualified Data.Foldable as F
@@ -515,6 +519,11 @@ newTransactionLayer networkId = TransactionLayer
             InAnyCardanoEra AlonzoEra (Cardano.Tx body wits) ->
                 signTransaction networkId acctResolver addressResolver inputResolver (body, wits)
                 & sealedTxFromCardano'
+    , toCardanoUTxO = Cardano.UTxO
+        . Map.fromList
+        . map (bimap toCardanoTxIn (toCardanoTxOut Cardano.ShelleyBasedEraAlonzo))
+
+    , evaluateTransactionBalance= _evaluateTransactionBalance
 
     , mkUnsignedTransaction = \era stakeXPub _pp ctx selection -> do
         let ttl   = txTimeToLive ctx
@@ -566,6 +575,41 @@ newTransactionLayer networkId = TransactionLayer
 
 _decodeSealedTx :: SealedTx -> (Tx, TokenMap, TokenMap, [Certificate])
 _decodeSealedTx (cardanoTx -> InAnyCardanoEra _era tx) = fromCardanoTx tx
+
+_evaluateTransactionBalance
+    :: SealedTx -> Bool -> Cardano.ProtocolParameters -> UTxO -> Cardano.Value
+_evaluateTransactionBalance tx shouldZero pp u = withAlonzoBod (if shouldZero then tx' else tx) $ \bod ->
+        lovelaceFromCardanoTxOutValue
+        $ Cardano.evaluateTransactionBalance pp mempty u' bod
+  where
+    u' =  Cardano.UTxO
+        . Map.fromList
+        . map (bimap toCardanoTxIn (toCardanoTxOut Cardano.ShelleyBasedEraAlonzo))
+        . Map.toList
+        . unUTxO
+        $ u
+    -- FIXME: Duplication with TxLayer ^^^
+
+
+    -- FIXME: Unsafe vvv
+    Right tx' = updateSealedTx tx $ noTxUpdate
+        { feeUpdate = UseNewTxFee $ fromMaybe (Coin 0) $ _evaluateMinimumFee pp tx
+        }
+
+    lovelaceFromCardanoTxOutValue
+        :: forall era. Cardano.TxOutValue era -> Cardano.Value
+    lovelaceFromCardanoTxOutValue (Cardano.TxOutAdaOnly _ coin) = error "no"
+    lovelaceFromCardanoTxOutValue (Cardano.TxOutValue _ val) = val
+
+    withAlonzoBod
+        :: SealedTx
+        -> (Cardano.TxBody Cardano.AlonzoEra -> a)
+        -> a
+    withAlonzoBod (cardanoTx -> Cardano.InAnyCardanoEra Cardano.AlonzoEra tx) f =
+        let Cardano.Tx bod _ = tx
+        in f bod
+    withAlonzoBod _ _ = error "withBod: other eras are not handled yet"
+
 
 mkDelegationCertificates
     :: DelegationAction

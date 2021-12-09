@@ -489,8 +489,8 @@ genNetworkMagic = do
 genNetworkId :: Gen NetworkId
 genNetworkId =
     frequency
-        [ (95, pure Mainnet)
-        , (5, Testnet <$> genNetworkMagic)
+        [ (99, pure Mainnet)
+        , (1, Testnet <$> genNetworkMagic)
         ]
 
 genStakeCredential :: Gen StakeCredential

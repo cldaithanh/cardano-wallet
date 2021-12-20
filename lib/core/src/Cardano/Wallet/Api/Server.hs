@@ -349,10 +349,8 @@ import Cardano.Wallet.Primitive.AddressDiscovery.Random
     ( RndState, mkRndState )
 import Cardano.Wallet.Primitive.AddressDiscovery.Sequential
     ( DerivationPrefix (..)
-    , ParentContext (..)
     , SeqState (..)
     , defaultAddressPoolGap
-    , gap
     , mkSeqStateFromAccountXPub
     , mkSeqStateFromRootXPrv
     , purposeCIP1852
@@ -362,8 +360,6 @@ import Cardano.Wallet.Primitive.AddressDiscovery.Shared
     , ErrAddCosigner (..)
     , ErrScriptTemplate (..)
     , SharedState (..)
-    , SharedStateFields (..)
-    , SharedStatePending (..)
     , mkSharedStateFromAccountXPub
     , mkSharedStateFromRootXPrv
     , validateScriptTemplates
@@ -599,6 +595,7 @@ import qualified Cardano.Wallet.Api.Types as Api
 import qualified Cardano.Wallet.Network as NW
 import qualified Cardano.Wallet.Primitive.AddressDerivation.Byron as Byron
 import qualified Cardano.Wallet.Primitive.AddressDerivation.Icarus as Icarus
+import qualified Cardano.Wallet.Primitive.AddressDiscovery.Shared as Shared
 import qualified Cardano.Wallet.Primitive.CoinSelection.Balance as Balance
 import qualified Cardano.Wallet.Primitive.CoinSelection.Collateral as Collateral
 import qualified Cardano.Wallet.Primitive.Types as W
@@ -815,7 +812,6 @@ postAccountWallet
         , WalletKey k
         , HasWorkerRegistry s k ctx
         , IsOurs s RewardAccount
-        , Typeable n
         , (k == SharedKey) ~ 'False
         )
     => ctx
@@ -1045,23 +1041,19 @@ mkSharedWallet
         ( ctx ~ ApiLayer s k
         , s ~ SharedState n k
         , HasWorkerRegistry s k ctx
-        , SoftDerivation k
-        , MkKeyFingerprint k (Proxy n, k 'AddressK XPub)
-        , MkKeyFingerprint k Address
-        , Typeable n
+        , Shared.SupportsDiscovery n k
         )
     => MkApiWallet ctx s ApiSharedWallet
-mkSharedWallet ctx wid cp meta pending progress = case getState cp of
-    SharedState (DerivationPrefix (_,_,accIx)) (PendingFields (SharedStatePending _ pTemplate dTemplateM g)) ->
-        pure $ ApiSharedWallet $ Left $ ApiPendingSharedWallet
+mkSharedWallet ctx wid cp meta pending progress = case Shared.ready st of
+    Shared.Pending -> pure $ ApiSharedWallet $ Left $ ApiPendingSharedWallet
         { id = ApiT wid
         , name = ApiT $ meta ^. #name
         , accountIndex = ApiT $ DerivationIndex $ getIndex accIx
-        , addressPoolGap = ApiT g
-        , paymentScriptTemplate = pTemplate
-        , delegationScriptTemplate = dTemplateM
+        , addressPoolGap = ApiT $ Shared.poolGap st
+        , paymentScriptTemplate = Shared.paymentTemplate st
+        , delegationScriptTemplate = Shared.delegationTemplate st
         }
-    SharedState (DerivationPrefix (_,_,accIx)) (ReadyFields pool) -> do
+    Shared.Active _ -> do
         reward <- withWorkerCtx @_ @s @k ctx wid liftE liftE $ \wrk ->
             -- never fails - returns zero if balance not found
             liftIO $ W.fetchRewardBalance @_ @s @k wrk wid
@@ -1075,16 +1067,15 @@ mkSharedWallet ctx wid cp meta pending progress = case getState cp of
             cp
         let available = availableBalance pending cp
         let total = totalBalance pending reward cp
-        let (ParentContextShared _ pTemplate dTemplateM) = pool ^. #context
         pure $ ApiSharedWallet $ Right $ ApiActiveSharedWallet
             { id = ApiT wid
             , name = ApiT $ meta ^. #name
             , accountIndex = ApiT $ DerivationIndex $ getIndex accIx
-            , addressPoolGap = ApiT $ gap pool
+            , addressPoolGap = ApiT $ Shared.poolGap st
             , passphrase = ApiWalletPassphraseInfo
                 <$> fmap (view #lastUpdatedAt) (meta ^. #passphraseInfo)
-            , paymentScriptTemplate = pTemplate
-            , delegationScriptTemplate = dTemplateM
+            , paymentScriptTemplate = Shared.paymentTemplate st
+            , delegationScriptTemplate = Shared.delegationTemplate st
             , delegation = apiDelegation
             , balance = ApiWalletBalance
                 { available = coinToQuantity (available ^. #coin)
@@ -1098,6 +1089,9 @@ mkSharedWallet ctx wid cp meta pending progress = case getState cp of
             , state = ApiT progress
             , tip = tip'
             }
+  where
+    st = getState cp
+    DerivationPrefix (_,_,accIx) = Shared.derivationPrefix st
 
 patchSharedWallet
     :: forall ctx s k n.
@@ -1272,7 +1266,6 @@ postIcarusWallet
         , k ~ IcarusKey
         , HasWorkerRegistry s k ctx
         , PaymentAddress n IcarusKey
-        , Typeable n
         )
     => ctx
     -> ByronWalletPostData '[12,15,18,21,24]
@@ -1293,7 +1286,6 @@ postTrezorWallet
         , k ~ IcarusKey
         , HasWorkerRegistry s k ctx
         , PaymentAddress n IcarusKey
-        , Typeable n
         )
     => ctx
     -> ByronWalletPostData '[12,15,18,21,24]
@@ -1314,7 +1306,6 @@ postLedgerWallet
         , k ~ IcarusKey
         , HasWorkerRegistry s k ctx
         , PaymentAddress n IcarusKey
-        , Typeable n
         )
     => ctx
     -> ByronWalletPostData '[12,15,18,21,24]

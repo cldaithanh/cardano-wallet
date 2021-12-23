@@ -44,6 +44,11 @@ module Cardano.Wallet.Primitive.AddressDiscovery.Shared
     , CredentialType (..)
     , liftPaymentAddress
     , liftDelegationAddress
+
+    -- ** Shared Address Pool
+    , SharedAddressPool
+    , clear
+    , usage
     ) where
 
 import Prelude
@@ -96,7 +101,7 @@ import Cardano.Wallet.Primitive.AddressDiscovery
 import Cardano.Wallet.Primitive.AddressDiscovery.Sequential
     ( AddressPoolGap (..), unsafePaymentKeyFingerprint )
 import Cardano.Wallet.Primitive.Types.Address
-    ( Address (..) )
+    ( Address (..), AddressState (..) )
 import Cardano.Wallet.Primitive.Types.RewardAccount
     ( RewardAccount )
 import Control.Arrow
@@ -111,12 +116,16 @@ import Data.Either.Combinators
     ( mapLeft )
 import Data.Kind
     ( Type )
+import Data.Map.Strict
+    ( Map )
 import Data.Proxy
     ( Proxy (..) )
 import Data.Text
     ( Text )
 import Data.Text.Class
     ( FromText (..), TextDecodingError (..), ToText (..) )
+import Data.Traversable
+    ( for )
 import GHC.Generics
     ( Generic )
 import Type.Reflection
@@ -124,7 +133,7 @@ import Type.Reflection
 
 import qualified Cardano.Address as CA
 import qualified Cardano.Address.Style.Shelley as CA
-import qualified Cardano.Wallet.Address.Pool as AddressPool
+import qualified Cardano.Wallet.Address.Pool' as AddressPool
 import qualified Data.Foldable as F
 import qualified Data.List.NonEmpty as NE
 import qualified Data.Map.Strict as Map
@@ -143,10 +152,48 @@ type SupportsDiscovery (n :: NetworkDiscriminant) k =
 -------------------------------------------------------------------------------}
 -- | An address pool which keeps track of shared addresses.
 -- To create a new pool, see 'newSharedAddressPool'.
-type SharedAddressPool (key :: Depth -> Type -> Type) =
-        AddressPool.Pool
-            (KeyFingerprint "payment" key)
-            (Index 'Soft 'ScriptK)
+data SharedAddressPool (key :: Depth -> Type -> Type) = SharedAddressPool
+    { pool :: AddressPool.Pool (Index 'Soft 'ScriptK)
+    , addresses :: Map (KeyFingerprint "payment" key) (Index 'Soft 'ScriptK)
+    }
+    deriving (Eq, Show, Generic)
+
+instance ( NFData (k 'AccountK XPub) ) => NFData (SharedAddressPool k)
+
+clear :: SharedAddressPool k -> SharedAddressPool k
+clear (SharedAddressPool pool _) = SharedAddressPool (AddressPool.clear pool) mempty
+
+usage :: SharedAddressPool key -> Map (KeyFingerprint "payment" key) (Index 'Soft 'ScriptK, AddressState)
+usage (SharedAddressPool pool addresses) =
+    let
+        addrIndices = Map.toList addresses
+
+        collectState = foldr (\(addr, ix) ->
+                       case AddressPool.lookup ix pool of
+                           Nothing -> id
+                           Just AddressPool.Used  -> ((addr, (ix, Used)):)
+                           Just AddressPool.Unused -> ((addr, (ix, Unused)):)
+                  ) mempty
+    in
+        Map.fromList . collectState $ addrIndices
+
+loadUnsafe
+    :: SharedAddressPool key
+    -> Map (KeyFingerprint "payment" key) (Index 'Soft 'ScriptK, AddressState)
+    -> SharedAddressPool key
+loadUnsafe (SharedAddressPool pool addresses) dat =
+    let
+        ixs :: Map (Index 'Soft 'ScriptK) AddressPool.PoolState
+        ixs =
+            Map.fromList $ mconcat $ for (Map.elems dat) $ \(ix, state) ->
+                    case state of
+                        Used -> [(ix, AddressPool.Used)]
+                        Unused -> [(ix, AddressPool.Unused)]
+
+        newAddresses =
+            fmap fst $ dat
+    in
+        SharedAddressPool (AddressPool.loadUnsafe pool ixs) newAddresses
 
 -- | Create a new shared address pool from complete script templates.
 newSharedAddressPool
@@ -157,12 +204,24 @@ newSharedAddressPool
     -> Maybe ScriptTemplate
     -> SharedAddressPool key
 newSharedAddressPool g payment delegation =
-    AddressPool.new generator gap
+    SharedAddressPool (AddressPool.new gap) mempty
+  --   AddressPool.new generator gap
   where
     gap = fromIntegral $ getAddressPoolGap g
-    generator
-        = unsafePaymentKeyFingerprint @key
-        . constructAddressFromIx @n payment delegation
+  --   generator
+  --       = unsafePaymentKeyFingerprint @key
+  --       . constructAddressFromIx @n payment delegation
+
+generator
+    :: forall (n :: NetworkDiscriminant) key k
+     . ( key ~ SharedKey, SupportsDiscovery n key )
+    => ScriptTemplate
+    -> Maybe ScriptTemplate
+    -> Index 'Soft 'ScriptK
+    -> KeyFingerprint "payment" key
+generator payment delegation =
+  unsafePaymentKeyFingerprint @key
+  . constructAddressFromIx @n payment delegation
 
 {-------------------------------------------------------------------------------
     Shared State
@@ -237,17 +296,9 @@ instance ( NFData (k 'AccountK XPub) ) => NFData (SharedState n k)
 
 deriving instance ( Show (k 'AccountK XPub) ) => Show (SharedState n k)
 
--- We have to write the equality instance by hands,
--- because there is no general equality for address pools
--- (we cannot test the generators for equality).
 instance Eq (k 'AccountK XPub) => Eq (SharedState n k) where
-    SharedState a1 a2 a3 a4 a5 ap == SharedState b1 b2 b3 b4 b5 bp
-        = and [a1 == b1, a2 == b2, a3 == b3, a4 == b4, a5 == b5, ap `match` bp]
-      where
-        match Pending Pending = True
-        match (Active a) (Active b)
-            = AddressPool.addresses a == AddressPool.addresses b
-        match _ _ = False
+    SharedState a1 a2 a3 a4 a5 a6 == SharedState b1 b2 b3 b4 b5 b6
+        = and [a1 == b1, a2 == b2, a3 == b3, a4 == b4, a5 == b5, a6 == b6]
 
 -- | Readiness status of the shared state.
 data Readiness a
@@ -465,12 +516,13 @@ isShared
     -> (Maybe (Index 'Soft 'ScriptK), SharedState n k)
 isShared addrRaw st = case ready st of
     Pending -> nop
-    Active pool -> case paymentKeyFingerprint addrRaw of
-        Left _ -> nop
-        Right addr -> case AddressPool.lookup addr pool of
-            Nothing -> nop
-            Just ix -> let pool' = AddressPool.update addr pool in
-                ( Just ix , st { ready = Active pool' } )
+    Active (SharedAddressPool pool addresses) ->
+        case paymentKeyFingerprint addrRaw of
+            Left _ -> nop
+            Right addr -> case Map.lookup addr addresses of
+                Nothing -> nop
+                Just ix -> let pool' = AddressPool.allocate ix pool in
+                    ( Just ix , st { ready = Active (SharedAddressPool pool' addresses) } )
   where
     nop = (Nothing, st)
     -- FIXME: Check that the network discrimant of the type
@@ -513,9 +565,10 @@ instance SupportsDiscovery n k => CompareDiscovery (SharedState n k) where
                 (Just i1, Just i2) -> compare i1 i2
       where
         ix :: Address -> SharedAddressPool k -> Maybe (Index 'Soft 'ScriptK)
-        ix a pool = case paymentKeyFingerprint a of
-            Left _ -> Nothing
-            Right addr -> AddressPool.lookup addr pool
+        ix a (SharedAddressPool _pool addresses) =
+            case paymentKeyFingerprint a of
+                Left _ -> Nothing
+                Right addr -> Map.lookup addr addresses
 
 instance Typeable n => KnownAddresses (SharedState n k) where
     knownAddresses st = nonChangeAddresses
@@ -523,8 +576,25 @@ instance Typeable n => KnownAddresses (SharedState n k) where
         -- TODO - After enabling txs for shared wallets we will need to expand this
         nonChangeAddresses = case ready st of
             Pending -> []
-            Active pool -> map swivel $ Map.toList $ AddressPool.addresses pool
-        swivel (k,(ix,s)) = (liftPaymentAddress @n k, s, decoratePath st ix)
+            Active (SharedAddressPool pool addresses) ->
+                let
+                    addrIndices :: [(KeyFingerprint "payment" k, Index 'Soft 'ScriptK)]
+                    addrIndices = Map.toList addresses
+
+                    collectState
+                        :: [(addr, Index 'Soft 'ScriptK)]
+                        -> [(addr, AddressState, Index 'Soft 'ScriptK)]
+                    collectState = foldr (\(addr, ix) ->
+                                   case AddressPool.lookup ix pool of
+                                       Nothing -> id
+                                       Just AddressPool.Used  -> ((addr, Used, ix):)
+                                       Just AddressPool.Unused -> ((addr, Unused, ix):)
+                              ) mempty
+                in
+                    (\(k, s, ix) -> (liftPaymentAddress @n k
+                                    , s
+                                    , decoratePath st ix)
+                    ) <$> collectState addrIndices
 
 {-------------------------------------------------------------------------------
     Address utilities

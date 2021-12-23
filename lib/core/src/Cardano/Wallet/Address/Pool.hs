@@ -158,7 +158,7 @@ new generator gap
 -- but only if this collection satisfies the necessary invariants
 -- such as 'prop_sequence' etc.
 load
-    :: (Ord addr,  Ord ix, Enum ix)
+    :: (Ord addr, Ord ix, Enum ix)
     => Pool addr ix -> Map addr (ix,AddressState) -> Maybe (Pool addr ix)
 load addrs pool0 = if prop_consistent pool then Just pool else Nothing
   where pool = loadUnsafe addrs pool0
@@ -212,5 +212,7 @@ ensureFresh ix pool@Pool{generator,gap,addresses}
         [ (generator i, (i, Unused)) | i <- [fresh .. to] ]
       where
         to = toEnum $ fromEnum ix + fromIntegral gap - 1
+        -- should (fromEnum ix) be (lastUsedIx)? What if fromEnum ix isn't the last used address? i.e. updated ix in middle of pool
+
         -- example:
         --  ix = 0 && fresh = 0 && gap = 20 `implies` [fresh .. to] = [0..19]

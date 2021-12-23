@@ -171,15 +171,15 @@ instance ( key ~ SharedKey ) => AddressBookIso (Shared.SharedState n key)
         from st = case Shared.ready st of
             Shared.Pending -> (SharedPrologue st, SharedDiscoveries Map.empty)
             Shared.Active pool ->
-                let pool0 = AddressPool.clear pool
+                let pool0 = Shared.clear pool
                 in  ( SharedPrologue st{ Shared.ready = Shared.Active pool0 }
-                    , SharedDiscoveries $ AddressPool.addresses pool
+                    , SharedDiscoveries $ Shared.usage pool
                     )
         to (SharedPrologue st, SharedDiscoveries addrs)
           = case Shared.ready st of
             Shared.Pending -> st
             Shared.Active pool0 ->
-                let pool = AddressPool.loadUnsafe pool0 addrs
+                let pool = Shared.loadUnsafe pool0 addrs
                 in  st{ Shared.ready = Shared.Active pool }
 
 {-------------------------------------------------------------------------------

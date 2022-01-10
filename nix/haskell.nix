@@ -19,6 +19,10 @@
 , borsBuild ? null
 # Git revision of sources
 , gitrev ? null
+# Whether to set the `defer-plugin-errors` flag on those packages that need
+# it. If set to true, we will also build the haddocks for those packages.
+# This is needed for libraries depending on plutus-plugin
+, deferPluginErrors ? true
 }:
 
 let
@@ -307,6 +311,18 @@ let
       {
         packages.cardano-wallet-core.components.library.build-tools = [ pkgs.buildPackages.buildPackages.gitMinimal ];
         packages.cardano-config.components.library.build-tools = [ pkgs.buildPackages.buildPackages.gitMinimal ];
+      }
+      {
+        packages = {
+          plutus-contract.doHaddock = deferPluginErrors;
+          plutus-contract.flags.defer-plugin-errors = deferPluginErrors;
+
+          plutus-use-cases.doHaddock = deferPluginErrors;
+          plutus-use-cases.flags.defer-plugin-errors = deferPluginErrors;
+
+          plutus-ledger.doHaddock = deferPluginErrors;
+          plutus-ledger.flags.defer-plugin-errors = deferPluginErrors;
+        };
       }
     ];
   };

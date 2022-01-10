@@ -107,6 +107,7 @@ source-repository-package
     freer-extras
     plutus-core
     plutus-ledger
+    plutus-contract
     plutus-ledger-api
     plutus-tx
     plutus-tx-plugin

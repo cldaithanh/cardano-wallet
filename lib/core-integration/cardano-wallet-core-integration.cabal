@@ -80,6 +80,7 @@ library
     , plutus-ledger-api
     , plutus-contract
     , plutus-tx-plugin
+    , plutus-contract
     , process
     , resourcet
     , retry

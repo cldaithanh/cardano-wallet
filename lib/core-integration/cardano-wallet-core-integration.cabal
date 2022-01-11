@@ -79,6 +79,7 @@ library
     , optparse-applicative
     , plutus-ledger-api
     , plutus-contract
+    , plutus-tx-plugin
     , process
     , resourcet
     , retry

@@ -44,15 +44,15 @@
           (hsPkgs."http-conduit" or (errorHandler.buildDepError "http-conduit"))
           (hsPkgs."jwt" or (errorHandler.buildDepError "jwt"))
           (hsPkgs."lens" or (errorHandler.buildDepError "lens"))
-          (hsPkgs."memory" or (errorHandler.buildDepError "memory"))
           (hsPkgs."monad-logger" or (errorHandler.buildDepError "monad-logger"))
           (hsPkgs."mtl" or (errorHandler.buildDepError "mtl"))
           (hsPkgs."newtype-generics" or (errorHandler.buildDepError "newtype-generics"))
           (hsPkgs."process" or (errorHandler.buildDepError "process"))
           (hsPkgs."prometheus" or (errorHandler.buildDepError "prometheus"))
-          (hsPkgs."plutus-chain-index" or (errorHandler.buildDepError "plutus-chain-index"))
+          (hsPkgs."plutus-chain-index-core" or (errorHandler.buildDepError "plutus-chain-index-core"))
           (hsPkgs."plutus-contract" or (errorHandler.buildDepError "plutus-contract"))
           (hsPkgs."plutus-ledger" or (errorHandler.buildDepError "plutus-ledger"))
+          (hsPkgs."plutus-ledger-constraints" or (errorHandler.buildDepError "plutus-ledger-constraints"))
           (hsPkgs."row-types" or (errorHandler.buildDepError "row-types"))
           (hsPkgs."prettyprinter" or (errorHandler.buildDepError "prettyprinter"))
           (hsPkgs."plutus-tx" or (errorHandler.buildDepError "plutus-tx"))
@@ -72,6 +72,7 @@
           (hsPkgs."unordered-containers" or (errorHandler.buildDepError "unordered-containers"))
           (hsPkgs."wai" or (errorHandler.buildDepError "wai"))
           (hsPkgs."freer-simple" or (errorHandler.buildDepError "freer-simple"))
+          (hsPkgs."freer-extras" or (errorHandler.buildDepError "freer-extras"))
           (hsPkgs."uuid" or (errorHandler.buildDepError "uuid"))
           (hsPkgs."streaming" or (errorHandler.buildDepError "streaming"))
           (hsPkgs."foldl" or (errorHandler.buildDepError "foldl"))
@@ -102,13 +103,13 @@
       };
     } // {
     src = (pkgs.lib).mkDefault (pkgs.fetchgit {
-      url = "https://github.com/input-output-hk/plutus";
-      rev = "1efbb276ef1a10ca6961d0fd32e6141e9798bd11";
-      sha256 = "1jicyk4hr8p0xksj4048gdxndrb42jz4wsnkhc3ymxbm5v6snalf";
+      url = "https://github.com/input-output-hk/plutus-apps";
+      rev = "6f843ab60709f01505c98d8c0ee03f7afedf10df";
+      sha256 = "1bi8csyg34g9zrjf4wr05rxbgm7jyqj79g01n6lrj73pwzhavqx7";
       }) // {
-      url = "https://github.com/input-output-hk/plutus";
-      rev = "1efbb276ef1a10ca6961d0fd32e6141e9798bd11";
-      sha256 = "1jicyk4hr8p0xksj4048gdxndrb42jz4wsnkhc3ymxbm5v6snalf";
+      url = "https://github.com/input-output-hk/plutus-apps";
+      rev = "6f843ab60709f01505c98d8c0ee03f7afedf10df";
+      sha256 = "1bi8csyg34g9zrjf4wr05rxbgm7jyqj79g01n6lrj73pwzhavqx7";
       };
     postUnpack = "sourceRoot+=/playground-common; echo source root reset to \$sourceRoot";
     }

@@ -28,7 +28,6 @@
         depends = [
           (hsPkgs."QuickCheck" or (errorHandler.buildDepError "QuickCheck"))
           (hsPkgs."base" or (errorHandler.buildDepError "base"))
-          (hsPkgs."containers" or (errorHandler.buildDepError "containers"))
           (hsPkgs."random" or (errorHandler.buildDepError "random"))
           ];
         buildable = true;
@@ -38,11 +37,8 @@
           depends = [
             (hsPkgs."QuickCheck" or (errorHandler.buildDepError "QuickCheck"))
             (hsPkgs."base" or (errorHandler.buildDepError "base"))
-            (hsPkgs."containers" or (errorHandler.buildDepError "containers"))
-            (hsPkgs."random" or (errorHandler.buildDepError "random"))
             (hsPkgs."quickcheck-dynamic" or (errorHandler.buildDepError "quickcheck-dynamic"))
             (hsPkgs."tasty" or (errorHandler.buildDepError "tasty"))
-            (hsPkgs."tasty-hunit" or (errorHandler.buildDepError "tasty-hunit"))
             (hsPkgs."tasty-quickcheck" or (errorHandler.buildDepError "tasty-quickcheck"))
             ];
           buildable = true;
@@ -51,13 +47,13 @@
       };
     } // {
     src = (pkgs.lib).mkDefault (pkgs.fetchgit {
-      url = "https://github.com/input-output-hk/plutus";
-      rev = "1efbb276ef1a10ca6961d0fd32e6141e9798bd11";
-      sha256 = "1jicyk4hr8p0xksj4048gdxndrb42jz4wsnkhc3ymxbm5v6snalf";
+      url = "https://github.com/input-output-hk/plutus-apps";
+      rev = "6f843ab60709f01505c98d8c0ee03f7afedf10df";
+      sha256 = "1bi8csyg34g9zrjf4wr05rxbgm7jyqj79g01n6lrj73pwzhavqx7";
       }) // {
-      url = "https://github.com/input-output-hk/plutus";
-      rev = "1efbb276ef1a10ca6961d0fd32e6141e9798bd11";
-      sha256 = "1jicyk4hr8p0xksj4048gdxndrb42jz4wsnkhc3ymxbm5v6snalf";
+      url = "https://github.com/input-output-hk/plutus-apps";
+      rev = "6f843ab60709f01505c98d8c0ee03f7afedf10df";
+      sha256 = "1bi8csyg34g9zrjf4wr05rxbgm7jyqj79g01n6lrj73pwzhavqx7";
       };
     postUnpack = "sourceRoot+=/quickcheck-dynamic; echo source root reset to \$sourceRoot";
     }

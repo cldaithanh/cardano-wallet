@@ -89,7 +89,9 @@ let
           unit.testFlags = lib.optionals pkgs.stdenv.hostPlatform.isDarwin ["-j" "1"];
         };
 
-	packages.plutus-tx-plugin.ghcOptions = [ "-DUBXT_PATCH" ];
+	      packages.plutus-tx-plugin.ghcOptions = [ "-DUBXT_PATCH" ];
+        # Need above GHC option to be defined when compiling haddocks too, don't know how.
+	      packages.plutus-tx-plugin.doHaddock = false;
 
         packages.cardano-wallet.components.tests = {
           # Only run integration tests on non-PR jobsets. Note that

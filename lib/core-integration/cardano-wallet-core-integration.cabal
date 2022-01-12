@@ -78,9 +78,7 @@ library
     , network-uri
     , optparse-applicative
     , plutus-ledger-api
-    , plutus-contract
-    , plutus-tx-plugin
-    , plutus-contract
+    , plutus-ledger-constraints
     , plutus-tx-plugin
     , process
     , resourcet

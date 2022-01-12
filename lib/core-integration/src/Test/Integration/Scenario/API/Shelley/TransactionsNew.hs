@@ -196,10 +196,10 @@ import qualified Data.Set as Set
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as T
 import qualified Network.HTTP.Types.Status as HTTP
-import qualified Plutus.Contract.Constraints as Constraints
-import qualified Plutus.V1.Ledger.Api as Plutus
-    ( PubKeyHash )
-import qualified Plutus.V1.Ledger.Interval as Interval
+-- import qualified Plutus.Contract.Constraints as Constraints
+-- import qualified Plutus.V1.Ledger.Api as Plutus
+--     ( PubKeyHash )
+-- import qualified Plutus.V1.Ledger.Interval as Interval
 import qualified Test.Integration.Plutus as PlutusScenario
 
 spec :: forall n.
@@ -2071,35 +2071,35 @@ spec = describe "NEW_SHELLEY_TRANSACTIONS" $ do
                     let mint = PlutusScenario.currencyTx txOutRef
                     pure (mint, [])
                   )
-                , ( "crowdfunding", \ctx w -> do
-                      let
-                        ada = undefined
+                -- , ( "crowdfunding", \ctx w -> do
+                --       let
+                --         ada = undefined
 
-                        campaign :: Crowdfunding.Campaign
-                        campaign = Crowdfunding.mkCampaign 1 2 alice
+                --         campaign :: Crowdfunding.Campaign
+                --         campaign = Crowdfunding.mkCampaign 1 2 alice
 
-                        startCampaign contributor value =
-                          submitTxConstraints inst
-                          $  Constraints.mustPayToTheScript contributor value
-                          <> Constraints.mustValidateIn (Interval.to (campaignDeadline cmp))
+                --         startCampaign contributor value =
+                --           submitTxConstraints inst
+                --           $  Constraints.mustPayToTheScript contributor value
+                --           <> Constraints.mustValidateIn (Interval.to (campaignDeadline cmp))
 
-                        contribute = undefined
-                        refund = undefined
-                        collect = undefined
+                --         contribute = undefined
+                --         refund = undefined
+                --         collect = undefined
 
-                        alice, bob, charlie :: Plutus.PubKeyHash
-                        alice = undefined
-                        bob = undefined
-                        charlie = undefined
+                --         alice, bob, charlie :: Plutus.PubKeyHash
+                --         alice = undefined
+                --         bob = undefined
+                --         charlie = undefined
 
-                      pure ( startCampaign
-                           , [ contribute bob (ada 100)
-                             , contribute charlie (ada 60)
-                             , refund bob
-                             , collect alice
-                             ]
-                           )
-                  )
+                --       pure ( startCampaign
+                --            , [ contribute bob (ada 100)
+                --              , contribute charlie (ada 60)
+                --              , refund bob
+                --              , collect alice
+                --              ]
+                --            )
+                --   )
                 ]
 
         forM_ scenarios $ \(title, setupContract) -> it title $ \ctx -> runResourceT $ do

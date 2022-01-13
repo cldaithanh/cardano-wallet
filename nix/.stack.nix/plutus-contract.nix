@@ -120,12 +120,12 @@
     } // {
     src = (pkgs.lib).mkDefault (pkgs.fetchgit {
       url = "https://github.com/input-output-hk/plutus-apps";
-      rev = "6f843ab60709f01505c98d8c0ee03f7afedf10df";
-      sha256 = "1bi8csyg34g9zrjf4wr05rxbgm7jyqj79g01n6lrj73pwzhavqx7";
+      rev = "10b4bc5df56e99c960e3a5a6701424b195f9dbac";
+      sha256 = "198pyl1ayzpivr0pgp57fdbwfd3p99rxgy5rm9nh8wzx7sb9dbcv";
       }) // {
       url = "https://github.com/input-output-hk/plutus-apps";
-      rev = "6f843ab60709f01505c98d8c0ee03f7afedf10df";
-      sha256 = "1bi8csyg34g9zrjf4wr05rxbgm7jyqj79g01n6lrj73pwzhavqx7";
+      rev = "10b4bc5df56e99c960e3a5a6701424b195f9dbac";
+      sha256 = "198pyl1ayzpivr0pgp57fdbwfd3p99rxgy5rm9nh8wzx7sb9dbcv";
       };
     postUnpack = "sourceRoot+=/plutus-contract; echo source root reset to \$sourceRoot";
     }

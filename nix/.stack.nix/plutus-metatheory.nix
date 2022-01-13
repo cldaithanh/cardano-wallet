@@ -103,12 +103,12 @@
     } // {
     src = (pkgs.lib).mkDefault (pkgs.fetchgit {
       url = "https://github.com/input-output-hk/plutus";
-      rev = "103fe104e8138dcf2a8d52d5e45177bac4e396b1";
-      sha256 = "169p3si18mgzb7s91ghrq0crsqq2xbqjk1q0hpfild2dbgcdpcsd";
+      rev = "2721c59fd2302b75c4138456c29fd5b509e8340a";
+      sha256 = "02g8pzldyfl4pm8sy22yd3l2fr3zpyhwkvv9x3h9lsf6lfx5wi7k";
       }) // {
       url = "https://github.com/input-output-hk/plutus";
-      rev = "103fe104e8138dcf2a8d52d5e45177bac4e396b1";
-      sha256 = "169p3si18mgzb7s91ghrq0crsqq2xbqjk1q0hpfild2dbgcdpcsd";
+      rev = "2721c59fd2302b75c4138456c29fd5b509e8340a";
+      sha256 = "02g8pzldyfl4pm8sy22yd3l2fr3zpyhwkvv9x3h9lsf6lfx5wi7k";
       };
     postUnpack = "sourceRoot+=/plutus-metatheory; echo source root reset to \$sourceRoot";
     }

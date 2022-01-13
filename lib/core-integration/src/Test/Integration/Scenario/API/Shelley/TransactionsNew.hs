@@ -196,10 +196,6 @@ import qualified Data.Set as Set
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as T
 import qualified Network.HTTP.Types.Status as HTTP
--- import qualified Plutus.Contract.Constraints as Constraints
--- import qualified Plutus.V1.Ledger.Api as Plutus
---     ( PubKeyHash )
--- import qualified Plutus.V1.Ledger.Interval as Interval
 import qualified Test.Integration.Plutus as PlutusScenario
 
 spec :: forall n.

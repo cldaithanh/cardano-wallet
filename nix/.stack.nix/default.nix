@@ -49,6 +49,7 @@
         "Unique" = (((hackage.Unique)."0.4.7.6").revisions).default;
         "binary" = (((hackage.binary)."0.8.8.0").revisions).default;
         "parsec" = (((hackage.parsec)."3.1.14.0").revisions).default;
+        "servant-options" = (((hackage.servant-options)."0.1.0.0").revisions)."39f50166a68006250e79370372f553ca476f14d06d93fa0c401050253aeba803";
         dbvar = ./dbvar.nix;
         cardano-wallet-core = ./cardano-wallet-core.nix;
         cardano-wallet-core-integration = ./cardano-wallet-core-integration.nix;
@@ -116,7 +117,6 @@
         lobemo-backend-trace-forwarder = ./lobemo-backend-trace-forwarder.nix;
         lobemo-scribe-systemd = ./lobemo-scribe-systemd.nix;
         tracer-transformers = ./tracer-transformers.nix;
-        purescript-bridge = ./purescript-bridge.nix;
         io-classes = ./io-classes.nix;
         io-sim = ./io-sim.nix;
         monoidal-synchronisation = ./monoidal-synchronisation.nix;
@@ -164,9 +164,10 @@
         plutus-use-cases = ./plutus-use-cases.nix;
         quickcheck-dynamic = ./quickcheck-dynamic.nix;
         web-ghc = ./web-ghc.nix;
+        purescript-bridge = ./purescript-bridge.nix;
+        servant-purescript = ./servant-purescript.nix;
         ekg-forward = ./ekg-forward.nix;
         cardano-config = ./cardano-config.nix;
-        servant-purescript = ./servant-purescript.nix;
         Win32-network = ./Win32-network.nix;
         };
       compiler.version = "8.10.7";

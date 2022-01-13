@@ -127,6 +127,9 @@ extra-deps:
 - binary-0.8.8.0
 - parsec-3.1.14.0
 
+# For plutus-apps
+- servant-options-0.1.0.0@sha256:39f50166a68006250e79370372f553ca476f14d06d93fa0c401050253aeba803,914
+
   # Using a fork until our patches can be merged upstream
 - git: https://github.com/input-output-hk/optparse-applicative
   commit: 7497a29cb998721a9068d5725d49461f2bba0e7a
@@ -221,9 +224,6 @@ extra-deps:
   - plugins/scribe-systemd
   - tracer-transformers
 
-- git: https://github.com/shmish111/purescript-bridge.git
-  commit: 6a92d7853ea514be8b70bab5e72077bf5a510596
-
 - git: https://github.com/input-output-hk/ouroboros-network
   commit: d2d219a86cda42787325bb8c20539a75c2667132
   subdirs:
@@ -254,7 +254,7 @@ extra-deps:
   - ouroboros-consensus-mock
 
 - git: https://github.com/input-output-hk/plutus
-  commit: 103fe104e8138dcf2a8d52d5e45177bac4e396b1
+  commit: 2721c59fd2302b75c4138456c29fd5b509e8340a
   subdirs:
     - plutus-benchmark
     - plutus-core
@@ -268,7 +268,7 @@ extra-deps:
     - stubs/plutus-ghc-stub
 
 - git: https://github.com/input-output-hk/plutus-apps
-  commit: 6f843ab60709f01505c98d8c0ee03f7afedf10df
+  commit: 10b4bc5df56e99c960e3a5a6701424b195f9dbac
   subdirs:
     - doc
     - freer-extras
@@ -284,14 +284,18 @@ extra-deps:
     - quickcheck-dynamic
     - web-ghc
 
+# See plutus-apps
+- git: https://github.com/input-output-hk/purescript-bridge.git
+  commit: 366fc70b341e2633f3ad0158a577d52e1cd2b138
+
+- git: https://github.com/input-output-hk/servant-purescript.git
+  commit: ebea59c7bdfc0338d83fca772b9a57e28560bcde
+
 - git: https://github.com/input-output-hk/ekg-forward
   commit: 2adc8b698443bb10154304b24f6c1d6913bb65b9
 
 - git: https://github.com/input-output-hk/cardano-config
   commit: e9de7a2cf70796f6ff26eac9f9540184ded0e4e6
-
-- git: https://github.com/shmish111/servant-purescript.git
-  commit: a76104490499aa72d40c2790d10e9383e0dbde63
 
 - git: https://github.com/input-output-hk/Win32-network
   commit: 3825d3abf75f83f406c1f7161883c438dac7277d

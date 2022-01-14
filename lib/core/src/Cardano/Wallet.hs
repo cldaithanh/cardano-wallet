@@ -1438,62 +1438,10 @@ balanceTransaction
     (internalUtxoAvailable, wallet, pendingTxs)
     ptx@(PartialTx partialTx@(cardanoTx -> Cardano.InAnyCardanoEra _ (Cardano.Tx (Cardano.TxBody bod) _)) externalInputs redeemers)
     = do
-    let (outputs, txWithdrawal, txMetadata, txAssetsToMint, txAssetsToBurn)
-            = extractFromTx partialTx
+    guardExistingCollateral
+    guardZeroAdaOutputs
+    guardConflictingWithdrawalNetworks
 
-    -- Coin selection does not support pre-defining collateral. In Sep 2021
-    -- consensus was that we /could/ allow for it with just a day's work or so,
-    -- but that the need for it was unclear enough that it was not in any way
-    -- a priority.
-    case Cardano.txInsCollateral bod of
-        Cardano.TxInsCollateralNone -> return ()
-        Cardano.TxInsCollateral _ [] -> return ()
-        Cardano.TxInsCollateral _ _ ->
-            throwE ErrBalanceTxExistingCollateral
-
-    -- Use of withdrawals with different networks breaks balancing.
-    --
-    -- For instance the partial tx might contain two withdrawals with the same
-    -- key but different networks:
-    -- [ (Mainnet, pkh1, coin1)
-    -- , (Testnet, pkh1, coin2)
-    -- ]
-    --
-    -- Even though this is absurd, the node/ledger @evaluateTransactionBalance@
-    -- will count @coin1+coin2@ towards the total balance. Because the wallet
-    -- does not consider the network tag, it will drop one of the two, leading
-    -- to a discrepancy.
-    let networkOfWdrl ((Cardano.StakeAddress nw _), _, _) = nw
-    let conflictingWdrlNetworks = case Cardano.txWithdrawals bod of
-            Cardano.TxWithdrawalsNone -> False
-            Cardano.TxWithdrawals _ wdrls -> Set.size
-                (Set.fromList $ map networkOfWdrl wdrls) > 1
-    when conflictingWdrlNetworks $
-        throwE $ ErrBalanceTxNotYetSupported ConflictingNetworks
-
-    -- We seem to produce imbalanced transactions if zero-ada
-    -- outputs are pre-specified. Example from
-    -- 'prop_balanceTransactionBalanced':
-    --
-    -- balanced tx:
-    --  2afeed9b
-    --  []
-    --  inputs 2nd 01f4b788
-    --  outputs address: 82d81858...6f57b300
-    --          coin: 0.000000
-    --          tokens: []
-    --  []
-    --  metadata:
-    --  scriptValidity: valid
-
-    --  Lovelace 1000000 /= Lovelace 0
-    --
-    --  This is probably due to selectAssets replacing 0 ada outputs with
-    --  minUTxOValue in the selection, which doesn't end up in the CBOR tx.
-    let zeroAdaOutputs =
-            filter (\o -> view (#tokens . #coin) o == Coin 0 ) outputs
-    unless (null zeroAdaOutputs) $
-        throwE $ ErrBalanceTxNotYetSupported ZeroAdaOutput
 
     (balance0, minfee0) <- ExceptT $ pure $ balanceAfterSettingMinFee partialTx
 
@@ -1605,7 +1553,7 @@ balanceTransaction
         let update = TxUpdate [] [] [] (UseNewTxFee minfee)
         tx' <- left ErrBalanceTxUpdateError $ updateTx tl tx update
         let u = (UTxOIndex.toUTxO internalUtxoAvailable <> resolvedInputsUTxO ptx)
--- FXME
+-- FIXME
 --        unless (UTxOIndex.toUTxO internalUtxoAvailable `UTxO.disjoint` u) $
 --            Left ErrBalanceTxOverlappingInputResolution
         let balance = evaluateTransactionBalance tl tx' False nodePParams u
@@ -1621,16 +1569,6 @@ balanceTransaction
         dropDatumHash (i, o, Nothing) = (i, o)
         dropDatumHash (_, _, Just _) =
             error "resolvedInputsUTxO: todo: handle datum hash"
-
-    withAlonzoBod
-        :: SealedTx
-        -> (Cardano.TxBody Cardano.AlonzoEra -> a)
-        -> a
-    withAlonzoBod (cardanoTx -> Cardano.InAnyCardanoEra Cardano.AlonzoEra tx) f =
-        let Cardano.Tx bod _ = tx
-        in f bod
-    withAlonzoBod _ _ = error "withBod: other eras are not handled yet"
-
 
     assembleTransaction
         :: TxUpdate
@@ -1648,61 +1586,66 @@ balanceTransaction
             (\(_,o) -> (o, Nothing))
                 <$> L.find (\(i',_) -> i == i') (extraInputs update)
 
-    extractFromTx tx =
-        let (Tx _id _fee _coll _inps outs wdrlMap meta _vldt, toMint, toBurn, _)
-                = decodeTx tl tx
-            -- TODO: Find a better abstraction that can cover this case.
-            wdrl = WithdrawalSelf
-                (error $ unwords
-                    [ "WithdrawalSelf: reward account should never have been used"
-                    , "when balancing a transaction, but it was!"
-                    ]
-                )
-                (error $ unwords
-                    [ "WithdrawalSelf: derivation path should never have been used"
-                    , "when balancing a transaction, but it was!"
-                    ]
-                )
-                (F.fold wdrlMap)
-         in (outs, wdrl, meta, toMint, toBurn)
+    guardZeroAdaOutputs = do
+        -- We seem to produce imbalanced transactions if zero-ada
+        -- outputs are pre-specified. Example from
+        -- 'prop_balanceTransactionBalanced':
+        --
+        -- balanced tx:
+        --  2afeed9b
+        --  []
+        --  inputs 2nd 01f4b788
+        --  outputs address: 82d81858...6f57b300
+        --          coin: 0.000000
+        --          tokens: []
+        --  []
+        --  metadata:
+        --  scriptValidity: valid
 
-    -- | Wallet coin selection is unaware of many kinds of transaction content
-    -- (e.g. datums, redeemers), which could be included in the input to
-    -- 'balanceTransaction'. As a workaround we add some padding using
-    -- 'evaluateMinimumFee'.
-    --
-    -- TODO: This logic needs to be consistent with how we call 'selectAssets',
-    -- so it would be good to join them into some single helper.
-    padFeeEstimation
-        :: SealedTx
-        -> TransactionCtx
-        -> TransactionCtx
-    padFeeEstimation sealedTx txCtx =
-        let
-            (walletTx, _, _, _) = decodeTx tl sealedTx
-            worseEstimate = calcMinimumCost tl pp txCtx skeleton
-            skeleton = SelectionSkeleton
-                { skeletonInputCount = length (view #resolvedInputs walletTx)
-                , skeletonOutputs = view #outputs walletTx
-                , skeletonChange = mempty
-                }
-            LinearFee _ (Quantity b) = pp ^. #txParameters . #getFeePolicy
-            -- NOTE: Coping with the later additions of script integrity hash and
-            -- redeemers ex units increased from 0 to their actual values.
-            extraMargin = Coin $ ceiling $ (*) b $ fromIntegral
-                $ sizeOfScriptIntegrityHash
-                + sum (map sizeOfRedeemer redeemers)
-              where
-                sizeOfRedeemer
-                    = (+ sizeOfRedeemerCommon) . BS.length . redeemerData
-                sizeOfScriptIntegrityHash = 35
-                sizeOfRedeemerCommon = 17
+        --  Lovelace 1000000 /= Lovelace 0
+        --
+        --  This is probably due to selectAssets replacing 0 ada outputs with
+        --  minUTxOValue in the selection, which doesn't end up in the CBOR tx.
+        let zeroAdaOutputs =
+                filter (\o -> view (#tokens . #coin) o == Coin 0 ) (extractOutputsFromTx partialTx)
+        unless (null zeroAdaOutputs) $
+            throwE $ ErrBalanceTxNotYetSupported ZeroAdaOutput
 
-            txFeePadding = (<> extraMargin) $ fromMaybe (Coin 0) $ do
-                betterEstimate <- evaluateMinimumFee tl nodePParams sealedTx
-                betterEstimate `Coin.subtract` worseEstimate
-        in
-            txCtx { txFeePadding }
+    extractOutputsFromTx tx =
+        let (Tx {outputs}, _, _, _) = decodeTx tl tx
+         in outputs
+
+    guardConflictingWithdrawalNetworks = do
+        -- Use of withdrawals with different networks breaks balancing.
+        --
+        -- For instance the partial tx might contain two withdrawals with the same
+        -- key but different networks:
+        -- [ (Mainnet, pkh1, coin1)
+        -- , (Testnet, pkh1, coin2)
+        -- ]
+        --
+        -- Even though this is absurd, the node/ledger @evaluateTransactionBalance@
+        -- will count @coin1+coin2@ towards the total balance. Because the wallet
+        -- does not consider the network tag, it will drop one of the two, leading
+        -- to a discrepancy.
+        let networkOfWdrl ((Cardano.StakeAddress nw _), _, _) = nw
+        let conflictingWdrlNetworks = case Cardano.txWithdrawals bod of
+                Cardano.TxWithdrawalsNone -> False
+                Cardano.TxWithdrawals _ wdrls -> Set.size
+                    (Set.fromList $ map networkOfWdrl wdrls) > 1
+        when conflictingWdrlNetworks $
+            throwE $ ErrBalanceTxNotYetSupported $ ConflictingNetworks
+
+    guardExistingCollateral = do
+        -- Coin selection does not support pre-defining collateral. In Sep 2021
+        -- consensus was that we /could/ allow for it with just a day's work or so,
+        -- but that the need for it was unclear enough that it was not in any way
+        -- a priority.
+        case Cardano.txInsCollateral bod of
+            Cardano.TxInsCollateralNone -> return ()
+            Cardano.TxInsCollateral _ [] -> return ()
+            Cardano.TxInsCollateral _ _ ->
+                throwE ErrBalanceTxExistingCollateral
 
     -- Re-implementation of selectAssets where we use node/ledger
     -- 'evaluateTransactionBalance' rather than 'TransactionCtx'.
@@ -1771,7 +1714,7 @@ balanceTransaction
                 = posAndNegFromCardanoValue balance
 
         let fromCardanoLovelace (Cardano.Lovelace l) = Coin $ fromIntegral l
-        let (outs,_,_,_,_) = extractFromTx tx
+        let outs = extractOutputsFromTx tx
         let adaInOutputs = F.foldMap (TokenBundle.getCoin . view #tokens) outs
 
         -- FIXME: Concider tokens as well
@@ -1825,7 +1768,7 @@ balanceTransaction
         let selectionParams = SelectionParams
                 { assetsToMint = toMint
                 , assetsToBurn = toBurn
-                , extraCoinIn = adaInOutputs -- avoid double counting
+                , extraCoinIn = c1 <> adaInOutputs -- avoid double counting
                 , extraCoinOut = c2 <> adaInInputs -- aoid double counting
                 , outputsToCover = outs
                     -- Can we replace outputsToCover with telling coin selection

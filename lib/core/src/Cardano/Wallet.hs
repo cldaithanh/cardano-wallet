@@ -1634,7 +1634,7 @@ balanceTransaction
                 Cardano.TxWithdrawals _ wdrls -> Set.size
                     (Set.fromList $ map networkOfWdrl wdrls) > 1
         when conflictingWdrlNetworks $
-            throwE $ ErrBalanceTxNotYetSupported $ ConflictingNetworks
+            throwE $ ErrBalanceTxNotYetSupported ConflictingNetworks
 
     guardExistingCollateral = do
         -- Coin selection does not support pre-defining collateral. In Sep 2021
@@ -1717,7 +1717,7 @@ balanceTransaction
         let outs = extractOutputsFromTx tx
         let adaInOutputs = F.foldMap (TokenBundle.getCoin . view #tokens) outs
 
-        -- FIXME: Concider tokens as well
+        -- FIXME: Consider tokens as well
         let adaInInputs = TokenBundle.getCoin $ UTxOSelection.selectedBalance $ view #utxoAvailableForInputs params
 
         let selectionConstraints = SelectionConstraints
@@ -1730,17 +1730,8 @@ balanceTransaction
                 , computeMinimumAdaQuantity =
                     view #txOutputMinimumAdaQuantity $ constraints tl pp
                 , computeMinimumCost =
-                    -- We should take the old stuff:
-                    -- >> calcMinimumCost tl pp $ params ^. #txContext
-                    -- and make sure that it only estimates the fee for the
-                    -- selection, not anything in the partial tx.
-                    -- and add the fee of the partial tx
-                    (<> (fromCardanoLovelace fee)) . calcMinimumCost tl pp defaultTransactionCtx
-                    -- A problem is that CS will probably include the
-                    -- /outputs/ of the partialTx, but nothing more. This would
-                    -- make the fee of the outputs being counted twice.
-                    --
-                    -- But let's simply add the stuff together for now.
+                    (<> (fromCardanoLovelace fee))
+                    . calcMinimumCost tl pp defaultTransactionCtx
 
                 , computeSelectionLimit = \outs ->
                     -- Old:

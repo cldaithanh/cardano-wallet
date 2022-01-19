@@ -108,4 +108,6 @@ in {
         '');
     };
   };
+
+  inherit compiler-nix-name;
 }

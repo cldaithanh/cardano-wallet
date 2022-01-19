@@ -12,13 +12,14 @@
 #
 ######################################################################
 
-{ walletPackages ? import ./default.nix { inherit system crossSystem config sourcesOverride; }
+{ walletPackages ? import ./default.nix { inherit system crossSystem config sourcesOverride checkMaterialization; }
 , system ? builtins.currentSystem
 , crossSystem ? null
 , config ? {}
 , pkgs ? walletPackages.private.pkgs
 , profiling ? false  # enable profiling in haskell dependencies
 , sourcesOverride ? {}  # see sourcesOverride in nix/default.nix
+, checkMaterialization ? false
 }:
 
 let
@@ -33,7 +34,7 @@ let
         cardano-cli
         cardano-address
         bech32
-        project.hsPkgs.pretty-simple.components.exes.pretty-simple
+        # project.hsPkgs.pretty-simple.components.exes.pretty-simple
       ]) ++ (with pkgs.buildPackages.buildPackages; [
         go-jira
         haskellPackages.ghcid
@@ -51,12 +52,12 @@ let
         (lib.attrValues haskell-build-tools));
 
     # fixme: this is needed to prevent Haskell.nix double-evaluating hoogle
-    tools.hoogle = {
-      inherit (pkgs.haskell-build-tools.hoogle) version;
-      inherit (pkgs.haskell-build-tools.hoogle.project) index-state;
-      checkMaterialization = false;
-      materialized = ./nix/materialized/hoogle;
-    };
+    # tools.hoogle = {
+    #   inherit (pkgs.haskell-build-tools.hoogle) version;
+    #   inherit (pkgs.haskell-build-tools.hoogle.project) index-state;
+    #   checkMaterialization = false;
+    #   materialized = ./nix/materialized/hoogle;
+    # };
 
     CARDANO_NODE_CONFIGS = pkgs.cardano-node-deployments;
 

@@ -50,6 +50,7 @@
 , pr ? null
 # Bors job type (as a string), set when building a Hydra bors jobset.
 , borsBuild ? null
+, checkMaterialization ? false
 }:
 
 let
@@ -65,8 +66,9 @@ let
   # There are variants with profiling or test coverage enabled.
   buildHaskellProject = args: import ./nix/haskell.nix ({
     inherit config pkgs;
-    inherit (pkgs) buildPackages lib stdenv haskell-nix;
+    inherit (pkgs) buildPackages lib stdenv haskell-nix compiler-nix-name;
     inherit src gitrev pr borsBuild;
+    inherit checkMaterialization;
   } // args);
   project = buildHaskellProject {};
   profiledProject = buildHaskellProject { profiling = true; };
@@ -81,9 +83,37 @@ let
     collectChecks;
   getPackageChecks = lib.mapAttrs (_: package: package.checks);
 
-  self = {
+  self = rec {
     inherit (project.hsPkgs.cardano-wallet-core.identifier) version;
     inherit src;
+
+    inherit (pkgs.haskell-nix) haskellLib;
+    projectPkgs = builtins.attrValues (haskellLib.selectProjectPackages project.hsPkgs);
+    directlySelectedComponents = lib.concatMap haskellLib.getAllComponents projectPkgs;
+    transitiveDependenciesComponents =
+      builtins.listToAttrs
+        (builtins.map (x: lib.nameValuePair (x.name) x)
+          (haskellLib.flatLibDepends {depends = directlySelectedComponents;}));
+    isSelectedComponent =
+      comp: selectedComponentsBitmap."${((haskellLib.dependToLib comp).name or null)}" or false;
+    selectedComponentsBitmap =
+      lib.mapAttrs
+        (_: x: (builtins.any isSelectedComponent x.config.depends))
+        transitiveDependenciesComponents
+      // builtins.listToAttrs (map (x: lib.nameValuePair x.name true) directlySelectedComponents); # base case
+
+    selectedComponents =
+      lib.filter isSelectedComponent  (lib.attrValues transitiveDependenciesComponents);
+
+    removeSelectedInputs =
+      lib.filter (input: !(isSelectedComponent input));
+
+    selectedPackages = lib.attrValues (selectProjectPackages project.hsPkgs);
+
+    selectedConfigs = map (c: c.config) selectedComponents
+      ++ lib.optionals true (map (p: p.setup.config) selectedPackages);
+
+    packageInputs = removeSelectedInputs (lib.concatMap (cfg: cfg.depends) selectedConfigs);
 
     # Cardano wallet
     cardano-wallet = import ./nix/release-build.nix {
@@ -131,6 +161,9 @@ let
         (pkgs.linkFarm "docker-config-layer" [ { name = "config"; path = pkgs.cardano-node-deployments; } ])
       ];
     };
+
+    inherit (pkgs.haskell-nix.haskellLib) selectProjectPackages;
+    inherit (pkgs) lib;
 
     # These attributes are part of the project build, but are
     # considered to be implementation details, not public API.

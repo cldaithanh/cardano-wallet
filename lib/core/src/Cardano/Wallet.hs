@@ -1916,6 +1916,8 @@ selectAssets ctx pp params transform = do
                 params ^. (#txContext . #txAssetsToMint)
             , assetsToBurn =
                 params ^. (#txContext . #txAssetsToBurn)
+            , extraCoinIn = Coin 0
+            , extraCoinOut = Coin 0
             , outputsToCover = params ^. #outputs
             , rewardWithdrawal =
                 withdrawalToCoin $ params ^. (#txContext . #txWithdrawal)

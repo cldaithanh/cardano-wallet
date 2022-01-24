@@ -38,12 +38,10 @@ module Cardano.Wallet.Primitive.Types.UTxOIndex.Internal
     , singleton
     , fromMap
     , fromSequence
-    , fromUTxO
 
     -- * Deconstruction
     , toList
     , toMap
-    , toUTxO
 
     -- * Folding
     , fold
@@ -97,8 +95,6 @@ import Cardano.Wallet.Primitive.Types.TokenMap
     ( AssetId )
 import Cardano.Wallet.Primitive.Types.Tx
     ( TxIn, TxOut )
-import Cardano.Wallet.Primitive.Types.UTxO
-    ( UTxO (..) )
 import Control.DeepSeq
     ( NFData )
 import Control.Monad.Extra
@@ -219,14 +215,6 @@ fromMap = Map.foldlWithKey' (\u i o -> insertUnsafe i o u) empty
 fromSequence :: Foldable f => f (TxIn, TxOut) -> UTxOIndex
 fromSequence = flip insertMany empty
 
--- | Constructs an index from an ordinary 'UTxO' set.
---
--- Note that this operation is potentially expensive as it must construct an
--- index from scratch, and therefore should only be used sparingly.
---
-fromUTxO :: UTxO -> UTxOIndex
-fromUTxO = fromMap . unUTxO
-
 --------------------------------------------------------------------------------
 -- Deconstruction
 --------------------------------------------------------------------------------
@@ -244,13 +232,6 @@ toList = fold (\ios i o -> (i, o) : ios) []
 --
 toMap :: UTxOIndex -> Map TxIn TxOut
 toMap = utxo
-
--- | Converts an index into an ordinary 'UTxO' set.
---
--- Consider using 'fold' if your goal is to consume all entries in the output.
---
-toUTxO :: UTxOIndex -> UTxO
-toUTxO = UTxO . toMap
 
 --------------------------------------------------------------------------------
 -- Folding

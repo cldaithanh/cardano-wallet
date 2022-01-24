@@ -179,27 +179,28 @@ checkCoverage_UTxOSelectionNonEmpty s
 -- Construction and deconstruction
 --------------------------------------------------------------------------------
 
-prop_fromIndex_isValid :: UTxOIndex -> Property
+prop_fromIndex_isValid :: UTxOIndex TxIn -> Property
 prop_fromIndex_isValid u =
     isValidSelection (UTxOSelection.fromIndex u)
     === True
 
-prop_fromIndexFiltered_isValid :: (TxIn -> Bool) -> UTxOIndex -> Property
+prop_fromIndexFiltered_isValid :: (TxIn -> Bool) -> UTxOIndex TxIn -> Property
 prop_fromIndexFiltered_isValid f u =
     isValidSelection (UTxOSelection.fromIndexFiltered f u)
     === True
 
-prop_fromIndexPair_isValid :: (UTxOIndex, UTxOIndex) -> Property
+prop_fromIndexPair_isValid :: (UTxOIndex TxIn, UTxOIndex TxIn) -> Property
 prop_fromIndexPair_isValid (u1, u2) =
     isValidSelection (UTxOSelection.fromIndexPair (u1, u2))
     === True
 
-prop_fromIndex_toIndexPair :: UTxOIndex -> Property
+prop_fromIndex_toIndexPair :: UTxOIndex TxIn -> Property
 prop_fromIndex_toIndexPair u =
     UTxOSelection.toIndexPair (UTxOSelection.fromIndex u)
     === (u, UTxOIndex.empty)
 
-prop_fromIndexFiltered_toIndexPair :: (TxIn -> Bool) -> UTxOIndex -> Property
+prop_fromIndexFiltered_toIndexPair
+    :: (TxIn -> Bool) -> UTxOIndex TxIn -> Property
 prop_fromIndexFiltered_toIndexPair f u =
     UTxOSelection.toIndexPair (UTxOSelection.fromIndexFiltered f u)
     === (UTxOIndex.filter (not . f) u, UTxOIndex.filter f u)
@@ -400,7 +401,7 @@ instance Arbitrary TxIn where
     arbitrary = genTxIn
     shrink = shrinkTxIn
 
-instance Arbitrary UTxOIndex where
+instance Arbitrary (UTxOIndex TxIn) where
     arbitrary = genUTxOIndex
     shrink = shrinkUTxOIndex
 

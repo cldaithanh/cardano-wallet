@@ -1215,7 +1215,9 @@ selectMatchingQuantity filters limit s
         MaximumInputLimit m -> UTxOSelection.selectedSize s >= m
         NoLimit -> False
 
-    updateState :: ((TxIn, TxOut), UTxOIndex) -> Maybe UTxOSelectionNonEmpty
+    updateState
+        :: ((TxIn, TxOut), UTxOIndex TxIn)
+        -> Maybe UTxOSelectionNonEmpty
     updateState ((i, _o), _remaining) = UTxOSelection.select i s
 
 --------------------------------------------------------------------------------

@@ -141,9 +141,9 @@ class HasUTxOSelectionState u => IsUTxOSelection u where
 -- | The internal state of a selection.
 --
 data State = State
-    { leftover :: !UTxOIndex
+    { leftover :: !(UTxOIndex TxIn)
       -- ^ UTxOs that have not yet been selected.
-    , selected :: !UTxOIndex
+    , selected :: !(UTxOIndex TxIn)
       -- ^ UTxOs that have already been selected.
     }
     deriving (Eq, Generic, Show)
@@ -187,7 +187,7 @@ empty = fromIndex UTxOIndex.empty
 --
 -- All UTxOs in the index will be added to the leftover set.
 --
-fromIndex :: UTxOIndex -> UTxOSelection
+fromIndex :: UTxOIndex TxIn -> UTxOSelection
 fromIndex i = UTxOSelection State
     { leftover = i
     , selected = UTxOIndex.empty
@@ -198,7 +198,7 @@ fromIndex i = UTxOSelection State
 -- All UTxOs that match the given filter will be added to the selected set,
 -- whereas all UTxOs that do not match will be added to the leftover set.
 --
-fromIndexFiltered :: (TxIn -> Bool) -> UTxOIndex -> UTxOSelection
+fromIndexFiltered :: (TxIn -> Bool) -> UTxOIndex TxIn -> UTxOSelection
 fromIndexFiltered f =
     UTxOSelection . uncurry State . swap . UTxOIndex.partition f
 
@@ -209,7 +209,7 @@ fromIndexFiltered f =
 --
 -- Any items that are in both sets are removed from the leftover set.
 --
-fromIndexPair :: (UTxOIndex, UTxOIndex) -> UTxOSelection
+fromIndexPair :: (UTxOIndex TxIn, UTxOIndex TxIn) -> UTxOSelection
 fromIndexPair (leftover, selected) =
     UTxOSelection State
         { leftover = leftover `UTxOIndex.difference` selected
@@ -221,7 +221,7 @@ fromIndexPair (leftover, selected) =
 -- The 1st index in the pair represents the leftover set.
 -- The 2nd index in the pair represents the selected set.
 --
-toIndexPair :: IsUTxOSelection u => u -> (UTxOIndex, UTxOIndex)
+toIndexPair :: IsUTxOSelection u => u -> (UTxOIndex TxIn, UTxOIndex TxIn)
 toIndexPair s = (leftoverIndex s, selectedIndex s)
 
 --------------------------------------------------------------------------------
@@ -341,7 +341,7 @@ leftoverSize = UTxOIndex.size . leftoverIndex
 
 -- | Retrieves an index of the leftover UTxOs.
 --
-leftoverIndex :: IsUTxOSelection u => u -> UTxOIndex
+leftoverIndex :: IsUTxOSelection u => u -> UTxOIndex TxIn
 leftoverIndex = leftover . state
 
 -- | Retrieves the leftover UTxO set.
@@ -366,7 +366,7 @@ selectedSize = UTxOIndex.size . selectedIndex
 
 -- | Retrieves an index of the selected UTxOs.
 --
-selectedIndex :: IsUTxOSelection u => u -> UTxOIndex
+selectedIndex :: IsUTxOSelection u => u -> UTxOIndex TxIn
 selectedIndex = selected . state
 
 -- | Retrieves the selected UTxO set.

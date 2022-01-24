@@ -2005,7 +2005,10 @@ instance MonadRandom Gen where
     getRandomR range = mkGen (fst . randomR range)
     getRandomRs range = mkGen (randomRs range)
 
-data Wallet' = Wallet' UTxOIndex (Wallet (SeqState 'Mainnet ShelleyKey)) (Set Tx)
+data Wallet' = Wallet'
+    (UTxOIndex TxIn)
+    (Wallet (SeqState 'Mainnet ShelleyKey))
+    (Set Tx)
 
 instance Show Wallet' where
     show (Wallet' u w pending) = fmt $ mconcat

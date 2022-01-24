@@ -446,6 +446,8 @@ import Cardano.Wallet.Primitive.Types.Tx
     , UnsignedTx (..)
     , txOutCoin
     )
+import Cardano.Wallet.Primitive.Types.UTxO
+    ( UTxO (..) )
 import Cardano.Wallet.Registry
     ( HasWorkerCtx (..)
     , MkWorker (..)
@@ -1587,7 +1589,7 @@ selectCoins ctx genChange (ApiT wid) body = do
                 , utxoAvailableForInputs =
                     UTxOSelection.fromIndex utxoAvailable
                 , utxoAvailableForCollateral =
-                    UTxOIndex.toUTxO utxoAvailable
+                    UTxO $ UTxOIndex.toMap utxoAvailable
                 , wallet
                 }
                 transform
@@ -1640,7 +1642,7 @@ selectCoinsForJoin ctx knownPools getPoolStatus pid wid = do
                 , utxoAvailableForInputs =
                     UTxOSelection.fromIndex utxoAvailable
                 , utxoAvailableForCollateral =
-                    UTxOIndex.toUTxO utxoAvailable
+                    UTxO $ UTxOIndex.toMap utxoAvailable
                 , wallet
                 }
                 transform
@@ -1687,7 +1689,7 @@ selectCoinsForQuit ctx (ApiT wid) = do
                 , utxoAvailableForInputs =
                     UTxOSelection.fromIndex utxoAvailable
                 , utxoAvailableForCollateral =
-                    UTxOIndex.toUTxO utxoAvailable
+                    UTxO $ UTxOIndex.toMap utxoAvailable
                 , wallet
                 }
                 transform
@@ -1955,7 +1957,7 @@ postTransactionOld ctx genChange (ApiT wid) body = do
                 , utxoAvailableForInputs =
                     UTxOSelection.fromIndex utxoAvailable
                 , utxoAvailableForCollateral =
-                    UTxOIndex.toUTxO utxoAvailable
+                    UTxO $ UTxOIndex.toMap utxoAvailable
                 , wallet
                 }
                 (const Prelude.id)
@@ -2095,7 +2097,7 @@ postTransactionFeeOld ctx (ApiT wid) body = do
                 , utxoAvailableForInputs =
                     UTxOSelection.fromIndex utxoAvailable
                 , utxoAvailableForCollateral =
-                    UTxOIndex.toUTxO utxoAvailable
+                    UTxO $ UTxOIndex.toMap utxoAvailable
                 , wallet
                 } getFee
               where getFee = const (selectionDelta TokenBundle.getCoin)
@@ -2160,7 +2162,7 @@ constructTransaction ctx genChange (ApiT wid) body = do
                 , utxoAvailableForInputs =
                     UTxOSelection.fromIndex utxoAvailable
                 , utxoAvailableForCollateral =
-                    UTxOIndex.toUTxO utxoAvailable
+                    UTxO $ UTxOIndex.toMap utxoAvailable
                 , wallet
                 } transform
 
@@ -2386,7 +2388,7 @@ joinStakePool ctx knownPools getPoolStatus apiPoolId (ApiT wid) body = do
                 , utxoAvailableForInputs =
                     UTxOSelection.fromIndex utxoAvailable
                 , utxoAvailableForCollateral =
-                    UTxOIndex.toUTxO utxoAvailable
+                    UTxO $ UTxOIndex.toMap utxoAvailable
                 , wallet
                 }
                 (const Prelude.id)
@@ -2450,7 +2452,7 @@ delegationFee ctx (ApiT wid) = do
             , utxoAvailableForInputs =
                 UTxOSelection.fromIndex utxoAvailable
             , utxoAvailableForCollateral =
-                UTxOIndex.toUTxO utxoAvailable
+                UTxO $ UTxOIndex.toMap utxoAvailable
             , wallet
             } calcFee
       where
@@ -2501,7 +2503,7 @@ quitStakePool ctx (ApiT wid) body = do
                 , utxoAvailableForInputs =
                     UTxOSelection.fromIndex utxoAvailable
                 , utxoAvailableForCollateral =
-                    UTxOIndex.toUTxO utxoAvailable
+                    UTxO $ UTxOIndex.toMap utxoAvailable
                 , wallet
                 }
                 (const Prelude.id)

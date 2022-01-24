@@ -7,12 +7,14 @@ module Cardano.Wallet.Primitive.Types.UTxOIndex.Gen
 
 import Prelude
 
+import Cardano.Wallet.Primitive.Types.UTxO
+    ( UTxO (..) )
 import Cardano.Wallet.Primitive.Types.UTxO.Gen
     ( genUTxO, genUTxOLarge, genUTxOLargeN, shrinkUTxO )
 import Cardano.Wallet.Primitive.Types.UTxOIndex
     ( UTxOIndex )
 import Test.QuickCheck
-    ( Gen )
+    ( Gen, shrinkMapBy )
 
 import qualified Cardano.Wallet.Primitive.Types.UTxOIndex as UTxOIndex
 
@@ -21,17 +23,20 @@ import qualified Cardano.Wallet.Primitive.Types.UTxOIndex as UTxOIndex
 --------------------------------------------------------------------------------
 
 genUTxOIndex :: Gen UTxOIndex
-genUTxOIndex = UTxOIndex.fromUTxO <$> genUTxO
+genUTxOIndex = UTxOIndex.fromMap . unUTxO <$> genUTxO
 
 shrinkUTxOIndex :: UTxOIndex -> [UTxOIndex]
-shrinkUTxOIndex = fmap UTxOIndex.fromUTxO . shrinkUTxO . UTxOIndex.toUTxO
+shrinkUTxOIndex = shrinkMapBy
+    (UTxOIndex.fromMap . unUTxO)
+    (UTxO . UTxOIndex.toMap)
+    (shrinkUTxO)
 
 --------------------------------------------------------------------------------
 -- Large indices
 --------------------------------------------------------------------------------
 
 genUTxOIndexLarge :: Gen UTxOIndex
-genUTxOIndexLarge = UTxOIndex.fromUTxO <$> genUTxOLarge
+genUTxOIndexLarge = UTxOIndex.fromMap . unUTxO <$> genUTxOLarge
 
 genUTxOIndexLargeN :: Int -> Gen UTxOIndex
-genUTxOIndexLargeN n = UTxOIndex.fromUTxO <$> genUTxOLargeN n
+genUTxOIndexLargeN n = UTxOIndex.fromMap . unUTxO <$> genUTxOLargeN n

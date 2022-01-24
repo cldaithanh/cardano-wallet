@@ -21,8 +21,6 @@ import Cardano.Wallet.Primitive.Types.Tx
     ( TxIn, TxOut )
 import Cardano.Wallet.Primitive.Types.Tx.Gen
     ( coarbitraryTxIn, genTxIn, genTxOut, shrinkTxIn, shrinkTxOut )
-import Cardano.Wallet.Primitive.Types.UTxO
-    ( UTxO (..) )
 import Cardano.Wallet.Primitive.Types.UTxOIndex.Gen
     ( genUTxOIndex, shrinkUTxOIndex )
 import Cardano.Wallet.Primitive.Types.UTxOIndex.Internal
@@ -73,7 +71,6 @@ import Test.Utils.Laws
     ( testLawsMany )
 
 import qualified Cardano.Wallet.Primitive.Types.TokenBundle as TokenBundle
-import qualified Cardano.Wallet.Primitive.Types.UTxO as UTxO
 import qualified Cardano.Wallet.Primitive.Types.UTxOIndex.Internal as UTxOIndex
 import qualified Data.List as L
 import qualified Data.Map.Strict as Map
@@ -373,7 +370,7 @@ checkCoverage_filter_partition f u
   where
     u1 `isNonEmptyProperSubsetOf` u2 =
         not (UTxOIndex.null u1)
-        && UTxOIndex.toUTxO u1 `UTxO.isSubsetOf` UTxOIndex.toUTxO u2
+        && UTxOIndex.toMap u1 `Map.isSubmapOf` UTxOIndex.toMap u2
         && u1 /= u2
 
     filterSize g = UTxOIndex.size . UTxOIndex.filter g
@@ -486,7 +483,7 @@ prop_selectRandom_one_withAdaOnly u = checkCoverage $ monadicIO $ do
             assert $ u /= u'
   where
     utxoHasNoAdaOnlyEntries =
-        Map.null $ Map.filter txOutIsAdaOnly $ unUTxO $ UTxOIndex.toUTxO u
+        Map.null $ Map.filter txOutIsAdaOnly $ UTxOIndex.toMap u
 
 -- | Attempt to select a random element with a specific asset.
 --

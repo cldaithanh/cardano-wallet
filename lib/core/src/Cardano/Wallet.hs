@@ -1511,7 +1511,7 @@ balanceTransaction
                 (internalUtxoAvailable, externalSelectedUtxo)
 
         let utxoAvailableForCollateral =
-                UTxOIndex.toUTxO internalUtxoAvailable
+                UTxO $ UTxOIndex.toMap internalUtxoAvailable
 
         -- NOTE: It is not possible to know the script execution cost in
         -- advance because it actually depends on the final transaction. Inputs
@@ -1809,7 +1809,7 @@ readWalletUTxOIndex
     -> ExceptT ErrNoSuchWallet IO (UTxOIndex, Wallet s, Set Tx)
 readWalletUTxOIndex ctx wid = do
     (cp, _, pending) <- readWallet @ctx @s @k ctx wid
-    let utxo = UTxOIndex.fromUTxO $ availableUTxO @s pending cp
+    let utxo = UTxOIndex.fromMap $ unUTxO $ availableUTxO @s pending cp
     return (utxo, cp, pending)
 
 -- | Calculate the minimum coin values required for a bunch of specified

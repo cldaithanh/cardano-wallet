@@ -87,7 +87,7 @@ import Cardano.Wallet.Primitive.Types.TokenBundle
 import Cardano.Wallet.Primitive.Types.Tx
     ( TxIn, TxOut )
 import Cardano.Wallet.Primitive.Types.UTxO
-    ( UTxO )
+    ( UTxO (..) )
 import Cardano.Wallet.Primitive.Types.UTxOIndex
     ( UTxOIndex )
 import Control.Monad
@@ -347,7 +347,7 @@ leftoverIndex = leftover . state
 -- | Retrieves the leftover UTxO set.
 --
 leftoverUTxO :: IsUTxOSelection u => u -> UTxO
-leftoverUTxO = UTxOIndex.toUTxO . leftoverIndex
+leftoverUTxO = UTxO . UTxOIndex.toMap . leftoverIndex
 
 -- | Retrieves a list of the leftover UTxOs.
 --
@@ -372,7 +372,7 @@ selectedIndex = selected . state
 -- | Retrieves the selected UTxO set.
 --
 selectedUTxO :: IsUTxOSelection u => u -> UTxO
-selectedUTxO = UTxOIndex.toUTxO . selectedIndex
+selectedUTxO = UTxO . UTxOIndex.toMap . selectedIndex
 
 --------------------------------------------------------------------------------
 -- Modification

@@ -127,7 +127,6 @@ import GHC.Generics
     ( Generic )
 
 import qualified Cardano.Wallet.Primitive.Types.TokenBundle as TokenBundle
-import qualified Cardano.Wallet.Primitive.Types.UTxO as UTxO
 import qualified Data.Foldable as F
 import qualified Data.List.NonEmpty as NE
 import qualified Data.Map.Strict as Map
@@ -326,12 +325,12 @@ deleteMany = flip $ F.foldl' $ \u i -> delete i u
 -- | Filters an index.
 --
 filter :: (TxIn -> Bool) -> UTxOIndex -> UTxOIndex
-filter f = fromUTxO . UTxO.filter f . toUTxO
+filter f = fromMap . Map.filterWithKey (const . f) . toMap
 
 -- | Partitions an index.
 --
 partition :: (TxIn -> Bool) -> UTxOIndex -> (UTxOIndex, UTxOIndex)
-partition f = bimap fromUTxO fromUTxO . UTxO.partition f . toUTxO
+partition f = bimap fromMap fromMap . Map.partitionWithKey (const . f) . toMap
 
 --------------------------------------------------------------------------------
 -- Queries
@@ -369,12 +368,12 @@ size = Map.size . utxo
 --------------------------------------------------------------------------------
 
 difference :: UTxOIndex -> UTxOIndex -> UTxOIndex
-difference a b = fromUTxO $ UTxO.difference (toUTxO a) (toUTxO b)
+difference a b = fromMap $ Map.difference (toMap a) (toMap b)
 
 -- | Indicates whether a pair of UTxO indices are disjoint.
 --
 disjoint :: UTxOIndex -> UTxOIndex -> Bool
-disjoint u1 u2 = toUTxO u1 `UTxO.disjoint` toUTxO u2
+disjoint u1 u2 = toMap u1 `Map.disjoint` toMap u2
 
 --------------------------------------------------------------------------------
 -- Selection

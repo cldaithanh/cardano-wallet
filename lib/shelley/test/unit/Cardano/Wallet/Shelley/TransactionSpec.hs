@@ -2021,7 +2021,7 @@ instance Arbitrary Wallet' where
         let s = mkSeqStateFromRootXPrv (rootK mw) purposeCIP1852 defaultAddressPoolGap
 
         return $ Wallet'
-            (UTxOIndex.fromUTxO utxo)
+            (UTxOIndex.fromMap $ unUTxO utxo)
             (unsafeInitWallet utxo (header block0) s)
             mempty
       where
@@ -2047,11 +2047,11 @@ instance Arbitrary Wallet' where
         setUTxO :: UTxO -> Wallet' -> Wallet'
         setUTxO u (Wallet' _ wal pending) =
             Wallet'
-                (UTxOIndex.fromUTxO u)
+                (UTxOIndex.fromMap $ unUTxO u)
                 (wal { utxo = u})
                 pending
 
-        getUTxO (Wallet' u _ _) = UTxOIndex.toUTxO u
+        getUTxO (Wallet' u _ _) = UTxO $ UTxOIndex.toMap u
 
         shrinkUTxO' u
             | UTxO.size u > 1 && simplifyUTxO u /= u

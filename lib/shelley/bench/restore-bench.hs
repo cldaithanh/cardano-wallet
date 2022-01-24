@@ -129,7 +129,7 @@ import Cardano.Wallet.Primitive.Types.RewardAccount
 import Cardano.Wallet.Primitive.Types.Tx
     ( TxOut (..) )
 import Cardano.Wallet.Primitive.Types.UTxO
-    ( UTxOStatistics (..), computeUtxoStatistics, log10 )
+    ( UTxO (..), UTxOStatistics (..), computeUtxoStatistics, log10 )
 import Cardano.Wallet.Shelley
     ( SomeNetworkDiscriminant (..) )
 import Cardano.Wallet.Shelley.Compatibility
@@ -466,7 +466,7 @@ benchmarksRnd _ w wid wname benchname restoreTime = do
                 , utxoAvailableForInputs =
                     UTxOSelection.fromIndex utxoAvailable
                 , utxoAvailableForCollateral =
-                    UTxOIndex.toUTxO utxoAvailable
+                    UTxO $ UTxOIndex.toMap utxoAvailable
                 , wallet
                 } getFee
         runExceptT $ withExceptT show $ W.estimateFee runSelection
@@ -569,7 +569,7 @@ benchmarksSeq _ w wid _wname benchname restoreTime = do
                 , utxoAvailableForInputs =
                     UTxOSelection.fromIndex utxoAvailable
                 , utxoAvailableForCollateral =
-                    UTxOIndex.toUTxO utxoAvailable
+                    UTxO $ UTxOIndex.toMap utxoAvailable
                 , wallet
                 } getFee
         runExceptT $ withExceptT show $ W.estimateFee runSelection

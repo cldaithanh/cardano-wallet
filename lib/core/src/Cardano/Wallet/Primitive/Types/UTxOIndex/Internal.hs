@@ -157,21 +157,21 @@ import qualified Data.Set.Strict.NonEmptySet as NonEmptySet
 -- The UTxO index data structure has an invariant that can be checked with
 -- the 'checkInvariant' function.
 --
-data UTxOIndex = UTxOIndex
+data UTxOIndex input = UTxOIndex
     { assetsAll
-        :: !(Map AssetId (NonEmptySet TxIn))
+        :: !(Map AssetId (NonEmptySet input))
         -- An index of all entries that contain at least one non-ada asset.
     , assetsSingleton
-        :: !(Map AssetId (NonEmptySet TxIn))
+        :: !(Map AssetId (NonEmptySet input))
         -- An index of all entries that contain exactly one non-ada asset.
     , coins
-        :: !(Set TxIn)
+        :: !(Set input)
         -- An index of all entries that contain no non-ada assets.
     , balance
         :: !TokenBundle
         -- The total balance of all entries.
     , utxo
-        :: !(Map TxIn TxOut)
+        :: !(Map input TokenBundle)
         -- The complete set of all entries.
     }
     deriving (Eq, Generic, Read, Show)

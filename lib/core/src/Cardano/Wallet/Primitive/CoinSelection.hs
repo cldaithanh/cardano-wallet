@@ -178,7 +178,7 @@ data SelectionConstraints = SelectionConstraints
         :: SelectionSkeleton -> Coin
         -- ^ Computes the minimum cost of a given selection skeleton.
     , computeSelectionLimit
-        :: [TxOut] -> SelectionLimit
+        :: [TokenBundle] -> SelectionLimit
         -- ^ Computes an upper bound for the number of ordinary inputs to
         -- select, given a current set of outputs.
     , maximumCollateralInputCount
@@ -189,17 +189,12 @@ data SelectionConstraints = SelectionConstraints
         :: Natural
         -- ^ Specifies the minimum required amount of collateral as a
         -- percentage of the total transaction fee.
-    , utxoSuitableForCollateral
-        :: (TxIn, TxOut) -> Maybe Coin
-        -- ^ Indicates whether an individual UTxO entry is suitable for use as
-        -- a collateral input. This function should return a 'Coin' value if
-        -- (and only if) the given UTxO is suitable for use as collateral.
     }
     deriving Generic
 
 -- | Specifies all parameters that are specific to a given selection.
 --
-data SelectionParams = SelectionParams
+data SelectionParams input = SelectionParams
     { assetsToBurn
         :: !TokenMap
         -- ^ Specifies a set of assets to burn.
@@ -207,7 +202,7 @@ data SelectionParams = SelectionParams
         :: !TokenMap
         -- ^ Specifies a set of assets to mint.
     , outputsToCover
-        :: ![TxOut]
+        :: ![TokenBundle]
         -- ^ Specifies a set of outputs that must be paid for.
     , rewardWithdrawal
         :: !Coin
@@ -222,14 +217,14 @@ data SelectionParams = SelectionParams
         :: !SelectionCollateralRequirement
         -- ^ Specifies the collateral requirement for this selection.
     , utxoAvailableForCollateral
-        :: !UTxO
+        :: !(Map input Coin)
         -- ^ Specifies a set of UTxOs that are available for selection as
         -- collateral inputs.
         --
         -- This set is allowed to intersect with 'utxoAvailableForInputs',
         -- since the ledger does not require that these sets are disjoint.
     , utxoAvailableForInputs
-        :: !UTxOSelection
+        :: !(UTxOSelection input)
         -- ^ Specifies a set of UTxOs that are available for selection as
         -- ordinary inputs and optionally, a subset that has already been
         -- selected.
@@ -251,39 +246,18 @@ data SelectionError
 
 -- | Represents a balanced selection.
 --
-data SelectionOf change = Selection
+data Selection input = Selection
     { inputs
-        :: !(NonEmpty (TxIn, TxOut))
+        :: !(NonEmpty input)
         -- ^ Selected inputs.
     , collateral
-        :: ![(TxIn, TxOut)]
+        :: ![input]
         -- ^ Selected collateral inputs.
-    , outputs
-        :: ![TxOut]
-        -- ^ User-specified outputs
     , change
-        :: ![change]
+        :: ![TokenBundle]
         -- ^ Generated change outputs.
-    , assetsToMint
-        :: !TokenMap
-        -- ^ Assets to mint.
-    , assetsToBurn
-        :: !TokenMap
-        -- ^ Assets to burn.
-    , extraCoinSource
-        :: !Coin
-        -- ^ An extra source of ada.
-    , extraCoinSink
-        :: !Coin
-        -- ^ An extra sink for ada.
     }
     deriving (Generic, Eq, Show)
-
--- | The default type of selection.
---
--- In this type of selection, change values do not have addresses assigned.
---
-type Selection = SelectionOf TokenBundle
 
 -- | Provides a context for functions related to 'performSelection'.
 

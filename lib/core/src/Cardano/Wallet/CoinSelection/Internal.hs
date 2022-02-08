@@ -72,14 +72,14 @@ module Cardano.Wallet.CoinSelection.Internal
 
 import Prelude
 
-import Algebra.PartialOrd
-    ( PartialOrd (..) )
 import Cardano.Wallet.CoinSelection.Internal.Balance
     ( SelectionBalanceError (..)
     , SelectionDelta (..)
     , SelectionLimit
     , SelectionSkeleton
     )
+import Algebra.PartialOrd
+    ( PartialOrd (..) )
 import Cardano.Wallet.CoinSelection.Internal.Collateral
     ( SelectionCollateralError )
 import Cardano.Wallet.Primitive.Types.Address

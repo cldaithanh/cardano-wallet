@@ -416,6 +416,7 @@ import Cardano.Wallet.Primitive.Types.Tx
     , TxMeta (..)
     , TxMetadata (..)
     , TxOut (..)
+    , TxSize (..)
     , TxStatus (..)
     , UnsignedTx (..)
     , fromTransactionInfo
@@ -1623,7 +1624,7 @@ balanceTransaction
                    | otherwise -> surplus
                 _              -> Coin 0
 
-    guardTxBalanced =<< (assembleTransaction $ TxUpdate
+    guardTxSize =<< guardTxBalanced =<< (assembleTransaction $ TxUpdate
         { extraInputs
         , extraCollateral
         , extraOutputs =
@@ -1637,6 +1638,19 @@ balanceTransaction
   where
     tl = ctx ^. transactionLayer @k
     tr = contramap MsgWallet $ ctx ^. logger @m
+
+    guardTxSize :: SealedTx -> ExceptT ErrBalanceTx m SealedTx
+    guardTxSize tx =
+        case estimateSignedTxSize tl nodePParams tx of
+            Nothing -> throwE $ ErrBalanceTxUpdateError ErrByronTxNotSupported
+            Just size -> do
+                let maxSize = TxSize
+                        . intCast
+                        . getQuantity
+                        $ view (#txParameters . #getTxMaxSize) pp
+                when (size > maxSize) $
+                    throwE ErrBalanceTxMaxSizeLimitExceeded
+                return tx
 
     guardTxBalanced :: SealedTx -> ExceptT ErrBalanceTx m SealedTx
     guardTxBalanced tx = do
@@ -3307,11 +3321,12 @@ data ErrSignPayment
 data ErrBalanceTx
     = ErrBalanceTxUpdateError ErrUpdateSealedTx
     | ErrBalanceTxSelectAssets ErrSelectAssets
+    | ErrBalanceTxMaxSizeLimitExceeded
     | ErrBalanceTxExistingCollateral
     | ErrBalanceTxAssignRedeemers ErrAssignRedeemers
     | ErrBalanceTxNotYetSupported BalanceTxNotSupportedReason
     | ErrBalanceTxFailedBalancing Cardano.Value
-    deriving (Show, Eq)
+    | ErrBalanceTxMaxSizeLimitExceeded
 
 -- TODO: Remove once problems are fixed.
 data BalanceTxNotSupportedReason

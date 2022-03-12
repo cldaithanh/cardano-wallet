@@ -174,46 +174,46 @@ equipartitionLaws _ = Laws "Equipartition"
         -> prop
         -> Property
     buildCoverage value count result
-        = cover 2
+        = cover 1
             (length count == 1)
             "length count == 1"
-        . cover 20
+        . cover 10
             (length count /= 1)
             "length count /= 1"
-        . cover 2
+        . cover 1
             (value == mempty)
             "value == mempty"
-        . cover 20
+        . cover 10
             (value /= mempty)
             "value /= mempty"
-        . cover 2
+        . cover 1
             (NE.head result == mempty)
             "NE.head result == mempty"
-        . cover 20
+        . cover 10
             (NE.head result /= mempty)
             "NE.head result /= mempty"
-        . cover 2
+        . cover 1
             (NE.last result == mempty)
             "NE.last result == mempty"
-        . cover 20
+        . cover 10
             (NE.last result /= mempty)
             "NE.last result /= mempty"
-        . cover 2
+        . cover 1
             (NE.head result == NE.last result)
             "NE.head result == NE.last result"
-        . cover 20
+        . cover 10
             (NE.head result /= NE.last result)
             "NE.head result /= NE.last result"
-        . cover 2
+        . cover 1
             (equipartitionDistance (NE.head result) (NE.last result) == 0)
             "equipartitionDistance (NE.head result) (NE.last result) == 0"
-        . cover 20
+        . cover 10
             (equipartitionDistance (NE.head result) (NE.last result) /= 0)
             "equipartitionDistance (NE.head result) (NE.last result) /= 0"
-        . cover 2
+        . cover 1
             (all (uncurry (/=)) (consecutivePairs result))
             "all (uncurry (/=)) (consecutivePairs result)"
-        . cover 2
+        . cover 1
             (all (uncurry (==)) (consecutivePairs result))
             "all (uncurry (==)) (consecutivePairs result)"
 

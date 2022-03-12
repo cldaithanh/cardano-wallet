@@ -57,6 +57,9 @@ spec =
         testLawsMany @(Values (ValueMap Int Value))
             [ equipartitionLaws
             ]
+        testLawsMany @Value
+            [ equipartitionLaws
+            ]
 
 instance Arbitrary a => Arbitrary (NonEmpty a) where
     arbitrary = (:|) <$> arbitrary <*> arbitrary

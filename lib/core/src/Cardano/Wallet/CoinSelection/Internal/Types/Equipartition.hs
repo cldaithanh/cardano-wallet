@@ -10,6 +10,8 @@ import Prelude
 
 import Cardano.Numeric.Util
     ( equipartitionNatural )
+import Control.Arrow
+    ( (&&&) )
 import Data.List.NonEmpty
     ( NonEmpty (..) )
 import Data.Proxy
@@ -68,26 +70,24 @@ equipartitionLaws _ = Laws "Equipartition"
 equipartitionLaw_distance
     :: Equipartition a => a -> NonEmpty void -> Bool
 equipartitionLaw_distance a count =
-    (\(r :| rs) -> F.all ((<= 1) . equipartitionDistance r) rs)
+    ((<= 1) . uncurry equipartitionDistance . (NE.head &&& NE.last))
     (equipartition a count)
 
 equipartitionLaw_length
     :: Equipartition a => a -> NonEmpty void -> Bool
 equipartitionLaw_length a count =
-    ((== length count) . length)
-    (equipartition a count)
+    length (equipartition a count) == length count
 
 equipartitionLaw_ordering
     :: Equipartition a => a -> NonEmpty void -> Bool
 equipartitionLaw_ordering a count =
-    (all (uncurry equipartitionOrdering) . consecutivePairs)
-    (equipartition a count)
+    all (uncurry equipartitionOrdering)
+        (consecutivePairs (equipartition a count))
 
 equipartitionLaw_sum
     :: (Eq a, Equipartition a, Monoid a) => a -> NonEmpty void -> Bool
 equipartitionLaw_sum a count =
-    ((== a) . F.fold)
-    (equipartition a count)
+    F.fold (equipartition a count) == a
 
 --------------------------------------------------------------------------------
 -- Instances

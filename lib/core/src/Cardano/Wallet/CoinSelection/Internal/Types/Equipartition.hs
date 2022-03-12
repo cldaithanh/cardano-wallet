@@ -45,6 +45,88 @@ class Equipartition a where
 -- Laws
 --------------------------------------------------------------------------------
 
+equipartitionLaw_length
+    :: Equipartition a => a -> NonEmpty void -> Bool
+equipartitionLaw_length a count =
+    length (equipartition a count) == length count
+
+equipartitionLaw_sum
+    :: (Eq a, Equipartition a, Monoid a) => a -> NonEmpty void -> Bool
+equipartitionLaw_sum a count =
+    F.fold (equipartition a count) == a
+
+equipartitionLaw_distanceConsecutive
+    :: Equipartition a => a -> NonEmpty void -> Bool
+equipartitionLaw_distanceConsecutive a count =
+    all ((<= 1) . uncurry equipartitionDistance)
+        (consecutivePairs (equipartition a count))
+
+equipartitionLaw_distanceLimits
+    :: Equipartition a => a -> NonEmpty void -> Bool
+equipartitionLaw_distanceLimits a count =
+    ((<= 1) . uncurry equipartitionDistance . (NE.head &&& NE.last))
+    (equipartition a count)
+
+equipartitionLaw_orderingConsecutive
+    :: Equipartition a => a -> NonEmpty void -> Bool
+equipartitionLaw_orderingConsecutive a count =
+    all (uncurry equipartitionOrdering)
+        (consecutivePairs (equipartition a count))
+
+equipartitionLaw_orderingLimits
+    :: Equipartition a => a -> NonEmpty void -> Bool
+equipartitionLaw_orderingLimits a count =
+    (uncurry equipartitionOrdering . (NE.head &&& NE.last))
+    (equipartition a count)
+
+--------------------------------------------------------------------------------
+-- Instances
+--------------------------------------------------------------------------------
+
+instance Equipartition Natural where
+    equipartition = equipartitionNatural
+
+    equipartitionDistance n1 n2
+        | n1 >= n2  = n1 - n2
+        | otherwise = n2 - n1
+
+    equipartitionOrdering n1 n2 = n1 <= n2
+
+instance Equipartition [a] where
+    equipartition as count =
+        NE.unfoldr makeChunk (chunkLengths, as)
+      where
+        chunkLengths :: NonEmpty Int
+        chunkLengths = fromIntegral @Natural @Int <$>
+            equipartition (fromIntegral @Int @Natural (length as)) count
+
+        makeChunk :: (NonEmpty Int, [a]) -> ([a], Maybe (NonEmpty Int, [a]))
+        makeChunk (c :| mcs, bs) = case NE.nonEmpty mcs of
+            Just cs -> (prefix, Just (cs, suffix))
+            Nothing -> (bs, Nothing)
+          where
+            (prefix, suffix) = L.splitAt c bs
+
+    equipartitionDistance xs ys = equipartitionDistance
+        (fromIntegral @Int @Natural $ length xs)
+        (fromIntegral @Int @Natural $ length ys)
+
+    equipartitionOrdering xs ys = length xs <= length ys
+
+instance Ord a => Equipartition (Set a) where
+    equipartition set count =
+        Set.fromList <$> equipartition (Set.toList set) count
+
+    equipartitionDistance xs ys = equipartitionDistance
+        (fromIntegral @Int @Natural $ Set.size xs)
+        (fromIntegral @Int @Natural $ Set.size ys)
+
+    equipartitionOrdering xs ys = length xs <= length ys
+
+--------------------------------------------------------------------------------
+-- Testing
+--------------------------------------------------------------------------------
+
 equipartitionLaws
     :: forall a.
         ( Arbitrary a
@@ -57,14 +139,18 @@ equipartitionLaws
     => Proxy a
     -> Laws
 equipartitionLaws _ = Laws "Equipartition"
-    [ ( "Distance"
-      , makeProperty equipartitionLaw_distance)
-    , ( "Length"
+    [ ( "Length"
       , makeProperty equipartitionLaw_length)
-    , ( "Ordering"
-      , makeProperty equipartitionLaw_ordering)
     , ( "Sum"
       , makeProperty equipartitionLaw_sum)
+    , ( "Distance (Consecutive)"
+      , makeProperty equipartitionLaw_distanceConsecutive)
+    , ( "Distance (Limits)"
+      , makeProperty equipartitionLaw_distanceLimits)
+    , ( "Ordering (Consecutive)"
+      , makeProperty equipartitionLaw_orderingConsecutive)
+    , ( "Ordering (Limits)"
+      , makeProperty equipartitionLaw_orderingLimits)
     ]
   where
     makeProperty :: (a -> NonEmpty () -> Bool) -> Property
@@ -130,72 +216,6 @@ equipartitionLaws _ = Laws "Equipartition"
         . cover 2
             (all (uncurry (==)) (consecutivePairs result))
             "all (uncurry (==)) (consecutivePairs result)"
-
-equipartitionLaw_distance
-    :: Equipartition a => a -> NonEmpty void -> Bool
-equipartitionLaw_distance a count =
-    ((<= 1) . uncurry equipartitionDistance . (NE.head &&& NE.last))
-    (equipartition a count)
-
-equipartitionLaw_length
-    :: Equipartition a => a -> NonEmpty void -> Bool
-equipartitionLaw_length a count =
-    length (equipartition a count) == length count
-
-equipartitionLaw_ordering
-    :: Equipartition a => a -> NonEmpty void -> Bool
-equipartitionLaw_ordering a count =
-    all (uncurry equipartitionOrdering)
-        (consecutivePairs (equipartition a count))
-
-equipartitionLaw_sum
-    :: (Eq a, Equipartition a, Monoid a) => a -> NonEmpty void -> Bool
-equipartitionLaw_sum a count =
-    F.fold (equipartition a count) == a
-
---------------------------------------------------------------------------------
--- Instances
---------------------------------------------------------------------------------
-
-instance Equipartition Natural where
-    equipartition = equipartitionNatural
-
-    equipartitionDistance n1 n2
-        | n1 >= n2  = n1 - n2
-        | otherwise = n2 - n1
-
-    equipartitionOrdering n1 n2 = n1 <= n2
-
-instance Equipartition [a] where
-    equipartition as count =
-        NE.unfoldr makeChunk (chunkLengths, as)
-      where
-        chunkLengths :: NonEmpty Int
-        chunkLengths = fromIntegral @Natural @Int <$>
-            equipartition (fromIntegral @Int @Natural (length as)) count
-
-        makeChunk :: (NonEmpty Int, [a]) -> ([a], Maybe (NonEmpty Int, [a]))
-        makeChunk (c :| mcs, bs) = case NE.nonEmpty mcs of
-            Just cs -> (prefix, Just (cs, suffix))
-            Nothing -> (bs, Nothing)
-          where
-            (prefix, suffix) = L.splitAt c bs
-
-    equipartitionDistance xs ys = equipartitionDistance
-        (fromIntegral @Int @Natural $ length xs)
-        (fromIntegral @Int @Natural $ length ys)
-
-    equipartitionOrdering xs ys = length xs <= length ys
-
-instance Ord a => Equipartition (Set a) where
-    equipartition set count =
-        Set.fromList <$> equipartition (Set.toList set) count
-
-    equipartitionDistance xs ys = equipartitionDistance
-        (fromIntegral @Int @Natural $ Set.size xs)
-        (fromIntegral @Int @Natural $ Set.size ys)
-
-    equipartitionOrdering xs ys = length xs <= length ys
 
 --------------------------------------------------------------------------------
 -- Utilities

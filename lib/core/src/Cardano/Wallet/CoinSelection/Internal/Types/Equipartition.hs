@@ -23,7 +23,7 @@ import Numeric.Natural
 import Safe
     ( tailMay )
 import Test.QuickCheck
-    ( Arbitrary, property )
+    ( Arbitrary, Property, Testable, checkCoverage, cover, property )
 import Test.QuickCheck.Classes
     ( Laws (..) )
 
@@ -58,14 +58,78 @@ equipartitionLaws
     -> Laws
 equipartitionLaws _ = Laws "Equipartition"
     [ ( "Distance"
-      , property (equipartitionLaw_distance @a @()))
+      , makeProperty equipartitionLaw_distance)
     , ( "Length"
-      , property (equipartitionLaw_length @a @()))
+      , makeProperty equipartitionLaw_length)
     , ( "Ordering"
-      , property (equipartitionLaw_ordering @a @()))
+      , makeProperty equipartitionLaw_ordering)
     , ( "Sum"
-      , property (equipartitionLaw_sum @a @()))
+      , makeProperty equipartitionLaw_sum)
     ]
+  where
+    makeProperty :: (a -> NonEmpty () -> Bool) -> Property
+    makeProperty = property . makePropertyInner
+
+    makePropertyInner
+        :: (a -> NonEmpty () -> Bool)
+        -> (a -> NonEmpty () -> Property)
+    makePropertyInner condition value count =
+        checkCoverage $
+        buildCoverage value count result $
+        condition value count
+      where
+        result = equipartition value count
+
+    buildCoverage
+        :: Testable prop
+        => a
+        -> NonEmpty ()
+        -> NonEmpty a
+        -> prop
+        -> Property
+    buildCoverage value count result
+        = cover 2
+            (length count == 1)
+            "length count == 1"
+        . cover 20
+            (length count /= 1)
+            "length count /= 1"
+        . cover 2
+            (value == mempty)
+            "value == mempty"
+        . cover 20
+            (value /= mempty)
+            "value /= mempty"
+        . cover 2
+            (NE.head result == mempty)
+            "NE.head result == mempty"
+        . cover 20
+            (NE.head result /= mempty)
+            "NE.head result /= mempty"
+        . cover 2
+            (NE.last result == mempty)
+            "NE.last result == mempty"
+        . cover 20
+            (NE.last result /= mempty)
+            "NE.last result /= mempty"
+        . cover 2
+            (NE.head result == NE.last result)
+            "NE.head result == NE.last result"
+        . cover 20
+            (NE.head result /= NE.last result)
+            "NE.head result /= NE.last result"
+        . cover 2
+            (equipartitionDistance (NE.head result) (NE.last result) == 0)
+            "equipartitionDistance (NE.head result) (NE.last result) == 0"
+        . cover 20
+            (equipartitionDistance (NE.head result) (NE.last result) /= 0)
+            "equipartitionDistance (NE.head result) (NE.last result) /= 0"
+        . cover 2
+            (all (uncurry (/=)) (consecutivePairs result))
+            "all (uncurry (/=)) (consecutivePairs result)"
+        . cover 2
+            (all (uncurry (==)) (consecutivePairs result))
+            "all (uncurry (==)) (consecutivePairs result)"
 
 equipartitionLaw_distance
     :: Equipartition a => a -> NonEmpty void -> Bool

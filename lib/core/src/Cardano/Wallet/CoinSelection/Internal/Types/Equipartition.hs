@@ -12,6 +12,8 @@ import Cardano.Numeric.Util
     ( equipartitionNatural )
 import Data.List.NonEmpty
     ( NonEmpty (..) )
+import Data.Map
+    ( Map )
 import Data.Maybe
     ( mapMaybe )
 import Data.Proxy
@@ -40,6 +42,7 @@ import Test.QuickCheck.Classes
 import qualified Data.Foldable as F
 import qualified Data.List as L
 import qualified Data.List.NonEmpty as NE
+import qualified Data.Map.Strict as Map
 import qualified Data.Set as Set
 
 --------------------------------------------------------------------------------
@@ -113,6 +116,16 @@ instance Equipartition [a] where
         (fromIntegral @Int @Natural $ length ys)
 
     equipartitionOrdering xs ys = length xs <= length ys
+
+instance Ord k => Equipartition (Map k v) where
+    equipartition m count =
+        Map.fromList <$> equipartition (Map.toList m) count
+
+    equipartitionDistance m1 m2 = equipartitionDistance
+        (fromIntegral @Int @Natural $ Map.size m1)
+        (fromIntegral @Int @Natural $ Map.size m2)
+
+    equipartitionOrdering m1 m2 = Map.size m1 <= Map.size m2
 
 instance Ord a => Equipartition (Set a) where
     equipartition set count =

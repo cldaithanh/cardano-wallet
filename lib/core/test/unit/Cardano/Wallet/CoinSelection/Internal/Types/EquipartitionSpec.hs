@@ -10,6 +10,8 @@ import Prelude
 
 import Cardano.Wallet.CoinSelection.Internal.Types.Equipartition
     ( Equipartition (..), equipartitionLaws )
+import Data.Map.Strict
+    ( Map )
 import Data.Set
     ( Set )
 import Numeric.Natural
@@ -29,10 +31,13 @@ spec =
         testLawsMany @(Sum Natural)
             [ equipartitionLaws
             ]
-        testLawsMany @[Natural]
+        testLawsMany @[Int]
             [ equipartitionLaws
             ]
-        testLawsMany @(Set Natural)
+        testLawsMany @(Map Int Int)
+            [ equipartitionLaws
+            ]
+        testLawsMany @(Set Int)
             [ equipartitionLaws
             ]
 

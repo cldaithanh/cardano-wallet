@@ -68,16 +68,13 @@ instance (Ord k, Difference v, Eq v, Monoid v) => Difference (ValueMap k v)
 instance (Ord k, Eq v, Monoid v) => Equipartition (Keys (ValueMap k v))
   where
     equipartition (Keys m) count =
-        Keys . fromSequence . fmap (\k -> (k, get m k)) . F.toList <$> keySets
-      where
-        keySets :: NonEmpty (Set k)
-        keySets = equipartition (keys m) count
+        Keys . ValueMap <$> equipartition (unValueMap m) count
 
-    equipartitionDistance (Keys m1) (Keys m2) = equipartitionDistance
-        (fromIntegral @Int @Natural $ size m1)
-        (fromIntegral @Int @Natural $ size m2)
+    equipartitionDistance (Keys m1) (Keys m2) =
+        equipartitionDistance (unValueMap m1) (unValueMap m2)
 
-    equipartitionOrdering (Keys m1) (Keys m2) = size m1 <= size m2
+    equipartitionOrdering (Keys m1) (Keys m2) =
+        equipartitionOrdering (unValueMap m1) (unValueMap m2)
 
 instance (Ord k, Eq v, Equipartition v, Monoid v, Ord v) =>
     Equipartition (Values (ValueMap k v))

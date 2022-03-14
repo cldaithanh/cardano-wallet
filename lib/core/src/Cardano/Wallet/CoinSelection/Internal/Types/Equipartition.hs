@@ -10,8 +10,6 @@ import Prelude
 
 import Cardano.Numeric.Util
     ( equipartitionNatural )
-import Control.Arrow
-    ( (&&&) )
 import Data.List.NonEmpty
     ( NonEmpty (..) )
 import Data.Proxy
@@ -45,39 +43,27 @@ class Equipartition a where
 -- Laws
 --------------------------------------------------------------------------------
 
+equipartitionLaw_distance
+    :: Equipartition a => a -> NonEmpty void -> Bool
+equipartitionLaw_distance a count =
+    all ((<= 1) . uncurry equipartitionDistance)
+        (orderedPairs (equipartition a count))
+
 equipartitionLaw_length
     :: Equipartition a => a -> NonEmpty void -> Bool
 equipartitionLaw_length a count =
     length (equipartition a count) == length count
 
+equipartitionLaw_ordering
+    :: Equipartition a => a -> NonEmpty void -> Bool
+equipartitionLaw_ordering a count =
+    all (uncurry equipartitionOrdering)
+        (orderedPairs (equipartition a count))
+
 equipartitionLaw_sum
     :: (Eq a, Equipartition a, Monoid a) => a -> NonEmpty void -> Bool
 equipartitionLaw_sum a count =
     F.fold (equipartition a count) == a
-
-equipartitionLaw_distanceConsecutive
-    :: Equipartition a => a -> NonEmpty void -> Bool
-equipartitionLaw_distanceConsecutive a count =
-    all ((<= 1) . uncurry equipartitionDistance)
-        (consecutivePairs (equipartition a count))
-
-equipartitionLaw_distanceLimits
-    :: Equipartition a => a -> NonEmpty void -> Bool
-equipartitionLaw_distanceLimits a count =
-    ((<= 1) . uncurry equipartitionDistance . (NE.head &&& NE.last))
-    (equipartition a count)
-
-equipartitionLaw_orderingConsecutive
-    :: Equipartition a => a -> NonEmpty void -> Bool
-equipartitionLaw_orderingConsecutive a count =
-    all (uncurry equipartitionOrdering)
-        (consecutivePairs (equipartition a count))
-
-equipartitionLaw_orderingLimits
-    :: Equipartition a => a -> NonEmpty void -> Bool
-equipartitionLaw_orderingLimits a count =
-    (uncurry equipartitionOrdering . (NE.head &&& NE.last))
-    (equipartition a count)
 
 --------------------------------------------------------------------------------
 -- Instances
@@ -139,18 +125,14 @@ equipartitionLaws
     => Proxy a
     -> Laws
 equipartitionLaws _ = Laws "Equipartition"
-    [ ( "Length"
+    [ ( "Distance"
+      , makeProperty equipartitionLaw_distance)
+    , ( "Length"
       , makeProperty equipartitionLaw_length)
+    , ( "Ordering"
+      , makeProperty equipartitionLaw_ordering)
     , ( "Sum"
       , makeProperty equipartitionLaw_sum)
-    , ( "Distance (Consecutive)"
-      , makeProperty equipartitionLaw_distanceConsecutive)
-    , ( "Distance (Limits)"
-      , makeProperty equipartitionLaw_distanceLimits)
-    , ( "Ordering (Consecutive)"
-      , makeProperty equipartitionLaw_orderingConsecutive)
-    , ( "Ordering (Limits)"
-      , makeProperty equipartitionLaw_orderingLimits)
     ]
   where
     makeProperty :: (a -> NonEmpty () -> Bool) -> Property
@@ -222,8 +204,15 @@ equipartitionLaws _ = Laws "Equipartition"
 --------------------------------------------------------------------------------
 
 consecutivePairs :: Foldable f => f a -> [(a, a)]
-consecutivePairs as = inner (F.toList as)
+consecutivePairs = inner . F.toList
   where
     inner xs = case tailMay xs of
         Nothing -> []
         Just ys -> xs `zip` ys
+
+orderedPairs :: Foldable f => f a -> [(a, a)]
+orderedPairs = inner . F.toList
+  where
+    inner [      ] = []
+    inner [_     ] = []
+    inner (x : xs) = [(x, y) | y <- xs] <> inner xs

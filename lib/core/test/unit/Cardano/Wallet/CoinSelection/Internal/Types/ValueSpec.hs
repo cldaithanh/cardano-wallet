@@ -16,8 +16,6 @@ import Cardano.Wallet.CoinSelection.Internal.Types.Subtract
     ( subtractLaws, subtractOrdLaws )
 import Cardano.Wallet.CoinSelection.Internal.Types.Value
     ( Value (..) )
-import Data.List.NonEmpty
-    ( NonEmpty (..) )
 import Test.Hspec
     ( Spec, describe )
 import Test.Hspec.Extra
@@ -52,9 +50,6 @@ spec =
             , subtractLaws
             , subtractOrdLaws
             ]
-
-instance Arbitrary a => Arbitrary (NonEmpty a) where
-    arbitrary = (:|) <$> arbitrary <*> arbitrary
 
 instance Arbitrary Value where
     arbitrary = Value . fromIntegral . abs <$> arbitrarySizedIntegral @Int

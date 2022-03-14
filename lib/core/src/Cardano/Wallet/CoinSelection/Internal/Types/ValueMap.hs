@@ -44,6 +44,10 @@ import qualified Data.List.NonEmpty as NE
 import qualified Data.Map.Strict as Map
 import qualified Data.Set as Set
 
+-- TODO: move the core operations into an internal module.
+-- test the invariant.
+-- don't export the constructor.
+
 newtype ValueMap k v = ValueMap
     { unValueMap :: Map k v }
     deriving (Eq, Generic)

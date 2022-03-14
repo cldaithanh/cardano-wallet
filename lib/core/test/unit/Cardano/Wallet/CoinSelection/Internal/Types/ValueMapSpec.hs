@@ -18,8 +18,6 @@ import Cardano.Wallet.CoinSelection.Internal.Types.Value
     ( Value (..) )
 import Cardano.Wallet.CoinSelection.Internal.Types.ValueMap
     ( Keys (..), ValueMap (..), Values (..) )
-import Data.List.NonEmpty
-    ( NonEmpty (..) )
 import Test.Hspec
     ( Spec, describe )
 import Test.Hspec.Extra
@@ -60,9 +58,6 @@ spec =
         testLawsMany @Value
             [ equipartitionLaws
             ]
-
-instance Arbitrary a => Arbitrary (NonEmpty a) where
-    arbitrary = (:|) <$> arbitrary <*> arbitrary
 
 instance Arbitrary Value where
     arbitrary = Value . fromIntegral . abs <$> arbitrarySizedIntegral @Int

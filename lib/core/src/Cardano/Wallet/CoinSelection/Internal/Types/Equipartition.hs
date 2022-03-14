@@ -12,6 +12,8 @@ import Cardano.Numeric.Util
     ( equipartitionNatural )
 import Data.List.NonEmpty
     ( NonEmpty (..) )
+import Data.Maybe
+    ( mapMaybe )
 import Data.Proxy
     ( Proxy )
 import Data.Set
@@ -21,7 +23,17 @@ import Numeric.Natural
 import Safe
     ( tailMay )
 import Test.QuickCheck
-    ( Arbitrary, Property, Testable, checkCoverage, cover, property )
+    ( Arbitrary
+    , Gen
+    , Property
+    , Testable
+    , arbitrary
+    , checkCoverage
+    , cover
+    , forAllShrink
+    , property
+    , shrink
+    )
 import Test.QuickCheck.Classes
     ( Laws (..) )
 
@@ -117,14 +129,7 @@ instance Ord a => Equipartition (Set a) where
 --------------------------------------------------------------------------------
 
 equipartitionLaws
-    :: forall a.
-        ( Arbitrary a
-        , Arbitrary (NonEmpty ())
-        , Eq a
-        , Equipartition a
-        , Monoid a
-        , Show a
-        )
+    :: forall a. (Arbitrary a, Eq a, Equipartition a, Monoid a, Show a)
     => Proxy a
     -> Laws
 equipartitionLaws _ = Laws "Equipartition"
@@ -139,12 +144,20 @@ equipartitionLaws _ = Laws "Equipartition"
     ]
   where
     makeProperty :: (a -> NonEmpty () -> Bool) -> Property
-    makeProperty = property . makePropertyInner
+    makeProperty =
+        property . forAllShrink genCount shrinkCount . makePropertyInner
+      where
+        genCount :: Gen (NonEmpty ())
+        genCount = (:|) <$> arbitrary <*> arbitrary
+
+        shrinkCount :: NonEmpty () -> [NonEmpty ()]
+        shrinkCount = mapMaybe NE.nonEmpty . shrink . NE.toList
 
     makePropertyInner
         :: (a -> NonEmpty () -> Bool)
-        -> (a -> NonEmpty () -> Property)
-    makePropertyInner condition value count =
+        -> NonEmpty ()
+        -> (a -> Property)
+    makePropertyInner condition count value =
         checkCoverage $
         buildCoverage value count result $
         condition value count

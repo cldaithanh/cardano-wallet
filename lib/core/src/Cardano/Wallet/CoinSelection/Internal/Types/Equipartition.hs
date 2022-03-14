@@ -39,6 +39,9 @@ class Equipartition a where
     equipartitionDistance :: a -> a -> Natural
     equipartitionOrdering :: a -> a -> Bool
 
+equipartitionN :: Equipartition a => a -> Int -> NonEmpty a
+equipartitionN a n = equipartition a (() :| replicate (max 0 (n - 1)) ())
+
 --------------------------------------------------------------------------------
 -- Laws
 --------------------------------------------------------------------------------

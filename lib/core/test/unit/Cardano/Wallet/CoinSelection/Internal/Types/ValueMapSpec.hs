@@ -55,9 +55,6 @@ spec =
         testLawsMany @(Values (ValueMap Int Value))
             [ equipartitionLaws
             ]
-        testLawsMany @Value
-            [ equipartitionLaws
-            ]
 
 instance Arbitrary Value where
     arbitrary = Value . fromIntegral . abs <$> arbitrarySizedIntegral @Int

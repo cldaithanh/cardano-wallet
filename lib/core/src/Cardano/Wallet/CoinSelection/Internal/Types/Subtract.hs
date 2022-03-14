@@ -38,37 +38,6 @@ class Subtract a where
 -- Laws
 --------------------------------------------------------------------------------
 
-subtractLaws
-    :: forall a. (Arbitrary a, Eq a, Monoid a, Show a, Subtract a)
-    => Proxy a
-    -> Laws
-subtractLaws _ = Laws "Subtract"
-    [ ( "Empty"
-      , property (subtractLaw_empty @a))
-    , ( "Self"
-      , property (subtractLaw_self @a))
-    ]
-
-subtractPartialOrdLaws
-    :: forall a. (Arbitrary a, PartialOrd a, Semigroup a, Show a, Subtract a)
-    => Proxy a
-    -> Laws
-subtractPartialOrdLaws _ = Laws "Subtract/PartialOrd"
-    [ ( "LessThanOrEqual"
-      , property (subtractPartialOrdLaw_lessThanOrEqual @a))
-    ]
-
-subtractOrdLaws
-    :: forall a. (Arbitrary a, Monoid a, Ord a, Show a, Subtract a)
-    => Proxy a
-    -> Laws
-subtractOrdLaws _ = Laws "Subtract/Ord"
-    [ ( "LessThanOrEqual"
-      , property (subtractOrdLaw_lessThanOrEqual @a))
-    , ( "GreaterThan"
-      , property (subtractOrdLaw_greaterThan @a))
-    ]
-
 subtractLaw_empty
     :: (Eq a, Monoid a, Subtract a) => a -> Bool
 subtractLaw_empty a = a `subtract` mempty == Just a
@@ -113,3 +82,38 @@ instance Ord a => Subtract (Set a) where
         | otherwise = Nothing
       where
         remainder = s1 `Set.difference` s2
+
+--------------------------------------------------------------------------------
+-- Testing
+--------------------------------------------------------------------------------
+
+subtractLaws
+    :: forall a. (Arbitrary a, Eq a, Monoid a, Show a, Subtract a)
+    => Proxy a
+    -> Laws
+subtractLaws _ = Laws "Subtract"
+    [ ( "Empty"
+      , property (subtractLaw_empty @a))
+    , ( "Self"
+      , property (subtractLaw_self @a))
+    ]
+
+subtractPartialOrdLaws
+    :: forall a. (Arbitrary a, PartialOrd a, Semigroup a, Show a, Subtract a)
+    => Proxy a
+    -> Laws
+subtractPartialOrdLaws _ = Laws "Subtract/PartialOrd"
+    [ ( "LessThanOrEqual"
+      , property (subtractPartialOrdLaw_lessThanOrEqual @a))
+    ]
+
+subtractOrdLaws
+    :: forall a. (Arbitrary a, Monoid a, Ord a, Show a, Subtract a)
+    => Proxy a
+    -> Laws
+subtractOrdLaws _ = Laws "Subtract/Ord"
+    [ ( "LessThanOrEqual"
+      , property (subtractOrdLaw_lessThanOrEqual @a))
+    , ( "GreaterThan"
+      , property (subtractOrdLaw_greaterThan @a))
+    ]

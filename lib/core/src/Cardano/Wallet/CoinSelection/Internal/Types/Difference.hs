@@ -33,37 +33,6 @@ class Difference a where
 -- Laws
 --------------------------------------------------------------------------------
 
-differenceLaws
-    :: forall a. (Arbitrary a, Difference a, Eq a, Monoid a, Show a)
-    => Proxy a
-    -> Laws
-differenceLaws _ = Laws "Difference"
-    [ ( "Empty"
-      , property (differenceLaw_empty @a))
-    , ( "Self"
-      , property (differenceLaw_self @a))
-    ]
-
-differencePartialOrdLaws
-    :: forall a. (Arbitrary a, Difference a, PartialOrd a, Semigroup a, Show a)
-    => Proxy a
-    -> Laws
-differencePartialOrdLaws _ = Laws "Difference/PartialOrd"
-    [ ( "LessThanOrEqual"
-      , property (differencePartialOrdLaw_lessThanOrEqual @a))
-    ]
-
-differenceOrdLaws
-    :: forall a. (Arbitrary a, Difference a, Monoid a, Ord a, Show a)
-    => Proxy a
-    -> Laws
-differenceOrdLaws _ = Laws "Difference/Ord"
-    [ ( "LessThanOrEqual"
-      , property (differenceOrdLaw_lessThanOrEqual @a))
-    , ( "GreaterThan"
-      , property (differenceOrdLaw_greaterThan @a))
-    ]
-
 differenceLaw_empty
     :: (Difference a, Eq a, Monoid a) => a -> Bool
 differenceLaw_empty a = a `difference` mempty == a
@@ -104,3 +73,38 @@ instance Difference Natural where
 
 instance Ord a => Difference (Set a) where
     difference = Set.difference
+
+--------------------------------------------------------------------------------
+-- Testing
+--------------------------------------------------------------------------------
+
+differenceLaws
+    :: forall a. (Arbitrary a, Difference a, Eq a, Monoid a, Show a)
+    => Proxy a
+    -> Laws
+differenceLaws _ = Laws "Difference"
+    [ ( "Empty"
+      , property (differenceLaw_empty @a))
+    , ( "Self"
+      , property (differenceLaw_self @a))
+    ]
+
+differencePartialOrdLaws
+    :: forall a. (Arbitrary a, Difference a, PartialOrd a, Semigroup a, Show a)
+    => Proxy a
+    -> Laws
+differencePartialOrdLaws _ = Laws "Difference/PartialOrd"
+    [ ( "LessThanOrEqual"
+      , property (differencePartialOrdLaw_lessThanOrEqual @a))
+    ]
+
+differenceOrdLaws
+    :: forall a. (Arbitrary a, Difference a, Monoid a, Ord a, Show a)
+    => Proxy a
+    -> Laws
+differenceOrdLaws _ = Laws "Difference/Ord"
+    [ ( "LessThanOrEqual"
+      , property (differenceOrdLaw_lessThanOrEqual @a))
+    , ( "GreaterThan"
+      , property (differenceOrdLaw_greaterThan @a))
+    ]

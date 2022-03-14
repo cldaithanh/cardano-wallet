@@ -66,8 +66,8 @@ instance (Ord k, Difference v, Eq v, Monoid v) => Difference (ValueMap k v)
 
 instance (Ord k, Eq v, Monoid v) => Equipartition (Keys (ValueMap k v))
   where
-    equipartition (Keys m) count =
-        Keys . ValueMap <$> equipartition (unValueMap m) count
+    equipartition (Keys m) =
+        fmap (Keys . ValueMap) . equipartition (unValueMap m)
 
     equipartitionDistance (Keys m1) (Keys m2) =
         equipartitionDistance (unValueMap m1) (unValueMap m2)

@@ -449,6 +449,7 @@ test-suite unit
       Cardano.Wallet.CoinSelection.InternalSpec
       Cardano.Wallet.CoinSelection.Internal.BalanceSpec
       Cardano.Wallet.CoinSelection.Internal.CollateralSpec
+      Cardano.Wallet.CoinSelection.Internal.Types.EquipartitionSpec
       Cardano.Wallet.CoinSelection.Internal.Types.ValueMapSpec
       Cardano.Wallet.CoinSelection.Internal.Types.ValueSpec
       Cardano.Wallet.DB.Arbitrary

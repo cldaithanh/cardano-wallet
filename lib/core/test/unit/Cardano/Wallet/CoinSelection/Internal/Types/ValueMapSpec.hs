@@ -17,7 +17,7 @@ import Cardano.Wallet.CoinSelection.Internal.Types.Subtract
 import Cardano.Wallet.CoinSelection.Internal.Types.Value
     ( Value (..) )
 import Cardano.Wallet.CoinSelection.Internal.Types.ValueMap
-    ( Keys (..), ValueMap (..), Values (..) )
+    ( Keys (..), ValueMap, Values (..) )
 import Test.Hspec
     ( Spec, describe )
 import Test.Hspec.Extra

@@ -5,6 +5,34 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 
 module Cardano.Wallet.CoinSelection.Internal.Types.ValueMap
+    (
+--  * Type
+      ValueMap
+
+--  * Modifiers
+    , Keys (..)
+    , Values (..)
+
+--  * Construction
+    , fromMap
+    , fromSequence
+    , singleton
+
+--  * Deconstruction
+    , toList
+    , toMap
+
+--  * Queries
+    , get
+    , keys
+    , size
+
+--  * Modification
+    , adjust
+    , adjustF
+    , delete
+    , set
+    )
     where
 
 import Prelude hiding
@@ -30,8 +58,6 @@ import Data.List.NonEmpty
     ( NonEmpty )
 import Data.Map.Strict
     ( Map )
-import Data.Maybe
-    ( fromMaybe )
 import Data.Set
     ( Set )
 import GHC.Generics
@@ -41,19 +67,25 @@ import Numeric.Natural
 import Quiet
     ( Quiet (..) )
 
+import qualified Cardano.Wallet.CoinSelection.Internal.Types.ValueMap.Internal
+    as Internal
 import qualified Data.Foldable as F
 import qualified Data.List.NonEmpty as NE
 import qualified Data.Map.Strict as Map
 import qualified Data.Set as Set
 
--- TODO: move the core operations into an internal module.
--- test the invariant.
--- don't export the constructor.
+--------------------------------------------------------------------------------
+-- Type
+--------------------------------------------------------------------------------
 
 newtype ValueMap k v = ValueMap
-    { unValueMap :: Map k v }
+    { unValueMap :: Internal.ValueMap k v }
     deriving (Eq, Generic)
-    deriving (Read, Show) via (Quiet (ValueMap k v))
+    deriving (Read, Show) via (Quiet (Internal.ValueMap k v))
+
+--------------------------------------------------------------------------------
+-- Modifiers
+--------------------------------------------------------------------------------
 
 newtype Keys a = Keys
     { unKeys :: a }
@@ -63,6 +95,10 @@ newtype Values a = Values
     { unValues :: a }
     deriving (Eq, Monoid, Semigroup, Show)
 
+--------------------------------------------------------------------------------
+-- Instances
+--------------------------------------------------------------------------------
+
 instance (Ord k, Difference v, Eq v, Monoid v) => Difference (ValueMap k v)
   where
     m1 `difference` m2 = F.foldl' reduce m1 (toList m2)
@@ -70,11 +106,11 @@ instance (Ord k, Difference v, Eq v, Monoid v) => Difference (ValueMap k v)
         reduce :: ValueMap k v -> (k, v) -> ValueMap k v
         reduce m (k, v) = adjust m k (`difference` v)
 
-instance Ord k => Equipartition (Keys (ValueMap k v))
+instance (Ord k, Eq v, Monoid v) => Equipartition (Keys (ValueMap k v))
   where
-    equipartition (Keys (ValueMap m)) = fmap (Keys . ValueMap) . equipartition m
-    equipartitionDistance = equipartitionDistance `on` unValueMap . unKeys
-    equipartitionOrdering = equipartitionOrdering `on` unValueMap . unKeys
+    equipartition m = fmap (Keys . fromMap) . equipartition (toMap $ unKeys m)
+    equipartitionDistance = equipartitionDistance `on` toMap . unKeys
+    equipartitionOrdering = equipartitionOrdering `on` toMap . unKeys
 
 instance (Ord k, Eq v, Equipartition v, Monoid v, Ord v) =>
     Equipartition (Values (ValueMap k v))
@@ -103,7 +139,7 @@ instance (Ord k, Eq v, Equipartition v, Monoid v, Ord v) =>
 
 instance (Ord k, Eq v, Monoid v) => Monoid (ValueMap k v)
   where
-    mempty = ValueMap Map.empty
+    mempty = ValueMap Internal.empty
 
 instance (Ord k, Monoid v, Ord v) => PartialOrd (ValueMap k v)
   where
@@ -143,30 +179,51 @@ instance (Ord k, Eq v, Monoid v, Subtract v) => Subtract (ValueMap k v)
         acc :: ValueMap k v -> (k, v) -> Maybe (ValueMap k v)
         acc m (k, v) = adjustF m k (`subtract` v)
 
+--------------------------------------------------------------------------------
+-- Construction
+--------------------------------------------------------------------------------
+
+fromMap :: (Ord k, Eq v, Monoid v) => Map k v -> ValueMap k v
+fromMap = fromSequence . Map.toList
+
 fromSequence :: (Foldable f, Ord k, Monoid v, Eq v) => f (k, v) -> ValueMap k v
-fromSequence = F.foldl' acc mempty
+fromSequence = F.foldl' acc (ValueMap Internal.empty)
   where
     acc m (k, v) = adjust m k (<> v)
 
 singleton :: (Ord k, Eq v, Monoid v) => k -> v -> ValueMap k v
 singleton = set mempty
 
-size :: ValueMap k v -> Int
-size = Map.size . unValueMap
+--------------------------------------------------------------------------------
+-- Deconstruction
+--------------------------------------------------------------------------------
 
 toList :: ValueMap k v -> [(k, v)]
-toList = Map.toList . unValueMap
+toList = Map.toList . Internal.toMap . unValueMap
+
+toMap :: ValueMap k v -> Map k v
+toMap = Internal.toMap . unValueMap
+
+--------------------------------------------------------------------------------
+-- Queries
+--------------------------------------------------------------------------------
+
+get :: (Ord k, Monoid v) => ValueMap k v -> k -> v
+get = Internal.get . unValueMap
 
 keys :: ValueMap k v -> Set k
-keys = Map.keysSet . unValueMap
+keys = Map.keysSet . toMap
+
+size :: ValueMap k v -> Int
+size = Map.size . toMap
+
+--------------------------------------------------------------------------------
+-- Modification
+--------------------------------------------------------------------------------
 
 adjust
-    :: (Ord k, Eq v, Monoid v)
-    => ValueMap k v
-    -> k
-    -> (v -> v)
-    -> ValueMap k v
-adjust m k a = set m k $ a $ get m k
+    :: (Ord k, Eq v, Monoid v) => ValueMap k v -> k -> (v -> v) -> ValueMap k v
+adjust = ((ValueMap .) .) . Internal.adjust . unValueMap
 
 adjustF
     :: (Functor f, Ord k, Eq v, Monoid v)
@@ -176,15 +233,8 @@ adjustF
     -> f (ValueMap k v)
 adjustF m k a = set m k <$> a (get m k)
 
-delete :: Ord k => ValueMap k v -> k -> ValueMap k v
-delete m k = ValueMap $ Map.delete k $ unValueMap m
-
-get :: (Ord k, Monoid v) => ValueMap k v -> k -> v
-get m k = fromMaybe mempty $ Map.lookup k $ unValueMap m
+delete :: (Ord k, Eq v, Monoid v) => ValueMap k v -> k -> ValueMap k v
+delete m k = set m k mempty
 
 set :: (Ord k, Eq v, Monoid v) => ValueMap k v -> k -> v -> ValueMap k v
-set m k v
-    | v == mempty =
-        ValueMap $ Map.delete k $ unValueMap m
-    | otherwise =
-        ValueMap $ Map.insert k v $ unValueMap m
+set m k v = adjust m k (const v)

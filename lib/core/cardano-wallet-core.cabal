@@ -196,6 +196,7 @@ library
       Cardano.Wallet.CoinSelection.Internal.Types.Subtract
       Cardano.Wallet.CoinSelection.Internal.Types.Value
       Cardano.Wallet.CoinSelection.Internal.Types.ValueMap
+      Cardano.Wallet.CoinSelection.Internal.Types.ValueMap.Internal
       Cardano.Wallet.Compat
       Cardano.Wallet.DB
       Cardano.Wallet.DB.Checkpoints

@@ -24,6 +24,8 @@ import Control.Monad
     ( foldM )
 import Data.Bifunctor
     ( bimap )
+import Data.Function
+    ( on )
 import Data.List.NonEmpty
     ( NonEmpty )
 import Data.Map.Strict
@@ -68,16 +70,11 @@ instance (Ord k, Difference v, Eq v, Monoid v) => Difference (ValueMap k v)
         reduce :: ValueMap k v -> (k, v) -> ValueMap k v
         reduce m (k, v) = adjust m k (`difference` v)
 
-instance (Ord k, Eq v, Monoid v) => Equipartition (Keys (ValueMap k v))
+instance Ord k => Equipartition (Keys (ValueMap k v))
   where
-    equipartition (Keys m) =
-        fmap (Keys . ValueMap) . equipartition (unValueMap m)
-
-    equipartitionDistance (Keys m1) (Keys m2) =
-        equipartitionDistance (unValueMap m1) (unValueMap m2)
-
-    equipartitionOrdering (Keys m1) (Keys m2) =
-        equipartitionOrdering (unValueMap m1) (unValueMap m2)
+    equipartition (Keys (ValueMap m)) = fmap (Keys . ValueMap) . equipartition m
+    equipartitionDistance = equipartitionDistance `on` unValueMap . unKeys
+    equipartitionOrdering = equipartitionOrdering `on` unValueMap . unKeys
 
 instance (Ord k, Eq v, Equipartition v, Monoid v, Ord v) =>
     Equipartition (Values (ValueMap k v))

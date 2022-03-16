@@ -204,7 +204,9 @@ prop_bipartitionUntil_true
     => a
     -> Property
 prop_bipartitionUntil_true a =
-    bipartitionUntil a (const True) === pure a
+    result === pure a
+  where
+    result = bipartitionUntil a (const True)
 
 prop_bipartitionUntil_bipartitionWhile
     :: (Arbitrary a, Eq a, Equipartition a, Monoid a, Show a)

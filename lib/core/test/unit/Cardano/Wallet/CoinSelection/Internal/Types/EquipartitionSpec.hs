@@ -1,7 +1,9 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE PatternSynonyms #-}
 {-# LANGUAGE TypeApplications #-}
 {-# OPTIONS_GHC -fno-warn-orphans #-}
+{-# OPTIONS_GHC -fno-warn-incomplete-patterns #-}
 
 module Cardano.Wallet.CoinSelection.Internal.Types.EquipartitionSpec
     where
@@ -27,10 +29,10 @@ import Test.Hspec.Extra
     ( parallel )
 import Test.QuickCheck
     ( Arbitrary (..)
+    , pattern Fn
     , Fun
     , Property
     , Testable
-    , applyFun
     , arbitrarySizedIntegral
     , checkCoverage
     , cover
@@ -107,17 +109,17 @@ prop_bipartitionUntil_coverage
     -> (a -> Bool)
     -> prop
     -> Property
-prop_bipartitionUntil_coverage a condition prop
+prop_bipartitionUntil_coverage value condition prop
     = checkCoverage
     $ cover 2
-        (a == mempty)
-        "a == mempty"
+        (value == mempty)
+        "value == mempty"
     $ cover 20
-        (a /= mempty)
-        "a /= mempty"
+        (value /= mempty)
+        "value /= mempty"
     $ cover 20
-        (condition a)
-        "condition a"
+        (condition value)
+        "condition value"
     $ cover 20
         (condition mempty)
         "condition mempty"
@@ -125,8 +127,8 @@ prop_bipartitionUntil_coverage a condition prop
         (not (condition mempty))
         "not (condition mempty)"
     $ cover 20
-        (not (condition a))
-        "not (condition a)"
+        (not (condition value))
+        "not (condition value)"
     $ cover 20
         (F.length result == 1)
         "F.length result == 1"
@@ -138,7 +140,7 @@ prop_bipartitionUntil_coverage a condition prop
         "F.length result >= 3"
     $ property prop
   where
-    result = bipartitionUntil a condition
+    result = value `bipartitionUntil` condition
 
 prop_bipartitionUntil_const
     :: (Arbitrary a, Eq a, Equipartition a, Monoid a, Show a)
@@ -152,60 +154,60 @@ prop_bipartitionUntil_const a condition =
         then pure a
         else equipartition a result
   where
-    result = bipartitionUntil a (const condition)
+    result = a `bipartitionUntil` (const condition)
 
 prop_bipartitionUntil_idempotent
     :: (Arbitrary a, Eq a, Equipartition a, Monoid a, Show a)
     => a
     -> Fun a Bool
     -> Property
-prop_bipartitionUntil_idempotent a f =
-    prop_bipartitionUntil_coverage a (applyFun f) $
-    (flip bipartitionUntil (applyFun f) =<< result) === result
+prop_bipartitionUntil_idempotent a (Fn f) =
+    prop_bipartitionUntil_coverage a f $
+    ((`bipartitionUntil` f) =<< result) === result
   where
-    result = bipartitionUntil a (applyFun f)
+    result = a `bipartitionUntil` f
 
 prop_bipartitionUntil_mempty
     :: (Arbitrary a, Eq a, Equipartition a, Monoid a, Show a)
     => a
     -> Fun a Bool
     -> Property
-prop_bipartitionUntil_mempty a f =
-    prop_bipartitionUntil_coverage a (applyFun f) $
+prop_bipartitionUntil_mempty a (Fn f) =
+    prop_bipartitionUntil_coverage a f $
     if a == mempty
     then result === pure mempty
     else property $ mempty `notElem` result
   where
-    result = bipartitionUntil a (applyFun f)
+    result = a `bipartitionUntil` f
 
 prop_bipartitionUntil_satisfy
     :: (Arbitrary a, Eq a, Equipartition a, Monoid a, Show a)
     => a
     -> Fun a Bool
     -> Property
-prop_bipartitionUntil_satisfy a f =
-    prop_bipartitionUntil_coverage a (applyFun f) $
-    all satisfiesCondition (bipartitionUntil a (applyFun f))
+prop_bipartitionUntil_satisfy a (Fn f) =
+    prop_bipartitionUntil_coverage a f $
+    all satisfiesCondition (a `bipartitionUntil` f)
   where
-    satisfiesCondition x = applyFun f x || bipartition x == (mempty, x)
+    satisfiesCondition x = f x || bipartition x == (mempty, x)
 
 prop_bipartitionUntil_sum
     :: (Arbitrary a, Eq a, Equipartition a, Monoid a, Show a)
     => a
     -> Fun a Bool
     -> Property
-prop_bipartitionUntil_sum a f =
-    prop_bipartitionUntil_coverage a (applyFun f) $
-    F.fold (bipartitionUntil a (applyFun f)) === a
+prop_bipartitionUntil_sum a (Fn f) =
+    prop_bipartitionUntil_coverage a f $
+    F.fold (a `bipartitionUntil` f) === a
 
 prop_bipartitionUntil_bipartitionWhile
     :: (Arbitrary a, Eq a, Equipartition a, Monoid a, Show a)
     => a
     -> Fun a Bool
     -> Property
-prop_bipartitionUntil_bipartitionWhile a f =
-    prop_bipartitionUntil_coverage a (applyFun f) $
-    bipartitionUntil a (applyFun f) === bipartitionWhile a (not . applyFun f)
+prop_bipartitionUntil_bipartitionWhile a (Fn f) =
+    prop_bipartitionUntil_coverage a f $
+    a `bipartitionUntil` f === a `bipartitionWhile` (not . f)
 
 --------------------------------------------------------------------------------
 -- Arbitraries

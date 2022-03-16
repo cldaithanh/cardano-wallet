@@ -99,7 +99,7 @@ bipartitionUntil a f
     | x == mempty = pure a
     | y == mempty = pure a
     | f a         = pure a
-    | otherwise   = flip bipartitionUntil f =<< (x :| [y])
+    | otherwise   = (`bipartitionUntil` f) =<< (x :| [y])
   where
     (x, y) = bipartition a
 
@@ -109,7 +109,7 @@ bipartitionWhile a f
     | a == mempty = pure a
     | x == mempty = pure a
     | y == mempty = pure a
-    | f a         = flip bipartitionWhile f =<< (x :| [y])
+    | f a         = (`bipartitionWhile` f) =<< (x :| [y])
     | otherwise   = pure a
   where
     (x, y) = bipartition a

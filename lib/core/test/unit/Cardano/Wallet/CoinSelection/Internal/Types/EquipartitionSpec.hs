@@ -61,17 +61,23 @@ spec = do
 
     parallel $ describe "Bipartitioning" $ do
 
-        describe "bipartitionUntil_mempty" $ do
-            it "bipartitionUntil_mempty @[Int]" $
-                property $ prop_bipartitionUntil_mempty @[Int]
-            it "bipartitionUntil_mempty @(Map Int Int)" $
-                property $ prop_bipartitionUntil_mempty @(Map Int Int)
+        describe "bipartitionUntil_const" $ do
+            it "bipartitionUntil_const @[Int]" $
+                property $ prop_bipartitionUntil_const @[Int]
+            it "bipartitionUntil_const @(Map Int Int)" $
+                property $ prop_bipartitionUntil_const @(Map Int Int)
 
         describe "bipartitionUntil_idempotent" $ do
             it "bipartitionUntil_idempotent @[Int]" $
                 property $ prop_bipartitionUntil_idempotent @[Int]
             it "bipartitionUntil_idempotent @(Map Int Int)" $
                 property $ prop_bipartitionUntil_idempotent @(Map Int Int)
+
+        describe "bipartitionUntil_mempty" $ do
+            it "bipartitionUntil_mempty @[Int]" $
+                property $ prop_bipartitionUntil_mempty @[Int]
+            it "bipartitionUntil_mempty @(Map Int Int)" $
+                property $ prop_bipartitionUntil_mempty @(Map Int Int)
 
         describe "bipartitionUntil_satisfy" $ do
             it "bipartitionUntil_satisfy @[Int]" $
@@ -84,18 +90,6 @@ spec = do
                 property $ prop_bipartitionUntil_sum @[Int]
             it "bipartitionUntil_sum @(Map Int Int)" $
                 property $ prop_bipartitionUntil_sum @(Map Int Int)
-
-        describe "bipartitionUntil_false" $ do
-            it "bipartitionUntil_false @[Int]" $
-                property $ prop_bipartitionUntil_false @[Int]
-            it "bipartitionUntil_false @(Map Int Int)" $
-                property $ prop_bipartitionUntil_false @(Map Int Int)
-
-        describe "bipartitionUntil_true" $ do
-            it "bipartitionUntil_true @[Int]" $
-                property $ prop_bipartitionUntil_true @[Int]
-            it "bipartitionUntil_true @(Map Int Int)" $
-                property $ prop_bipartitionUntil_true @(Map Int Int)
 
         describe "bipartitionUntil_bipartitionWhile" $ do
             it "bipartitionUntil_bipartitionWhile @[Int]" $
@@ -110,10 +104,10 @@ spec = do
 prop_bipartitionUntil_coverage
     :: (Arbitrary a, Eq a, Equipartition a, Monoid a, Show a, Testable prop)
     => a
-    -> Fun a Bool
+    -> (a -> Bool)
     -> prop
     -> Property
-prop_bipartitionUntil_coverage a f prop
+prop_bipartitionUntil_coverage a condition prop
     = checkCoverage
     $ cover 2
         (a == mempty)
@@ -122,27 +116,51 @@ prop_bipartitionUntil_coverage a f prop
         (a /= mempty)
         "a /= mempty"
     $ cover 20
-        (applyFun f a)
-        "applyFun f a"
+        (condition a)
+        "condition a"
     $ cover 20
-        (applyFun f mempty)
-        "applyFun f mempty"
+        (condition mempty)
+        "condition mempty"
     $ cover 20
-        (not (applyFun f mempty))
-        "not (applyFun f mempty)"
+        (not (condition mempty))
+        "not (condition mempty)"
     $ cover 20
-        (not (applyFun f a))
-        "not (applyFun f a)"
+        (not (condition a))
+        "not (condition a)"
     $ cover 20
         (F.length result == 1)
         "F.length result == 1"
-    $ cover 5
+    $ cover 1
         (F.length result == 2)
         "F.length result == 2"
     $ cover 5
         (F.length result >= 3)
         "F.length result >= 3"
     $ property prop
+  where
+    result = bipartitionUntil a condition
+
+prop_bipartitionUntil_const
+    :: (Arbitrary a, Eq a, Equipartition a, Monoid a, Show a)
+    => a
+    -> Bool
+    -> Property
+prop_bipartitionUntil_const a condition =
+    prop_bipartitionUntil_coverage a (const condition) $
+    if condition
+    then result === pure a
+    else result === equipartition a result
+  where
+    result = bipartitionUntil a (const condition)
+
+prop_bipartitionUntil_idempotent
+    :: (Arbitrary a, Eq a, Equipartition a, Monoid a, Show a)
+    => a
+    -> Fun a Bool
+    -> Property
+prop_bipartitionUntil_idempotent a f =
+    prop_bipartitionUntil_coverage a (applyFun f) $
+    (flip bipartitionUntil (applyFun f) =<< result) === result
   where
     result = bipartitionUntil a (applyFun f)
 
@@ -152,21 +170,10 @@ prop_bipartitionUntil_mempty
     -> Fun a Bool
     -> Property
 prop_bipartitionUntil_mempty a f =
-    prop_bipartitionUntil_coverage a f $
+    prop_bipartitionUntil_coverage a (applyFun f) $
     if a == mempty
     then result === pure mempty
     else property $ mempty `notElem` result
-  where
-    result = bipartitionUntil a (applyFun f)
-
-prop_bipartitionUntil_idempotent
-    :: (Arbitrary a, Eq a, Equipartition a, Monoid a, Show a)
-    => a
-    -> Fun a Bool
-    -> Property
-prop_bipartitionUntil_idempotent a f =
-    prop_bipartitionUntil_coverage a f $
-    (flip bipartitionUntil (applyFun f) =<< result) === result
   where
     result = bipartitionUntil a (applyFun f)
 
@@ -176,7 +183,7 @@ prop_bipartitionUntil_satisfy
     -> Fun a Bool
     -> Property
 prop_bipartitionUntil_satisfy a f =
-    prop_bipartitionUntil_coverage a f $
+    prop_bipartitionUntil_coverage a (applyFun f) $
     all satisfiesCondition (bipartitionUntil a (applyFun f))
   where
     satisfiesCondition x = applyFun f x || bipartition x == (mempty, x)
@@ -187,26 +194,8 @@ prop_bipartitionUntil_sum
     -> Fun a Bool
     -> Property
 prop_bipartitionUntil_sum a f =
-    prop_bipartitionUntil_coverage a f $
+    prop_bipartitionUntil_coverage a (applyFun f) $
     F.fold (bipartitionUntil a (applyFun f)) === a
-
-prop_bipartitionUntil_false
-    :: (Arbitrary a, Eq a, Equipartition a, Monoid a, Show a)
-    => a
-    -> Property
-prop_bipartitionUntil_false a =
-    result === equipartition a result
-  where
-    result = bipartitionUntil a (const False)
-
-prop_bipartitionUntil_true
-    :: (Arbitrary a, Eq a, Equipartition a, Monoid a, Show a)
-    => a
-    -> Property
-prop_bipartitionUntil_true a =
-    result === pure a
-  where
-    result = bipartitionUntil a (const True)
 
 prop_bipartitionUntil_bipartitionWhile
     :: (Arbitrary a, Eq a, Equipartition a, Monoid a, Show a)
@@ -214,7 +203,7 @@ prop_bipartitionUntil_bipartitionWhile
     -> Fun a Bool
     -> Property
 prop_bipartitionUntil_bipartitionWhile a f =
-    prop_bipartitionUntil_coverage a f $
+    prop_bipartitionUntil_coverage a (applyFun f) $
     bipartitionUntil a (applyFun f) === bipartitionWhile a (not . applyFun f)
 
 --------------------------------------------------------------------------------

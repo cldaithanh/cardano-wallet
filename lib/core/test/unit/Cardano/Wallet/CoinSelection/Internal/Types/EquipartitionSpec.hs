@@ -147,9 +147,10 @@ prop_bipartitionUntil_const
     -> Property
 prop_bipartitionUntil_const a condition =
     prop_bipartitionUntil_coverage a (const condition) $
-    if condition
-    then result === pure a
-    else result === equipartition a result
+    result ==
+        if condition
+        then pure a
+        else equipartition a result
   where
     result = bipartitionUntil a (const condition)
 

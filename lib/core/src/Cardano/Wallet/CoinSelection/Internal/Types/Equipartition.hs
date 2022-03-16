@@ -95,9 +95,8 @@ bipartition = (NE.head &&& NE.last) . flip equipartition (() :| [()])
 bipartitionUntil
     :: (Eq a, Equipartition a, Monoid a) => a -> (a -> Bool) -> NonEmpty a
 bipartitionUntil a f
-    | a == mempty = pure a
     | x == mempty = pure a
-    | y == mempty = pure a
+    | y == a      = pure a
     | f a         = pure a
     | otherwise   = (`bipartitionUntil` f) =<< (x :| [y])
   where
@@ -106,9 +105,8 @@ bipartitionUntil a f
 bipartitionWhile
     :: (Eq a, Equipartition a, Monoid a) => a -> (a -> Bool) -> NonEmpty a
 bipartitionWhile a f
-    | a == mempty = pure a
     | x == mempty = pure a
-    | y == mempty = pure a
+    | y == a      = pure a
     | f a         = (`bipartitionWhile` f) =<< (x :| [y])
     | otherwise   = pure a
   where

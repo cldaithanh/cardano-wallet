@@ -67,8 +67,7 @@ import Numeric.Natural
 import Quiet
     ( Quiet (..) )
 
-import qualified Cardano.Wallet.CoinSelection.Internal.Types.ValueMap.Internal
-    as Internal
+import qualified Cardano.Wallet.CoinSelection.Internal.Types.ValueMap.Internal as Internal
 import qualified Data.Foldable as F
 import qualified Data.List.NonEmpty as NE
 import qualified Data.Map.Strict as Map

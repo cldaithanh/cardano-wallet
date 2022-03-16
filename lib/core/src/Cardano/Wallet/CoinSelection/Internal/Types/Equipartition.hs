@@ -10,6 +10,8 @@ import Prelude
 
 import Cardano.Numeric.Util
     ( equipartitionNatural )
+import Control.Arrow
+    ( (&&&) )
 import Data.List.NonEmpty
     ( NonEmpty (..) )
 import Data.Map
@@ -82,6 +84,35 @@ equipartitionLaw_sum
     :: (Eq a, Equipartition a, Monoid a) => a -> NonEmpty void -> Bool
 equipartitionLaw_sum a count =
     F.fold (equipartition a count) == a
+
+--------------------------------------------------------------------------------
+-- Functions
+--------------------------------------------------------------------------------
+
+bipartition :: Equipartition a => a -> (a, a)
+bipartition = (NE.head &&& NE.last) . flip equipartition (() :| [()])
+
+bipartitionUntil
+    :: (Eq a, Equipartition a, Monoid a) => a -> (a -> Bool) -> NonEmpty a
+bipartitionUntil a f
+    | a == mempty = pure a
+    | x == mempty = pure a
+    | y == mempty = pure a
+    | f a         = pure a
+    | otherwise   = flip bipartitionUntil f =<< (x :| [y])
+  where
+    (x, y) = bipartition a
+
+bipartitionWhile
+    :: (Eq a, Equipartition a, Monoid a) => a -> (a -> Bool) -> NonEmpty a
+bipartitionWhile a f
+    | a == mempty = pure a
+    | x == mempty = pure a
+    | y == mempty = pure a
+    | f a         = flip bipartitionWhile f =<< (x :| [y])
+    | otherwise   = pure a
+  where
+    (x, y) = bipartition a
 
 --------------------------------------------------------------------------------
 -- Instances

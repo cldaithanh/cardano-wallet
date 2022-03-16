@@ -85,6 +85,12 @@ spec = do
             it "bipartitionUntil_sum @(Map Int Int)" $
                 property $ prop_bipartitionUntil_sum @(Map Int Int)
 
+        describe "bipartitionUntil_false" $ do
+            it "bipartitionUntil_false @[Int]" $
+                property $ prop_bipartitionUntil_false @[Int]
+            it "bipartitionUntil_false @(Map Int Int)" $
+                property $ prop_bipartitionUntil_false @(Map Int Int)
+
         describe "bipartitionUntil_true" $ do
             it "bipartitionUntil_true @[Int]" $
                 property $ prop_bipartitionUntil_true @[Int]
@@ -183,6 +189,15 @@ prop_bipartitionUntil_sum
 prop_bipartitionUntil_sum a f =
     prop_bipartitionUntil_coverage a f $
     F.fold (bipartitionUntil a (applyFun f)) === a
+
+prop_bipartitionUntil_false
+    :: (Arbitrary a, Eq a, Equipartition a, Monoid a, Show a)
+    => a
+    -> Property
+prop_bipartitionUntil_false a =
+    result === equipartition a result
+  where
+    result = bipartitionUntil a (const False)
 
 prop_bipartitionUntil_true
     :: (Arbitrary a, Eq a, Equipartition a, Monoid a, Show a)

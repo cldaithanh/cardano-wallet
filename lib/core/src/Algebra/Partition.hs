@@ -3,7 +3,7 @@
 {-# LANGUAGE TupleSections #-}
 {- HLINT ignore "Use camelCase" -}
 
-module Cardano.Wallet.CoinSelection.Internal.Types.Partition
+module Algebra.Partition
     where
 
 import Prelude

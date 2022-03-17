@@ -2,7 +2,7 @@
 {-# LANGUAGE TypeApplications #-}
 {- HLINT ignore "Use camelCase" -}
 
-module Cardano.Wallet.CoinSelection.Internal.Types.Difference
+module Algebra.Difference
     where
 
 import Prelude

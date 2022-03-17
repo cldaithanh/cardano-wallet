@@ -5,12 +5,12 @@
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 {-# OPTIONS_GHC -fno-warn-incomplete-patterns #-}
 
-module Cardano.Wallet.CoinSelection.Internal.Types.EquipartitionSpec
+module Algebra.EquipartitionSpec
     where
 
 import Prelude
 
-import Cardano.Wallet.CoinSelection.Internal.Types.Equipartition
+import Algebra.Equipartition
     ( Equipartition (..)
     , bipartition
     , bipartitionUntil

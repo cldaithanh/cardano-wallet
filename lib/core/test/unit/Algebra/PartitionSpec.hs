@@ -3,15 +3,13 @@
 {-# LANGUAGE TypeApplications #-}
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 
-module Cardano.Wallet.CoinSelection.Internal.Types.DifferenceSpec
+module Algebra.PartitionSpec
     where
 
 import Prelude
 
-import Cardano.Wallet.CoinSelection.Internal.Types.Difference
-    ( Difference (..), differenceLaws, differenceOrdLaws )
-import Data.Set
-    ( Set )
+import Algebra.Partition
+    ( Partition (..), partitionLaws )
 import Numeric.Natural
     ( Natural )
 import Test.Hspec
@@ -27,15 +25,11 @@ spec :: Spec
 spec =
     parallel $ describe "Class instances obey laws" $ do
         testLawsMany @(Sum Natural)
-            [ differenceLaws
-            , differenceOrdLaws
-            ]
-        testLawsMany @(Set Int)
-            [ differenceLaws
+            [ partitionLaws
             ]
 
 newtype Sum a = Sum a
-    deriving (Arbitrary, Difference, Eq, Ord, Show)
+    deriving (Arbitrary, Eq, Partition, Show)
 
 instance Monoid (Sum Natural) where
     mempty = Sum 0

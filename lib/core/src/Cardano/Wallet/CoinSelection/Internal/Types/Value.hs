@@ -7,13 +7,13 @@ module Cardano.Wallet.CoinSelection.Internal.Types.Value
 
 import Prelude
 
-import Cardano.Wallet.CoinSelection.Internal.Types.Difference
+import Algebra.Difference
     ( Difference )
-import Cardano.Wallet.CoinSelection.Internal.Types.Equipartition
+import Algebra.Equipartition
     ( Equipartition )
-import Cardano.Wallet.CoinSelection.Internal.Types.Partition
+import Algebra.Partition
     ( Partition )
-import Cardano.Wallet.CoinSelection.Internal.Types.Subtract
+import Algebra.Subtract
     ( Subtract )
 import GHC.Generics
     ( Generic )

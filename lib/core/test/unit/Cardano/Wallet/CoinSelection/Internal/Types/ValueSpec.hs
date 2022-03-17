@@ -6,13 +6,13 @@ module Cardano.Wallet.CoinSelection.Internal.Types.ValueSpec
 
 import Prelude
 
-import Cardano.Wallet.CoinSelection.Internal.Types.Difference
+import Algebra.Difference
     ( differenceLaws, differenceOrdLaws )
-import Cardano.Wallet.CoinSelection.Internal.Types.Equipartition
+import Algebra.Equipartition
     ( equipartitionLaws )
-import Cardano.Wallet.CoinSelection.Internal.Types.Partition
+import Algebra.Partition
     ( partitionLaws )
-import Cardano.Wallet.CoinSelection.Internal.Types.Subtract
+import Algebra.Subtract
     ( subtractLaws, subtractOrdLaws )
 import Cardano.Wallet.CoinSelection.Internal.Types.Value
     ( Value (..) )

@@ -3,12 +3,12 @@
 {-# LANGUAGE TypeApplications #-}
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 
-module Cardano.Wallet.CoinSelection.Internal.Types.SubtractSpec
+module Algebra.SubtractSpec
     where
 
 import Prelude
 
-import Cardano.Wallet.CoinSelection.Internal.Types.Subtract
+import Algebra.Subtract
     ( Subtract (..), subtractLaws, subtractOrdLaws )
 import Data.Set
     ( Set )

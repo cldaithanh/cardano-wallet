@@ -38,15 +38,15 @@ module Cardano.Wallet.CoinSelection.Internal.Types.ValueMap
 import Prelude hiding
     ( subtract )
 
+import Algebra.Difference
+    ( Difference (..) )
+import Algebra.Equipartition
+    ( Equipartition (..) )
 import Algebra.PartialOrd
     ( PartialOrd (..) )
-import Cardano.Wallet.CoinSelection.Internal.Types.Difference
-    ( Difference (..) )
-import Cardano.Wallet.CoinSelection.Internal.Types.Equipartition
-    ( Equipartition (..) )
-import Cardano.Wallet.CoinSelection.Internal.Types.Partition
+import Algebra.Partition
     ( Partition (..) )
-import Cardano.Wallet.CoinSelection.Internal.Types.Subtract
+import Algebra.Subtract
     ( Subtract (..) )
 import Control.Monad
     ( foldM )

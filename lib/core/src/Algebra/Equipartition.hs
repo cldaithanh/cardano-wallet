@@ -3,7 +3,7 @@
 {-# LANGUAGE TypeApplications #-}
 {- HLINT ignore "Use camelCase" -}
 
-module Cardano.Wallet.CoinSelection.Internal.Types.Equipartition
+module Algebra.Equipartition
     where
 
 import Prelude

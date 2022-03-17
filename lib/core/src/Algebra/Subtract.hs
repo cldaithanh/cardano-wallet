@@ -2,7 +2,7 @@
 {-# LANGUAGE TypeApplications #-}
 {- HLINT ignore "Use camelCase" -}
 
-module Cardano.Wallet.CoinSelection.Internal.Types.Subtract
+module Algebra.Subtract
     where
 
 import Prelude hiding

@@ -1,7 +1,9 @@
 {-# LANGUAGE DuplicateRecordFields #-}
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE NamedFieldPuns #-}
+{-# LANGUAGE TupleSections #-}
 {-# LANGUAGE TypeFamilies #-}
 
 module Cardano.Wallet.CoinSelection.Internal.Types
@@ -11,19 +13,33 @@ import Prelude hiding
     ( subtract )
 
 import Cardano.Wallet.CoinSelection.Internal.Types.Value
-    ( Value )
+    ( Value (..) )
 import Cardano.Wallet.CoinSelection.Internal.Types.ValueMap
     ( ValueMap )
+import Cardano.Wallet.Primitive.Types.Coin
+    ( Coin (..) )
+import Cardano.Wallet.Primitive.Types.TokenBundle
+    ( TokenBundle (..) )
+import Cardano.Wallet.Primitive.Types.TokenQuantity
+    ( TokenQuantity (..) )
 import Cardano.Wallet.Primitive.Types.UTxOSelection
     ( UTxOSelection )
+import Data.Bifunctor
+    ( bimap )
+import Data.Functor
+    ( (<&>) )
 import Data.List
     ( sortOn )
 import Data.List.NonEmpty
     ( NonEmpty )
 import Data.Map.Strict
     ( Map )
+import Data.Maybe
+    ( mapMaybe )
 
+import qualified Cardano.Wallet.CoinSelection.Internal.Types.ValueMap as ValueMap
 import qualified Cardano.Wallet.Primitive.Types.Address as W
+import qualified Cardano.Wallet.Primitive.Types.TokenMap as TokenMap
 import qualified Cardano.Wallet.Primitive.Types.TokenMap as W
 import qualified Cardano.Wallet.Primitive.Types.Tx as W
 
@@ -87,5 +103,41 @@ data Wallet
 
 instance SelectionContext Wallet where
     type Address Wallet = W.Address
-    type Asset Wallet = W.AssetId
-    type UTxO Wallet = (W.TxIn, W.Address)
+    type Asset Wallet = WalletAsset
+    type UTxO Wallet = WalletUTxO
+
+data WalletAsset
+    = WalletAssetLovelace
+    | WalletAsset W.AssetId
+    deriving (Eq, Ord, Show)
+
+data WalletUTxO = WalletUTxO
+    { txIn
+        :: W.TxIn
+    , address
+        :: W.Address
+    }
+    deriving (Eq, Ord, Show)
+
+--------------------------------------------------------------------------------
+-- Conversion
+--------------------------------------------------------------------------------
+
+walletAssetToAssetId :: WalletAsset -> Maybe W.AssetId
+walletAssetToAssetId = \case
+    WalletAssetLovelace -> Nothing
+    WalletAsset assetId -> Just assetId
+
+tokenBundleToAssetValueMap :: TokenBundle -> AssetValueMap Wallet
+tokenBundleToAssetValueMap (TokenBundle (Coin c) m) =
+    ValueMap.fromSequence $ (:)
+        (WalletAssetLovelace, Value c)
+        (bimap WalletAsset (Value . unTokenQuantity) <$> TokenMap.toFlatList m)
+
+assetValueMapToTokenBundle :: AssetValueMap Wallet -> TokenBundle
+assetValueMapToTokenBundle vm = TokenBundle c m
+  where
+    c = Coin $ unValue $ vm `ValueMap.get` WalletAssetLovelace
+    m = TokenMap.fromFlatList $ fmap (TokenQuantity . unValue) <$> mapMaybe
+        (\(k, v) -> walletAssetToAssetId k <&> (, v))
+        (ValueMap.toList vm)

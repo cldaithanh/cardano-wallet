@@ -3352,6 +3352,7 @@ data ErrBalanceTx
     | ErrBalanceTxAssignRedeemers ErrAssignRedeemers
     | ErrBalanceTxNotYetSupported BalanceTxNotSupportedReason
     | ErrBalanceTxFailedBalancing Cardano.Value
+    deriving (Show, Eq)
 
 -- TODO: Remove once problems are fixed.
 data BalanceTxNotSupportedReason

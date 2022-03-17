@@ -9,8 +9,6 @@ module Cardano.Wallet.CoinSelection.Internal.Types.AssetValueMap
     ( AssetValueMap
     , Assets (..)
     , Values (..)
-    , fromSequence
-    , toList
     , get
     )
     where
@@ -31,6 +29,8 @@ import Cardano.Wallet.CoinSelection.Internal.Types.Value
     ( Value )
 import Data.MonoidMap
     ( MonoidMap )
+import GHC.Exts
+    ( IsList )
 import GHC.Generics
     ( Generic )
 import Quiet
@@ -40,7 +40,7 @@ import qualified Data.MonoidMap as MonoidMap
 
 newtype AssetValueMap a = AssetValueMap
     {unAssetValueMap :: MonoidMap a Value}
-    deriving (Eq, Generic, Monoid, Semigroup)
+    deriving (Eq, Generic, IsList, Monoid, Semigroup)
     deriving (Difference, PartialOrd, Partition, Subtract)
     deriving (Read, Show) via (Quiet (MonoidMap a Value))
 
@@ -51,12 +51,6 @@ newtype Assets a = Assets {unAssets :: AssetValueMap a}
 newtype Values a = Values {unValues :: AssetValueMap a}
     deriving (Eq, Monoid, Semigroup)
     deriving Equipartition via (MonoidMap.Values (MonoidMap a Value))
-
-fromSequence :: Ord a => [(a, Value)] -> AssetValueMap a
-fromSequence = AssetValueMap . MonoidMap.fromSequence
-
-toList :: AssetValueMap a -> [(a, Value)]
-toList = MonoidMap.toList . unAssetValueMap
 
 get :: Ord a => AssetValueMap a -> a -> Value
 get = MonoidMap.get . unAssetValueMap

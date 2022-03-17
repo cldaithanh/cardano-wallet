@@ -36,6 +36,8 @@ import Data.Map.Strict
     ( Map )
 import Data.Maybe
     ( mapMaybe )
+import GHC.Exts
+    ( IsList (..) )
 
 import qualified Cardano.Wallet.CoinSelection.Internal.Types.AssetValueMap as AssetValueMap
 import qualified Cardano.Wallet.Primitive.Types.Address as W
@@ -127,10 +129,9 @@ walletAssetToAssetId = \case
     WalletAsset assetId -> Just assetId
 
 tokenBundleToAssetValueMap :: TokenBundle -> AssetValueMap WalletAsset
-tokenBundleToAssetValueMap (TokenBundle (Coin c) m) =
-    AssetValueMap.fromSequence $ (:)
-        (WalletAssetLovelace, Value c)
-        (bimap WalletAsset (Value . unTokenQuantity) <$> TokenMap.toFlatList m)
+tokenBundleToAssetValueMap (TokenBundle (Coin c) m) = fromList $ (:)
+    (WalletAssetLovelace, Value c)
+    (bimap WalletAsset (Value . unTokenQuantity) <$> TokenMap.toFlatList m)
 
 assetValueMapToTokenBundle :: AssetValueMap WalletAsset -> TokenBundle
 assetValueMapToTokenBundle vm = TokenBundle c m
@@ -138,4 +139,4 @@ assetValueMapToTokenBundle vm = TokenBundle c m
     c = Coin $ unValue $ vm `AssetValueMap.get` WalletAssetLovelace
     m = TokenMap.fromFlatList $ fmap (TokenQuantity . unValue) <$> mapMaybe
         (\(k, v) -> walletAssetToAssetId k <&> (, v))
-        (AssetValueMap.toList vm)
+        (toList vm)

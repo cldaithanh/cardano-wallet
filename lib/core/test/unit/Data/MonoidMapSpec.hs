@@ -18,6 +18,8 @@ import Data.Monoid
     ( Sum (..) )
 import Data.MonoidMap
     ( Keys (..), MonoidMap, Values (..) )
+import GHC.Exts
+    ( IsList (..) )
 import Numeric.Natural
     ( Natural )
 import Test.Hspec
@@ -70,5 +72,4 @@ instance Arbitrary a => Arbitrary (Values a) where
 instance (Arbitrary k, Ord k, Arbitrary v, Eq v, Monoid v) =>
     Arbitrary (MonoidMap k v)
   where
-    arbitrary = MonoidMap.fromSequence
-        <$> listOf ((,) <$> arbitrary <*> arbitrary)
+    arbitrary = fromList <$> listOf ((,) <$> arbitrary <*> arbitrary)

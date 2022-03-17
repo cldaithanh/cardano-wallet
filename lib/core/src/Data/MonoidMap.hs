@@ -3,6 +3,7 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TypeFamilies #-}
 
 module Data.MonoidMap
     (
@@ -15,11 +16,9 @@ module Data.MonoidMap
 
 --  * Construction
     , fromMap
-    , fromSequence
     , singleton
 
 --  * Deconstruction
-    , toList
     , toMap
 
 --  * Queries
@@ -60,6 +59,8 @@ import Data.Map.Strict
     ( Map )
 import Data.Set
     ( Set )
+import GHC.Exts
+    ( IsList (..) )
 import GHC.Generics
     ( Generic )
 import Numeric.Natural
@@ -136,6 +137,16 @@ instance (Ord k, Eq v, Equipartition v, Monoid v, Ord v) =>
     equipartitionOrdering (Values m1) (Values m2) =
         m1 `leq` m2
 
+instance (Ord k, Eq v, Monoid v) => IsList (MonoidMap k v)
+  where
+    type Item (MonoidMap k v) = (k, v)
+    fromList =
+        F.foldl' acc (MonoidMap Internal.empty)
+      where
+        acc m (k, v) = adjust m k (<> v)
+
+    toList = Map.toList . Internal.toMap . unMonoidMap
+
 instance (Ord k, Eq v, Monoid v) => Monoid (MonoidMap k v)
   where
     mempty = MonoidMap Internal.empty
@@ -183,12 +194,7 @@ instance (Ord k, Eq v, Monoid v, Subtract v) => Subtract (MonoidMap k v)
 --------------------------------------------------------------------------------
 
 fromMap :: (Ord k, Eq v, Monoid v) => Map k v -> MonoidMap k v
-fromMap = fromSequence . Map.toList
-
-fromSequence :: (Foldable f, Ord k, Monoid v, Eq v) => f (k, v) -> MonoidMap k v
-fromSequence = F.foldl' acc (MonoidMap Internal.empty)
-  where
-    acc m (k, v) = adjust m k (<> v)
+fromMap = fromList . Map.toList
 
 singleton :: (Ord k, Eq v, Monoid v) => k -> v -> MonoidMap k v
 singleton = set mempty
@@ -196,9 +202,6 @@ singleton = set mempty
 --------------------------------------------------------------------------------
 -- Deconstruction
 --------------------------------------------------------------------------------
-
-toList :: MonoidMap k v -> [(k, v)]
-toList = Map.toList . Internal.toMap . unMonoidMap
 
 toMap :: MonoidMap k v -> Map k v
 toMap = Internal.toMap . unMonoidMap

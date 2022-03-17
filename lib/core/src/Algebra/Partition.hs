@@ -1,5 +1,7 @@
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE StandaloneDeriving #-}
 {-# LANGUAGE TupleSections #-}
 {- HLINT ignore "Use camelCase" -}
 
@@ -14,6 +16,8 @@ import Data.List.NonEmpty
     ( NonEmpty (..) )
 import Data.Maybe
     ( mapMaybe )
+import Data.Monoid
+    ( Sum (..) )
 import Data.Proxy
     ( Proxy )
 import Numeric.Natural
@@ -60,6 +64,8 @@ partitionLaw_sum a as =
 
 instance Partition Natural where
     partition n as = maybe (n, 0 <$ as) (0, ) (partitionNatural n as)
+
+deriving instance Partition a => Partition (Sum a)
 
 --------------------------------------------------------------------------------
 -- Testing

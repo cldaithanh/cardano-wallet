@@ -1,4 +1,6 @@
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE StandaloneDeriving #-}
 {-# LANGUAGE TypeApplications #-}
 {- HLINT ignore "Use camelCase" -}
 
@@ -9,6 +11,8 @@ import Prelude
 
 import Algebra.PartialOrd
     ( PartialOrd (..) )
+import Data.Monoid
+    ( Sum (..) )
 import Data.Proxy
     ( Proxy )
 import Data.Set
@@ -73,6 +77,8 @@ instance Difference Natural where
 
 instance Ord a => Difference (Set a) where
     difference = Set.difference
+
+deriving instance Difference a => Difference (Sum a)
 
 --------------------------------------------------------------------------------
 -- Testing

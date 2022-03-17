@@ -1,5 +1,7 @@
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE StandaloneDeriving #-}
 {-# LANGUAGE TypeApplications #-}
 {- HLINT ignore "Use camelCase" -}
 
@@ -18,6 +20,8 @@ import Data.Map
     ( Map )
 import Data.Maybe
     ( mapMaybe )
+import Data.Monoid
+    ( Sum (..) )
 import Data.Proxy
     ( Proxy )
 import Data.Set
@@ -165,6 +169,8 @@ instance Ord a => Equipartition (Set a) where
         (fromIntegral @Int @Natural $ Set.size ys)
 
     equipartitionOrdering xs ys = length xs <= length ys
+
+deriving instance Equipartition a => Equipartition (Sum a)
 
 --------------------------------------------------------------------------------
 -- Testing

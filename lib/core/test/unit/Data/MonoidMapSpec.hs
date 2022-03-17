@@ -14,10 +14,12 @@ import Algebra.Partition
     ( partitionLaws )
 import Algebra.Subtract
     ( subtractLaws, subtractPartialOrdLaws )
-import Cardano.Wallet.CoinSelection.Internal.Types.Value
-    ( Value (..) )
+import Data.Monoid
+    ( Sum (..) )
 import Data.MonoidMap
     ( Keys (..), MonoidMap, Values (..) )
+import Numeric.Natural
+    ( Natural )
 import Test.Hspec
     ( Spec, describe )
 import Test.Hspec.Extra
@@ -36,7 +38,7 @@ import qualified Data.MonoidMap as MonoidMap
 spec :: Spec
 spec =
     parallel $ describe "Class instances obey laws" $ do
-        testLawsMany @(MonoidMap Int Value)
+        testLawsMany @(MonoidMap Int (Sum Natural))
             [ differenceLaws
             , differencePartialOrdLaws
             , eqLaws
@@ -49,15 +51,15 @@ spec =
             , subtractLaws
             , subtractPartialOrdLaws
             ]
-        testLawsMany @(Keys (MonoidMap Int Value))
+        testLawsMany @(Keys (MonoidMap Int (Sum Natural)))
             [ equipartitionLaws
             ]
-        testLawsMany @(Values (MonoidMap Int Value))
+        testLawsMany @(Values (MonoidMap Int (Sum Natural)))
             [ equipartitionLaws
             ]
 
-instance Arbitrary Value where
-    arbitrary = Value . fromIntegral . abs <$> arbitrarySizedIntegral @Int
+instance Arbitrary Natural where
+    arbitrary = fromIntegral . abs <$> arbitrarySizedIntegral @Int
 
 instance Arbitrary a => Arbitrary (Keys a) where
     arbitrary = Keys <$> arbitrary

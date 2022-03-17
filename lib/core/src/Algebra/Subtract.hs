@@ -1,4 +1,6 @@
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE StandaloneDeriving #-}
 {-# LANGUAGE TypeApplications #-}
 {- HLINT ignore "Use camelCase" -}
 
@@ -14,6 +16,8 @@ import Data.Functor
     ( (<&>) )
 import Data.Maybe
     ( isNothing )
+import Data.Monoid
+    ( Sum (..) )
 import Data.Proxy
     ( Proxy )
 import Data.Set
@@ -82,6 +86,8 @@ instance Ord a => Subtract (Set a) where
         | otherwise = Nothing
       where
         remainder = s1 `Set.difference` s2
+
+deriving instance Subtract a => Subtract (Sum a)
 
 --------------------------------------------------------------------------------
 -- Testing

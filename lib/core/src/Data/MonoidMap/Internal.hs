@@ -1,10 +1,10 @@
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE DerivingVia #-}
 
-module Cardano.Wallet.CoinSelection.Internal.Types.ValueMap.Internal
+module Data.MonoidMap.Internal
     (
 --  * Type
-      ValueMap
+      MonoidMap
 
 --  * Construction
     , empty
@@ -37,30 +37,30 @@ import qualified Data.Map.Strict as Map
 -- Type
 --------------------------------------------------------------------------------
 
-newtype ValueMap k v = ValueMap
-    { unValueMap :: Map k v }
+newtype MonoidMap k v = MonoidMap
+    { unMonoidMap :: Map k v }
     deriving (Eq, Generic)
-    deriving (Read, Show) via (Quiet (ValueMap k v))
+    deriving (Read, Show) via (Quiet (MonoidMap k v))
 
 --------------------------------------------------------------------------------
 -- Construction
 --------------------------------------------------------------------------------
 
-empty :: ValueMap k v
-empty = ValueMap Map.empty
+empty :: MonoidMap k v
+empty = MonoidMap Map.empty
 
 --------------------------------------------------------------------------------
 -- Deconstruction
 --------------------------------------------------------------------------------
 
-toMap :: ValueMap k v -> Map k v
-toMap = unValueMap
+toMap :: MonoidMap k v -> Map k v
+toMap = unMonoidMap
 
 --------------------------------------------------------------------------------
 -- Queries
 --------------------------------------------------------------------------------
 
-get :: (Ord k, Monoid v) => ValueMap k v -> k -> v
+get :: (Ord k, Monoid v) => MonoidMap k v -> k -> v
 get m k = fromMaybe mempty $ Map.lookup k $ toMap m
 
 --------------------------------------------------------------------------------
@@ -68,9 +68,13 @@ get m k = fromMaybe mempty $ Map.lookup k $ toMap m
 --------------------------------------------------------------------------------
 
 adjust
-    :: (Ord k, Eq v, Monoid v) => ValueMap k v -> k -> (v -> v) -> ValueMap k v
+    :: (Ord k, Eq v, Monoid v)
+    => MonoidMap k v
+    -> k
+    -> (v -> v)
+    -> MonoidMap k v
 adjust m k f
-    | v == mempty = ValueMap $ Map.delete k   $ unValueMap m
-    | otherwise   = ValueMap $ Map.insert k v $ unValueMap m
+    | v == mempty = MonoidMap $ Map.delete k   $ unMonoidMap m
+    | otherwise   = MonoidMap $ Map.insert k v $ unMonoidMap m
   where
     v = f $ get m k

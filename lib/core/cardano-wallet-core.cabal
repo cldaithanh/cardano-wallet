@@ -195,8 +195,6 @@ library
       Cardano.Wallet.CoinSelection.Internal.Context
       Cardano.Wallet.CoinSelection.Internal.Types
       Cardano.Wallet.CoinSelection.Internal.Types.Value
-      Cardano.Wallet.CoinSelection.Internal.Types.ValueMap
-      Cardano.Wallet.CoinSelection.Internal.Types.ValueMap.Internal
       Cardano.Wallet.Compat
       Cardano.Wallet.DB
       Cardano.Wallet.DB.Checkpoints
@@ -269,6 +267,8 @@ library
       Crypto.Hash.Utils
       Data.Aeson.Extra
       Data.Function.Utils
+      Data.MonoidMap
+      Data.MonoidMap.Internal
       Data.Time.Text
       Data.Time.Utils
       Data.Quantity
@@ -454,7 +454,6 @@ test-suite unit
       Cardano.Wallet.CoinSelection.InternalSpec
       Cardano.Wallet.CoinSelection.Internal.BalanceSpec
       Cardano.Wallet.CoinSelection.Internal.CollateralSpec
-      Cardano.Wallet.CoinSelection.Internal.Types.ValueMapSpec
       Cardano.Wallet.CoinSelection.Internal.Types.ValueSpec
       Cardano.Wallet.DB.Arbitrary
       Cardano.Wallet.DB.MVarSpec
@@ -508,6 +507,7 @@ test-suite unit
       Control.Concurrent.ConciergeSpec
       Control.Monad.Random.ExtraSpec
       Data.Function.UtilsSpec
+      Data.MonoidMapSpec
       Data.QuantitySpec
       Data.Time.TextSpec
       Data.Time.UtilsSpec

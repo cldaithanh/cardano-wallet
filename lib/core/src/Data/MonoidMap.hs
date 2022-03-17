@@ -4,10 +4,10 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
-module Cardano.Wallet.CoinSelection.Internal.Types.ValueMap
+module Data.MonoidMap
     (
 --  * Type
-      ValueMap
+      MonoidMap
 
 --  * Modifiers
     , Keys (..)
@@ -67,20 +67,20 @@ import Numeric.Natural
 import Quiet
     ( Quiet (..) )
 
-import qualified Cardano.Wallet.CoinSelection.Internal.Types.ValueMap.Internal as Internal
 import qualified Data.Foldable as F
 import qualified Data.List.NonEmpty as NE
 import qualified Data.Map.Strict as Map
+import qualified Data.MonoidMap.Internal as Internal
 import qualified Data.Set as Set
 
 --------------------------------------------------------------------------------
 -- Type
 --------------------------------------------------------------------------------
 
-newtype ValueMap k v = ValueMap
-    { unValueMap :: Internal.ValueMap k v }
+newtype MonoidMap k v = MonoidMap
+    { unMonoidMap :: Internal.MonoidMap k v }
     deriving (Eq, Generic)
-    deriving (Read, Show) via (Quiet (Internal.ValueMap k v))
+    deriving (Read, Show) via (Quiet (Internal.MonoidMap k v))
 
 --------------------------------------------------------------------------------
 -- Modifiers
@@ -98,26 +98,26 @@ newtype Values a = Values
 -- Instances
 --------------------------------------------------------------------------------
 
-instance (Ord k, Difference v, Eq v, Monoid v) => Difference (ValueMap k v)
+instance (Ord k, Difference v, Eq v, Monoid v) => Difference (MonoidMap k v)
   where
     m1 `difference` m2 = F.foldl' reduce m1 (toList m2)
       where
-        reduce :: ValueMap k v -> (k, v) -> ValueMap k v
+        reduce :: MonoidMap k v -> (k, v) -> MonoidMap k v
         reduce m (k, v) = adjust m k (`difference` v)
 
-instance (Ord k, Eq v, Monoid v) => Equipartition (Keys (ValueMap k v))
+instance (Ord k, Eq v, Monoid v) => Equipartition (Keys (MonoidMap k v))
   where
     equipartition m = fmap (Keys . fromMap) . equipartition (toMap $ unKeys m)
     equipartitionDistance = equipartitionDistance `on` toMap . unKeys
     equipartitionOrdering = equipartitionOrdering `on` toMap . unKeys
 
 instance (Ord k, Eq v, Equipartition v, Monoid v, Ord v) =>
-    Equipartition (Values (ValueMap k v))
+    Equipartition (Values (MonoidMap k v))
   where
     equipartition (Values m) count =
         Values <$> F.foldl' acc (mempty <$ count) (toList m)
       where
-        acc :: NonEmpty (ValueMap k v) -> (k, v) -> NonEmpty (ValueMap k v)
+        acc :: NonEmpty (MonoidMap k v) -> (k, v) -> NonEmpty (MonoidMap k v)
         acc ms (k, v) = NE.zipWith (<>) ms $
             singleton k <$> equipartition v count
 
@@ -136,17 +136,17 @@ instance (Ord k, Eq v, Equipartition v, Monoid v, Ord v) =>
     equipartitionOrdering (Values m1) (Values m2) =
         m1 `leq` m2
 
-instance (Ord k, Eq v, Monoid v) => Monoid (ValueMap k v)
+instance (Ord k, Eq v, Monoid v) => Monoid (MonoidMap k v)
   where
-    mempty = ValueMap Internal.empty
+    mempty = MonoidMap Internal.empty
 
-instance (Ord k, Monoid v, Ord v) => PartialOrd (ValueMap k v)
+instance (Ord k, Monoid v, Ord v) => PartialOrd (MonoidMap k v)
   where
     m1 `leq` m2 = F.all
         (\a -> get m1 a <= get m2 a)
         (keys m1 `Set.union` keys m2)
 
-instance (Ord k, Eq v, Monoid v, Partition v) => Partition (ValueMap k v)
+instance (Ord k, Eq v, Monoid v, Partition v) => Partition (MonoidMap k v)
   where
     partition m xs =
         ( mconcat (fst <$> partitions)
@@ -156,64 +156,64 @@ instance (Ord k, Eq v, Monoid v, Partition v) => Partition (ValueMap k v)
             (snd <$> partitions)
         )
       where
-        partitions :: [(ValueMap k v, NonEmpty (ValueMap k v))]
+        partitions :: [(MonoidMap k v, NonEmpty (MonoidMap k v))]
         partitions = partitionForKey <$> F.toList (keys m)
 
-        partitionForKey :: k -> (ValueMap k v, NonEmpty (ValueMap k v))
+        partitionForKey :: k -> (MonoidMap k v, NonEmpty (MonoidMap k v))
         partitionForKey k = bimap
             (singleton k)
             (fmap (singleton k))
             (partition (m `get` k) ((`get` k) <$> xs))
 
-instance (Ord k, Eq v, Monoid v) => Semigroup (ValueMap k v)
+instance (Ord k, Eq v, Monoid v) => Semigroup (MonoidMap k v)
   where
     m1 <> m2 = F.foldl' acc m1 $ toList m2
       where
         acc m (k, v) = adjust m k (<> v)
 
-instance (Ord k, Eq v, Monoid v, Subtract v) => Subtract (ValueMap k v)
+instance (Ord k, Eq v, Monoid v, Subtract v) => Subtract (MonoidMap k v)
   where
     m1 `subtract` m2 = foldM acc m1 (toList m2)
       where
-        acc :: ValueMap k v -> (k, v) -> Maybe (ValueMap k v)
+        acc :: MonoidMap k v -> (k, v) -> Maybe (MonoidMap k v)
         acc m (k, v) = adjustF m k (`subtract` v)
 
 --------------------------------------------------------------------------------
 -- Construction
 --------------------------------------------------------------------------------
 
-fromMap :: (Ord k, Eq v, Monoid v) => Map k v -> ValueMap k v
+fromMap :: (Ord k, Eq v, Monoid v) => Map k v -> MonoidMap k v
 fromMap = fromSequence . Map.toList
 
-fromSequence :: (Foldable f, Ord k, Monoid v, Eq v) => f (k, v) -> ValueMap k v
-fromSequence = F.foldl' acc (ValueMap Internal.empty)
+fromSequence :: (Foldable f, Ord k, Monoid v, Eq v) => f (k, v) -> MonoidMap k v
+fromSequence = F.foldl' acc (MonoidMap Internal.empty)
   where
     acc m (k, v) = adjust m k (<> v)
 
-singleton :: (Ord k, Eq v, Monoid v) => k -> v -> ValueMap k v
+singleton :: (Ord k, Eq v, Monoid v) => k -> v -> MonoidMap k v
 singleton = set mempty
 
 --------------------------------------------------------------------------------
 -- Deconstruction
 --------------------------------------------------------------------------------
 
-toList :: ValueMap k v -> [(k, v)]
-toList = Map.toList . Internal.toMap . unValueMap
+toList :: MonoidMap k v -> [(k, v)]
+toList = Map.toList . Internal.toMap . unMonoidMap
 
-toMap :: ValueMap k v -> Map k v
-toMap = Internal.toMap . unValueMap
+toMap :: MonoidMap k v -> Map k v
+toMap = Internal.toMap . unMonoidMap
 
 --------------------------------------------------------------------------------
 -- Queries
 --------------------------------------------------------------------------------
 
-get :: (Ord k, Monoid v) => ValueMap k v -> k -> v
-get = Internal.get . unValueMap
+get :: (Ord k, Monoid v) => MonoidMap k v -> k -> v
+get = Internal.get . unMonoidMap
 
-keys :: ValueMap k v -> Set k
+keys :: MonoidMap k v -> Set k
 keys = Map.keysSet . toMap
 
-size :: ValueMap k v -> Int
+size :: MonoidMap k v -> Int
 size = Map.size . toMap
 
 --------------------------------------------------------------------------------
@@ -221,19 +221,23 @@ size = Map.size . toMap
 --------------------------------------------------------------------------------
 
 adjust
-    :: (Ord k, Eq v, Monoid v) => ValueMap k v -> k -> (v -> v) -> ValueMap k v
-adjust = ((ValueMap .) .) . Internal.adjust . unValueMap
+    :: (Ord k, Eq v, Monoid v)
+    => MonoidMap k v
+    -> k
+    -> (v -> v)
+    -> MonoidMap k v
+adjust = ((MonoidMap .) .) . Internal.adjust . unMonoidMap
 
 adjustF
     :: (Functor f, Ord k, Eq v, Monoid v)
-    => ValueMap k v
+    => MonoidMap k v
     -> k
     -> (v -> f v)
-    -> f (ValueMap k v)
+    -> f (MonoidMap k v)
 adjustF m k a = set m k <$> a (get m k)
 
-delete :: (Ord k, Eq v, Monoid v) => ValueMap k v -> k -> ValueMap k v
+delete :: (Ord k, Eq v, Monoid v) => MonoidMap k v -> k -> MonoidMap k v
 delete m k = set m k mempty
 
-set :: (Ord k, Eq v, Monoid v) => ValueMap k v -> k -> v -> ValueMap k v
+set :: (Ord k, Eq v, Monoid v) => MonoidMap k v -> k -> v -> MonoidMap k v
 set m k v = adjust m k (const v)

@@ -1,7 +1,7 @@
 {-# LANGUAGE TypeApplications #-}
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 
-module Cardano.Wallet.CoinSelection.Internal.Types.ValueMapSpec
+module Data.MonoidMapSpec
     where
 
 import Prelude
@@ -16,8 +16,8 @@ import Algebra.Subtract
     ( subtractLaws, subtractPartialOrdLaws )
 import Cardano.Wallet.CoinSelection.Internal.Types.Value
     ( Value (..) )
-import Cardano.Wallet.CoinSelection.Internal.Types.ValueMap
-    ( Keys (..), ValueMap, Values (..) )
+import Data.MonoidMap
+    ( Keys (..), MonoidMap, Values (..) )
 import Test.Hspec
     ( Spec, describe )
 import Test.Hspec.Extra
@@ -31,12 +31,12 @@ import Test.Utils.Laws
 import Test.Utils.Laws.PartialOrd
     ( partialOrdLaws )
 
-import qualified Cardano.Wallet.CoinSelection.Internal.Types.ValueMap as ValueMap
+import qualified Data.MonoidMap as MonoidMap
 
 spec :: Spec
 spec =
     parallel $ describe "Class instances obey laws" $ do
-        testLawsMany @(ValueMap Int Value)
+        testLawsMany @(MonoidMap Int Value)
             [ differenceLaws
             , differencePartialOrdLaws
             , eqLaws
@@ -49,10 +49,10 @@ spec =
             , subtractLaws
             , subtractPartialOrdLaws
             ]
-        testLawsMany @(Keys (ValueMap Int Value))
+        testLawsMany @(Keys (MonoidMap Int Value))
             [ equipartitionLaws
             ]
-        testLawsMany @(Values (ValueMap Int Value))
+        testLawsMany @(Values (MonoidMap Int Value))
             [ equipartitionLaws
             ]
 
@@ -66,7 +66,7 @@ instance Arbitrary a => Arbitrary (Values a) where
     arbitrary = Values <$> arbitrary
 
 instance (Arbitrary k, Ord k, Arbitrary v, Eq v, Monoid v) =>
-    Arbitrary (ValueMap k v)
+    Arbitrary (MonoidMap k v)
   where
-    arbitrary = ValueMap.fromSequence
+    arbitrary = MonoidMap.fromSequence
         <$> listOf ((,) <$> arbitrary <*> arbitrary)

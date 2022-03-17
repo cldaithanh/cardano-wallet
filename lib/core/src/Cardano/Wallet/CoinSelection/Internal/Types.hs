@@ -14,8 +14,6 @@ import Prelude hiding
 
 import Cardano.Wallet.CoinSelection.Internal.Types.Value
     ( Value (..) )
-import Cardano.Wallet.CoinSelection.Internal.Types.ValueMap
-    ( ValueMap )
 import Cardano.Wallet.Primitive.Types.Coin
     ( Coin (..) )
 import Cardano.Wallet.Primitive.Types.TokenBundle
@@ -36,12 +34,14 @@ import Data.Map.Strict
     ( Map )
 import Data.Maybe
     ( mapMaybe )
+import Data.MonoidMap
+    ( MonoidMap )
 
-import qualified Cardano.Wallet.CoinSelection.Internal.Types.ValueMap as ValueMap
 import qualified Cardano.Wallet.Primitive.Types.Address as W
 import qualified Cardano.Wallet.Primitive.Types.TokenMap as TokenMap
 import qualified Cardano.Wallet.Primitive.Types.TokenMap as W
 import qualified Cardano.Wallet.Primitive.Types.Tx as W
+import qualified Data.MonoidMap as MonoidMap
 
 class
     ( Ord (Address c)
@@ -54,7 +54,7 @@ class
     type Asset c
     type UTxO c
 
-type AssetValueMap c = ValueMap (Asset c) Value
+type AssetValueMap c = MonoidMap (Asset c) Value
 
 data SelectionConstraints c = SelectionConstraints
     { computeMinimumCost
@@ -130,14 +130,14 @@ walletAssetToAssetId = \case
 
 tokenBundleToAssetValueMap :: TokenBundle -> AssetValueMap Wallet
 tokenBundleToAssetValueMap (TokenBundle (Coin c) m) =
-    ValueMap.fromSequence $ (:)
+    MonoidMap.fromSequence $ (:)
         (WalletAssetLovelace, Value c)
         (bimap WalletAsset (Value . unTokenQuantity) <$> TokenMap.toFlatList m)
 
 assetValueMapToTokenBundle :: AssetValueMap Wallet -> TokenBundle
 assetValueMapToTokenBundle vm = TokenBundle c m
   where
-    c = Coin $ unValue $ vm `ValueMap.get` WalletAssetLovelace
+    c = Coin $ unValue $ vm `MonoidMap.get` WalletAssetLovelace
     m = TokenMap.fromFlatList $ fmap (TokenQuantity . unValue) <$> mapMaybe
         (\(k, v) -> walletAssetToAssetId k <&> (, v))
-        (ValueMap.toList vm)
+        (MonoidMap.toList vm)

@@ -229,7 +229,7 @@ adjust
     -> k
     -> (v -> v)
     -> MonoidMap k v
-adjust = ((MonoidMap .) .) . Internal.adjust . unMonoidMap
+adjust m k a = set m k $ a (get m k)
 
 adjustF
     :: (Functor f, Ord k, Eq v, Monoid v)
@@ -243,4 +243,4 @@ delete :: (Ord k, Eq v, Monoid v) => MonoidMap k v -> k -> MonoidMap k v
 delete m k = set m k mempty
 
 set :: (Ord k, Eq v, Monoid v) => MonoidMap k v -> k -> v -> MonoidMap k v
-set m k v = adjust m k (const v)
+set = ((MonoidMap .) .) . Internal.set . unMonoidMap

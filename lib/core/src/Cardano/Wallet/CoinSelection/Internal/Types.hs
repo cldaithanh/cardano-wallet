@@ -12,6 +12,8 @@ module Cardano.Wallet.CoinSelection.Internal.Types
 import Prelude hiding
     ( subtract )
 
+import Cardano.Wallet.CoinSelection.Internal.Types.AssetValueMap
+    ( AssetValueMap )
 import Cardano.Wallet.CoinSelection.Internal.Types.Value
     ( Value (..) )
 import Cardano.Wallet.Primitive.Types.Coin
@@ -34,14 +36,12 @@ import Data.Map.Strict
     ( Map )
 import Data.Maybe
     ( mapMaybe )
-import Data.MonoidMap
-    ( MonoidMap )
 
+import qualified Cardano.Wallet.CoinSelection.Internal.Types.AssetValueMap as AssetValueMap
 import qualified Cardano.Wallet.Primitive.Types.Address as W
 import qualified Cardano.Wallet.Primitive.Types.TokenMap as TokenMap
 import qualified Cardano.Wallet.Primitive.Types.TokenMap as W
 import qualified Cardano.Wallet.Primitive.Types.Tx as W
-import qualified Data.MonoidMap as MonoidMap
 
 class
     ( Ord (Address c)
@@ -53,8 +53,6 @@ class
     type Address c
     type Asset c
     type UTxO c
-
-type AssetValueMap c = MonoidMap (Asset c) Value
 
 data SelectionConstraints c = SelectionConstraints
     { computeMinimumCost
@@ -128,16 +126,16 @@ walletAssetToAssetId = \case
     WalletAssetLovelace -> Nothing
     WalletAsset assetId -> Just assetId
 
-tokenBundleToAssetValueMap :: TokenBundle -> AssetValueMap Wallet
+tokenBundleToAssetValueMap :: TokenBundle -> AssetValueMap WalletAsset
 tokenBundleToAssetValueMap (TokenBundle (Coin c) m) =
-    MonoidMap.fromSequence $ (:)
+    AssetValueMap.fromSequence $ (:)
         (WalletAssetLovelace, Value c)
         (bimap WalletAsset (Value . unTokenQuantity) <$> TokenMap.toFlatList m)
 
-assetValueMapToTokenBundle :: AssetValueMap Wallet -> TokenBundle
+assetValueMapToTokenBundle :: AssetValueMap WalletAsset -> TokenBundle
 assetValueMapToTokenBundle vm = TokenBundle c m
   where
-    c = Coin $ unValue $ vm `MonoidMap.get` WalletAssetLovelace
+    c = Coin $ unValue $ vm `AssetValueMap.get` WalletAssetLovelace
     m = TokenMap.fromFlatList $ fmap (TokenQuantity . unValue) <$> mapMaybe
         (\(k, v) -> walletAssetToAssetId k <&> (, v))
-        (MonoidMap.toList vm)
+        (AssetValueMap.toList vm)

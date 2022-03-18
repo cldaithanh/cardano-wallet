@@ -5,9 +5,9 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE UndecidableInstances #-}
 
-module Cardano.Wallet.CoinSelection.Internal.Types.AssetValueMap
-    ( AssetValueMap
-    , Assets (..)
+module Cardano.Wallet.CoinSelection.Internal.Types.ValueMap
+    ( ValueMap
+    , Keys (..)
     , Values (..)
     , get
     )
@@ -38,19 +38,19 @@ import Quiet
 
 import qualified Data.MonoidMap as MonoidMap
 
-newtype AssetValueMap a = AssetValueMap
-    {unAssetValueMap :: MonoidMap a Value}
+newtype ValueMap a = ValueMap
+    {unValueMap :: MonoidMap a Value}
     deriving (Eq, Generic, IsList, Monoid, Semigroup)
     deriving (Difference, PartialOrd, Partition, Subtract)
     deriving (Read, Show) via (Quiet (MonoidMap a Value))
 
-newtype Assets a = Assets {unAssets :: AssetValueMap a}
+newtype Keys a = Keys {unKeys :: ValueMap a}
     deriving (Eq, Monoid, Semigroup)
     deriving Equipartition via (MonoidMap.Keys (MonoidMap a Value))
 
-newtype Values a = Values {unValues :: AssetValueMap a}
+newtype Values a = Values {unValues :: ValueMap a}
     deriving (Eq, Monoid, Semigroup)
     deriving Equipartition via (MonoidMap.Values (MonoidMap a Value))
 
-get :: Ord a => AssetValueMap a -> a -> Value
-get = MonoidMap.get . unAssetValueMap
+get :: Ord a => ValueMap a -> a -> Value
+get = MonoidMap.get . unValueMap

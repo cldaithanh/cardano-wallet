@@ -12,8 +12,8 @@ module Cardano.Wallet.CoinSelection.Internal.Types
 import Prelude hiding
     ( subtract )
 
-import Cardano.Wallet.CoinSelection.Internal.Types.AssetValueMap
-    ( AssetValueMap )
+import Cardano.Wallet.CoinSelection.Internal.Types.ValueMap
+    ( ValueMap )
 import Cardano.Wallet.CoinSelection.Internal.Types.Value
     ( Value (..) )
 import Cardano.Wallet.Primitive.Types.Coin
@@ -39,7 +39,7 @@ import Data.Maybe
 import GHC.Exts
     ( IsList (..) )
 
-import qualified Cardano.Wallet.CoinSelection.Internal.Types.AssetValueMap as AssetValueMap
+import qualified Cardano.Wallet.CoinSelection.Internal.Types.ValueMap as ValueMap
 import qualified Cardano.Wallet.Primitive.Types.Address as W
 import qualified Cardano.Wallet.Primitive.Types.TokenMap as TokenMap
 import qualified Cardano.Wallet.Primitive.Types.TokenMap as W
@@ -56,10 +56,12 @@ class
     type Asset c
     type UTxO c
 
+type AssetValueMap c = ValueMap (Asset c)
+
 data SelectionConstraints c = SelectionConstraints
     { computeMinimumCost
         :: Selection c -> AssetValueMap c
-    , exceedsMaximumAssetValueMapSize
+    , exceedsMaximumValueMapSize
         :: AssetValueMap c -> Bool
     , exceedsMaximumAssetValue
         :: AssetValueMap c -> Bool
@@ -128,15 +130,15 @@ walletAssetToAssetId = \case
     WalletAssetLovelace -> Nothing
     WalletAsset assetId -> Just assetId
 
-tokenBundleToAssetValueMap :: TokenBundle -> AssetValueMap WalletAsset
+tokenBundleToAssetValueMap :: TokenBundle -> AssetValueMap Wallet
 tokenBundleToAssetValueMap (TokenBundle (Coin c) m) = fromList $ (:)
     (WalletAssetLovelace, Value c)
     (bimap WalletAsset (Value . unTokenQuantity) <$> TokenMap.toFlatList m)
 
-assetValueMapToTokenBundle :: AssetValueMap WalletAsset -> TokenBundle
+assetValueMapToTokenBundle :: AssetValueMap Wallet -> TokenBundle
 assetValueMapToTokenBundle vm = TokenBundle c m
   where
-    c = Coin $ unValue $ vm `AssetValueMap.get` WalletAssetLovelace
+    c = Coin $ unValue $ vm `ValueMap.get` WalletAssetLovelace
     m = TokenMap.fromFlatList $ fmap (TokenQuantity . unValue) <$> mapMaybe
         (\(k, v) -> walletAssetToAssetId k <&> (, v))
         (toList vm)

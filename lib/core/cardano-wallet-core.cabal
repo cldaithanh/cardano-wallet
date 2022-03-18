@@ -194,8 +194,8 @@ library
       Cardano.Wallet.CoinSelection.Internal.Collateral
       Cardano.Wallet.CoinSelection.Internal.Context
       Cardano.Wallet.CoinSelection.Internal.Types
-      Cardano.Wallet.CoinSelection.Internal.Types.AssetValueMap
       Cardano.Wallet.CoinSelection.Internal.Types.Value
+      Cardano.Wallet.CoinSelection.Internal.Types.ValueMap
       Cardano.Wallet.Compat
       Cardano.Wallet.DB
       Cardano.Wallet.DB.Checkpoints

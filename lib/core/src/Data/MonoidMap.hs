@@ -65,8 +65,6 @@ import GHC.Generics
     ( Generic )
 import Numeric.Natural
     ( Natural )
-import Quiet
-    ( Quiet (..) )
 
 import qualified Data.Foldable as F
 import qualified Data.List.NonEmpty as NE
@@ -81,7 +79,7 @@ import qualified Data.Set as Set
 newtype MonoidMap k v = MonoidMap
     { unMonoidMap :: Internal.MonoidMap k v }
     deriving (Eq, Generic)
-    deriving (Read, Show) via (Quiet (Internal.MonoidMap k v))
+    deriving newtype (Read, Show)
 
 --------------------------------------------------------------------------------
 -- Modifiers

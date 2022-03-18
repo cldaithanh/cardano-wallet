@@ -35,8 +35,6 @@ import Test.Utils.Laws
 import Test.Utils.Laws.PartialOrd
     ( partialOrdLaws )
 
-import qualified Data.MonoidMap as MonoidMap
-
 spec :: Spec
 spec =
     parallel $ describe "Class instances obey laws" $ do

@@ -1,5 +1,6 @@
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE DerivingVia #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 
 module Data.MonoidMap.Internal
     (
@@ -26,8 +27,6 @@ import Data.Maybe
     ( fromMaybe )
 import GHC.Generics
     ( Generic )
-import Quiet
-    ( Quiet (..) )
 
 import qualified Data.Map.Strict as Map
 
@@ -38,7 +37,7 @@ import qualified Data.Map.Strict as Map
 newtype MonoidMap k v = MonoidMap
     { unMonoidMap :: Map k v }
     deriving (Eq, Generic)
-    deriving (Read, Show) via (Quiet (MonoidMap k v))
+    deriving newtype (Read, Show)
 
 --------------------------------------------------------------------------------
 -- Construction

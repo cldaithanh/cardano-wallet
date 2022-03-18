@@ -42,7 +42,7 @@ newtype ValueMap a = ValueMap
     {unValueMap :: MonoidMap a Value}
     deriving (Eq, Generic, IsList, Monoid, Semigroup)
     deriving (Difference, PartialOrd, Partition, Subtract)
-    deriving (Read, Show) via (Quiet (MonoidMap a Value))
+    deriving (Read, Show) via (Quiet (ValueMap a))
 
 newtype Keys a = Keys {unKeys :: ValueMap a}
     deriving (Eq, Monoid, Semigroup)

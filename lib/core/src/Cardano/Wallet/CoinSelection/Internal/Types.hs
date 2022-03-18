@@ -12,10 +12,10 @@ module Cardano.Wallet.CoinSelection.Internal.Types
 import Prelude hiding
     ( subtract )
 
-import Cardano.Wallet.CoinSelection.Internal.Types.ValueMap
-    ( ValueMap )
 import Cardano.Wallet.CoinSelection.Internal.Types.Value
     ( Value (..) )
+import Cardano.Wallet.CoinSelection.Internal.Types.ValueMap
+    ( ValueMap )
 import Cardano.Wallet.Primitive.Types.Coin
     ( Coin (..) )
 import Cardano.Wallet.Primitive.Types.TokenBundle

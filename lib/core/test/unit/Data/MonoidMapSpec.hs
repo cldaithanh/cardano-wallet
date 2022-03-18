@@ -29,7 +29,13 @@ import Test.Hspec.Extra
 import Test.QuickCheck
     ( Arbitrary (..), arbitrarySizedIntegral, listOf )
 import Test.QuickCheck.Classes
-    ( eqLaws, monoidLaws, semigroupLaws, semigroupMonoidLaws, showReadLaws )
+    ( eqLaws
+    , isListLaws
+    , monoidLaws
+    , semigroupLaws
+    , semigroupMonoidLaws
+    , showReadLaws
+    )
 import Test.Utils.Laws
     ( testLawsMany )
 import Test.Utils.Laws.PartialOrd
@@ -42,6 +48,7 @@ spec =
             [ differenceLaws
             , differencePartialOrdLaws
             , eqLaws
+            , isListLaws
             , monoidLaws
             , partialOrdLaws
             , partitionLaws

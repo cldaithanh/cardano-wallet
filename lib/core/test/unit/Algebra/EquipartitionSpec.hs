@@ -1,10 +1,12 @@
 {-# LANGUAGE DuplicateRecordFields #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE FunctionalDependencies #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE OverloadedLists #-}
 {-# LANGUAGE PatternSynonyms #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 {-# OPTIONS_GHC -fno-warn-incomplete-patterns #-}
@@ -234,14 +236,14 @@ prop_bipartitionUntil_bipartitionWhile a (Fn f) =
 --------------------------------------------------------------------------------
 
 unitTests_equipartitionN_Natural :: Spec
-unitTests_equipartitionN_Natural = makeUnitTestSpec2
+unitTests_equipartitionN_Natural = makeUnitTestSuite
     "equipartitionN Natural"
     "equipartitionN"
-    (equipartitionN)
+    (equipartitionN @Natural)
     unitTestData_equipartitionN_Natural
 
-unitTestData_equipartitionN_Natural :: [(Natural, Int, NonEmpty Natural)]
-unitTestData_equipartitionN_Natural =
+unitTestData_equipartitionN_Natural :: [((Natural, Int), NonEmpty Natural)]
+unitTestData_equipartitionN_Natural = (\(a, b, c) -> ((a, b), c)) <$>
     [ ( 0,  1, [                                     0])
     , ( 0,  2, [                                 0,  0])
     , ( 0,  3, [                             0,  0,  0])
@@ -314,15 +316,15 @@ unitTestData_equipartitionN_Natural =
 --------------------------------------------------------------------------------
 
 unitTests_equipartitionN_Set :: Spec
-unitTests_equipartitionN_Set = makeUnitTestSpec2
+unitTests_equipartitionN_Set = makeUnitTestSuite
     "equipartitionN Set"
     "equipartitionN"
-    (equipartitionN)
+    (equipartitionN @(Set LatinChar))
     unitTestData_equipartitionN_Set
 
 unitTestData_equipartitionN_Set
-    :: [(Set LatinChar, Int, NonEmpty (Set LatinChar))]
-unitTestData_equipartitionN_Set =
+    :: [((Set LatinChar, Int), NonEmpty (Set LatinChar))]
+unitTestData_equipartitionN_Set = (\(a, b, c) -> ((a, b), c)) <$>
     [ (s, 1, [ [A ,  B ,  C ,  D ,  E ,  F ,  G ,  H] ])
     , (s, 2, [ [A ,  B ,  C ,  D], [E ,  F ,  G ,  H] ])
     , (s, 3, [ [A ,  B], [C ,  D ,  E], [F ,  G ,  H] ])
@@ -340,15 +342,15 @@ unitTestData_equipartitionN_Set =
 --------------------------------------------------------------------------------
 
 unitTests_equipartitionN_Map :: Spec
-unitTests_equipartitionN_Map = makeUnitTestSpec2
+unitTests_equipartitionN_Map = makeUnitTestSuite
     "equipartitionN Map"
     "equipartitionN"
-    (equipartitionN)
+    (equipartitionN @(Map LatinChar Int))
     unitTestData_equipartitionN_Map
 
 unitTestData_equipartitionN_Map
-    :: [(Map LatinChar Int, Int, NonEmpty (Map LatinChar Int))]
-unitTestData_equipartitionN_Map =
+    :: [((Map LatinChar Int, Int), NonEmpty (Map LatinChar Int))]
+unitTestData_equipartitionN_Map = (\(a, b, c) -> ((a, b), c)) <$>
     [ (m, 1, [ [A➔1 ,  B➔2 ,  C➔3 ,  D➔4 ,  E➔5 ,  F➔6 ,  G➔7 ,  H➔8] ])
     , (m, 2, [ [A➔1 ,  B➔2 ,  C➔3 ,  D➔4], [E➔5 ,  F➔6 ,  G➔7 ,  H➔8] ])
     , (m, 3, [ [A➔1 ,  B➔2], [C➔3 ,  D➔4 ,  E➔5], [F➔6 ,  G➔7 ,  H➔8] ])
@@ -400,122 +402,50 @@ instance TestShow a => TestShow (Set a) where
 -- Unit test support
 --------------------------------------------------------------------------------
 
-data UnitTest param result = UnitTest
-    { functionName
-        :: String
-    , function
-        :: param -> result
-    , param
-        :: param
-    , resultExpected
-        :: result
-    }
+class (Eq r, TestShow r) => UnitTest f p r | f p -> r where
+    applyFunction :: f -> p -> r
+    printParameters :: f -> p -> String
 
-data UnitTest2 param1 param2 result = UnitTest2
-    { functionName
-        :: String
-    , function
-        :: param1 -> param2 -> result
-    , param1
-        :: param1
-    , param2
-        :: param2
-    , resultExpected
-        :: result
-    }
+instance (Eq r, TestShow a, TestShow r) =>
+    UnitTest (a -> r) a r
+  where
+    applyFunction f a = f a
+    printParameters _ a = testShow a
 
-makeUnitTestSpec
-    :: (TestShow param, TestShow result, Eq result)
+instance (Eq r, TestShow a, TestShow b, TestShow r) =>
+    UnitTest (a -> b -> r) (a, b) r
+  where
+    applyFunction f (a, b) = f a b
+    printParameters _ (a, b) = unwords [testShow a, testShow b]
+
+makeUnitTestSuite
+    :: forall f p r. UnitTest f p r
     => String
     -> String
-    -> (param -> result)
-    -> [(param, result)]
+    -> f
+    -> [(p, r)]
     -> Spec
-makeUnitTestSpec description functionName function =
-    describe description . mapM_ (unitTestToSpec . makeUnitTest)
+makeUnitTestSuite suiteDescription functionName function =
+    describe suiteDescription . mapM_ makeUnitTest
   where
-    makeUnitTest (param, resultExpected) =
-        UnitTest
-            { functionName
-            , function
-            , param
-            , resultExpected
-            }
-
-makeUnitTestSpec2
-    :: (TestShow param1, TestShow param2, TestShow result, Eq result)
-    => String
-    -> String
-    -> (param1 -> param2 -> result)
-    -> [(param1, param2, result)]
-    -> Spec
-makeUnitTestSpec2 description functionName function =
-    describe description . mapM_ (unitTestToSpec2 . makeUnitTest2)
-  where
-    makeUnitTest2 (param1, param2, resultExpected) =
-        UnitTest2
-            { functionName
-            , function
-            , param1
-            , param2
-            , resultExpected
-            }
-
-unitTestToSpec
-    :: (TestShow param, Eq result, TestShow result)
-    => UnitTest param result
-    -> Spec
-unitTestToSpec UnitTest
-    { functionName
-    , function
-    , param
-    , resultExpected
-    } = it description
+    makeUnitTest :: (p, r) -> Spec
+    makeUnitTest (p, resultExpected) = it description
         $ property
         $ counterexample counterexampleText
         $ resultExpected == resultActual
-  where
-    counterexampleText = unlines
-        [ testShow resultExpected
-        , "/="
-        , testShow resultActual
-        ]
-    description = unwords
-        [ functionName
-        , testShow param
-        , "=="
-        , testShow resultExpected
-        ]
-    resultActual = function param
-
-unitTestToSpec2
-    :: (TestShow param1, TestShow param2, Eq result, TestShow result)
-    => UnitTest2 param1 param2 result
-    -> Spec
-unitTestToSpec2 UnitTest2
-    { functionName
-    , function
-    , param1
-    , param2
-    , resultExpected
-    } = it description
-        $ property
-        $ counterexample counterexampleText
-        $ resultExpected == resultActual
-  where
-    counterexampleText = unlines
-        [ testShow resultExpected
-        , "/="
-        , testShow resultActual
-        ]
-    description = unwords
-        [ functionName
-        , testShow param1
-        , testShow param2
-        , "=="
-        , testShow resultExpected
-        ]
-    resultActual = function param1 param2
+      where
+        counterexampleText = unlines
+            [ testShow resultExpected
+            , "/="
+            , testShow resultActual
+            ]
+        description = unwords
+            [ functionName
+            , printParameters function p
+            , "=="
+            , testShow resultExpected
+            ]
+        resultActual = applyFunction function p
 
 --------------------------------------------------------------------------------
 -- Latin characters

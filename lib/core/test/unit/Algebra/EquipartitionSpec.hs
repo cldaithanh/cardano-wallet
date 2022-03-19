@@ -435,7 +435,10 @@ makeUnitTestSuite suiteDescription functionName function =
         $ resultExpected == resultActual
       where
         counterexampleText = unlines
-            [ testShow resultExpected
+            [ "expected"
+            , "/="
+            , "actual"
+            , testShow resultExpected
             , "/="
             , testShow resultActual
             ]

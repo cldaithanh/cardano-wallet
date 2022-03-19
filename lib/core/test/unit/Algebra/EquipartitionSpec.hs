@@ -46,14 +46,13 @@ import Test.QuickCheck
     , Testable
     , arbitrarySizedIntegral
     , checkCoverage
+    , counterexample
     , cover
     , property
     , (===)
     )
 import Test.Utils.Laws
     ( testLawsMany )
-import Test.Utils.Pretty
-    ( (====) )
 
 import qualified Data.Foldable as F
 
@@ -235,6 +234,7 @@ unitTests_Equipartition_Natural :: Spec
 unitTests_Equipartition_Natural = unitTests
     "unitTests_Equipartition_Natural"
     (showTest)
+    (showResult)
     (uncurry equipartitionN)
     (makeTest <$> unitTestData_Equipartition_Natural)
   where
@@ -249,6 +249,7 @@ unitTests_Equipartition_Natural = unitTests
         , "=="
         , show (toList r)
         ]
+    showResult = show . toList
 
 unitTestData_Equipartition_Natural :: [(Natural, Int, NonEmpty Natural)]
 unitTestData_Equipartition_Natural =
@@ -327,6 +328,7 @@ unitTests_Equipartition_Set :: Spec
 unitTests_Equipartition_Set = unitTests
     "unitTests_Equipartition_Set"
     (showTest)
+    (showResult)
     (uncurry equipartitionN)
     (makeTest <$> unitTestData_Equipartition_Set)
   where
@@ -339,8 +341,9 @@ unitTests_Equipartition_Set = unitTests
         , "`equipartitionN`"
         , show i
         , "=="
-        , show (toList <$> toList r)
+        , showResult r
         ]
+    showResult r = show (toList <$> toList r)
 
 unitTestData_Equipartition_Set
     :: [(Set LatinChar, Int, NonEmpty (Set LatinChar))]
@@ -365,6 +368,7 @@ unitTests_Equipartition_Map :: Spec
 unitTests_Equipartition_Map = unitTests
     "unitTests_Equipartition_Map"
     (showTest)
+    (showResult)
     (uncurry equipartitionN)
     (makeTest <$> unitTestData_Equipartition_Map)
   where
@@ -377,8 +381,9 @@ unitTests_Equipartition_Map = unitTests
         , "`equipartitionN`"
         , show i
         , "=="
-        , show (toList <$> toList r)
+        , showResult r
         ]
+    showResult r = show (toList <$> toList r)
 
 unitTestData_Equipartition_Map
     :: [(Map LatinChar Int, Int, NonEmpty (Map LatinChar Int))]
@@ -415,16 +420,24 @@ unitTests
     :: (Eq result, Show params, Show result)
     => String
     -> (UnitTestData params result -> String)
+    -> (result -> String)
     -> (params -> result)
     -> [UnitTestData params result]
     -> Spec
-unitTests title showTestData f unitTestData =
+unitTests title showTestData showResult f unitTestData =
     describe title $
     forM_ unitTestData $ \test@UnitTestData {params, resultExpected} -> do
         let subtitle = showTestData test
         it subtitle $
             let resultActual = f params in
-            property $ resultExpected ==== resultActual
+            let counterexampleText = unlines
+                    [ showResult resultExpected
+                    , "/="
+                    , showResult resultActual
+                    ] in
+            property
+                $ counterexample counterexampleText
+                $ resultExpected == resultActual
 
 --------------------------------------------------------------------------------
 -- Latin characters

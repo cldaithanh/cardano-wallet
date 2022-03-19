@@ -1,3 +1,4 @@
+{-# LANGUAGE DuplicateRecordFields #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
@@ -22,8 +23,6 @@ import Algebra.Equipartition
     , equipartitionLaws
     , equipartitionN
     )
-import Control.Monad
-    ( forM_ )
 import Data.List.NonEmpty
     ( NonEmpty )
 import Data.Map.Strict
@@ -55,6 +54,8 @@ import Test.Utils.Laws
     ( testLawsMany )
 
 import qualified Data.Foldable as F
+import qualified Data.List as L
+import qualified Data.Map as Map
 
 spec :: Spec
 spec = do
@@ -111,10 +112,12 @@ spec = do
             it "bipartitionUntil_bipartitionWhile @(Map Int Int)" $
                 property $ prop_bipartitionUntil_bipartitionWhile @(Map Int Int)
 
-    parallel $ describe "equipartition" $ do
-        unitTests_Equipartition_Natural
-        unitTests_Equipartition_Set
-        unitTests_Equipartition_Map
+    parallel $ describe "equipartitionN" $ do
+
+        describe "unit tests" $ do
+            unitTests_equipartitionN_Natural
+            unitTests_equipartitionN_Set
+            unitTests_equipartitionN_Map
 
 --------------------------------------------------------------------------------
 -- Bipartitioning
@@ -230,29 +233,15 @@ prop_bipartitionUntil_bipartitionWhile a (Fn f) =
 -- Unit tests: Equipartition Natural
 --------------------------------------------------------------------------------
 
-unitTests_Equipartition_Natural :: Spec
-unitTests_Equipartition_Natural = unitTests
-    "unitTests_Equipartition_Natural"
-    (showTest)
-    (showResult)
-    (uncurry equipartitionN)
-    (makeTest <$> unitTestData_Equipartition_Natural)
-  where
-    makeTest (n, i, resultExpected) = UnitTestData
-        { params = (n, i)
-        , resultExpected
-        }
-    showTest (UnitTestData (n, i) r) = unwords
-        [ show n
-        , "`equipartitionN`"
-        , show i
-        , "=="
-        , show (toList r)
-        ]
-    showResult = show . toList
+unitTests_equipartitionN_Natural :: Spec
+unitTests_equipartitionN_Natural = makeUnitTestSpec2
+    "equipartitionN Natural"
+    "equipartitionN"
+    (equipartitionN)
+    unitTestData_equipartitionN_Natural
 
-unitTestData_Equipartition_Natural :: [(Natural, Int, NonEmpty Natural)]
-unitTestData_Equipartition_Natural =
+unitTestData_equipartitionN_Natural :: [(Natural, Int, NonEmpty Natural)]
+unitTestData_equipartitionN_Natural =
     [ ( 0,  1, [                                     0])
     , ( 0,  2, [                                 0,  0])
     , ( 0,  3, [                             0,  0,  0])
@@ -321,73 +310,45 @@ unitTestData_Equipartition_Natural =
     ]
 
 --------------------------------------------------------------------------------
--- Unit tests: Equipartition Set
+-- Unit tests: equipartitionN Set
 --------------------------------------------------------------------------------
 
-unitTests_Equipartition_Set :: Spec
-unitTests_Equipartition_Set = unitTests
-    "unitTests_Equipartition_Set"
-    (showTest)
-    (showResult)
-    (uncurry equipartitionN)
-    (makeTest <$> unitTestData_Equipartition_Set)
-  where
-    makeTest (s, i, resultExpected) = UnitTestData
-        { params = (s, i)
-        , resultExpected
-        }
-    showTest (UnitTestData (s, i) r) = unwords
-        [ show (toList s)
-        , "`equipartitionN`"
-        , show i
-        , "=="
-        , showResult r
-        ]
-    showResult r = show (toList <$> toList r)
+unitTests_equipartitionN_Set :: Spec
+unitTests_equipartitionN_Set = makeUnitTestSpec2
+    "equipartitionN Set"
+    "equipartitionN"
+    (equipartitionN)
+    unitTestData_equipartitionN_Set
 
-unitTestData_Equipartition_Set
+unitTestData_equipartitionN_Set
     :: [(Set LatinChar, Int, NonEmpty (Set LatinChar))]
-unitTestData_Equipartition_Set =
-    [ (s, 1, [[A ,  B ,  C ,  D ,  E ,  F ,  G ,  H]])
-    , (s, 2, [[A ,  B ,  C ,  D], [E ,  F ,  G ,  H]])
-    , (s, 3, [[A ,  B], [C ,  D ,  E], [F ,  G ,  H]])
-    , (s, 4, [[A ,  B], [C ,  D], [E ,  F], [G ,  H]])
-    , (s, 5, [[A], [B], [C ,  D], [E ,  F], [G ,  H]])
-    , (s, 6, [[A], [B], [C], [D], [E ,  F], [G ,  H]])
-    , (s, 7, [[A], [B], [C], [D], [E], [F], [G ,  H]])
-    , (s, 8, [[A], [B], [C], [D], [E], [F], [G], [H]])
+unitTestData_equipartitionN_Set =
+    [ (s, 1, [ [A ,  B ,  C ,  D ,  E ,  F ,  G ,  H] ])
+    , (s, 2, [ [A ,  B ,  C ,  D], [E ,  F ,  G ,  H] ])
+    , (s, 3, [ [A ,  B], [C ,  D ,  E], [F ,  G ,  H] ])
+    , (s, 4, [ [A ,  B], [C ,  D], [E ,  F], [G ,  H] ])
+    , (s, 5, [ [A], [B], [C ,  D], [E ,  F], [G ,  H] ])
+    , (s, 6, [ [A], [B], [C], [D], [E ,  F], [G ,  H] ])
+    , (s, 7, [ [A], [B], [C], [D], [E], [F], [G ,  H] ])
+    , (s, 8, [ [A], [B], [C], [D], [E], [F], [G], [H] ])
     ]
   where
     s = [A .. H]
 
 --------------------------------------------------------------------------------
--- Unit tests: Equipartition Map
+-- Unit tests: equipartitionN Map
 --------------------------------------------------------------------------------
 
-unitTests_Equipartition_Map :: Spec
-unitTests_Equipartition_Map = unitTests
-    "unitTests_Equipartition_Map"
-    (showTest)
-    (showResult)
-    (uncurry equipartitionN)
-    (makeTest <$> unitTestData_Equipartition_Map)
-  where
-    makeTest (m, i, resultExpected) = UnitTestData
-        { params = (m, i)
-        , resultExpected
-        }
-    showTest (UnitTestData (m, i) r) = unwords
-        [ show (toList m)
-        , "`equipartitionN`"
-        , show i
-        , "=="
-        , showResult r
-        ]
-    showResult r = show (toList <$> toList r)
+unitTests_equipartitionN_Map :: Spec
+unitTests_equipartitionN_Map = makeUnitTestSpec2
+    "equipartitionN Map"
+    "equipartitionN"
+    (equipartitionN)
+    unitTestData_equipartitionN_Map
 
-unitTestData_Equipartition_Map
+unitTestData_equipartitionN_Map
     :: [(Map LatinChar Int, Int, NonEmpty (Map LatinChar Int))]
-unitTestData_Equipartition_Map =
+unitTestData_equipartitionN_Map =
     [ (m, 1, [ [A➔1 ,  B➔2 ,  C➔3 ,  D➔4 ,  E➔5 ,  F➔6 ,  G➔7 ,  H➔8] ])
     , (m, 2, [ [A➔1 ,  B➔2 ,  C➔3 ,  D➔4], [E➔5 ,  F➔6 ,  G➔7 ,  H➔8] ])
     , (m, 3, [ [A➔1 ,  B➔2], [C➔3 ,  D➔4 ,  E➔5], [F➔6 ,  G➔7 ,  H➔8] ])
@@ -405,39 +366,156 @@ unitTestData_Equipartition_Map =
     (➔) = (,)
 
 --------------------------------------------------------------------------------
+-- Showing test values
+--------------------------------------------------------------------------------
+
+class TestShow a where
+    testShow :: a -> String
+
+instance {-# OVERLAPS #-} TestShow String where
+    testShow = id
+
+instance TestShow a => TestShow [a] where
+    testShow as = mconcat
+        ["[", F.fold $ L.intersperse "," (testShow <$> as), "]"]
+
+instance (TestShow k, TestShow v) => TestShow (Map k v) where
+    testShow = testShow . fmap testShowEntry . Map.toList
+      where
+        testShowEntry (k, v) = mconcat ["(", testShow k, ",", testShow v, ")"]
+
+instance TestShow Int where
+    testShow = show
+
+instance TestShow Natural where
+    testShow = show
+
+instance TestShow a => TestShow (NonEmpty a) where
+    testShow = testShow . F.toList
+
+instance TestShow a => TestShow (Set a) where
+    testShow = testShow . F.toList
+
+--------------------------------------------------------------------------------
 -- Unit test support
 --------------------------------------------------------------------------------
 
-data UnitTestData params result = UnitTestData
-    { params
-        :: params
+data UnitTest param result = UnitTest
+    { functionName
+        :: String
+    , function
+        :: param -> result
+    , param
+        :: param
     , resultExpected
         :: result
     }
-    deriving Eq
 
-unitTests
-    :: (Eq result, Show params, Show result)
+data UnitTest2 param1 param2 result = UnitTest2
+    { functionName
+        :: String
+    , function
+        :: param1 -> param2 -> result
+    , param1
+        :: param1
+    , param2
+        :: param2
+    , resultExpected
+        :: result
+    }
+
+makeUnitTestSpec
+    :: (TestShow param, TestShow result, Eq result)
     => String
-    -> (UnitTestData params result -> String)
-    -> (result -> String)
-    -> (params -> result)
-    -> [UnitTestData params result]
+    -> String
+    -> (param -> result)
+    -> [(param, result)]
     -> Spec
-unitTests title showTestData showResult f unitTestData =
-    describe title $
-    forM_ unitTestData $ \test@UnitTestData {params, resultExpected} -> do
-        let subtitle = showTestData test
-        it subtitle $
-            let resultActual = f params in
-            let counterexampleText = unlines
-                    [ showResult resultExpected
-                    , "/="
-                    , showResult resultActual
-                    ] in
-            property
-                $ counterexample counterexampleText
-                $ resultExpected == resultActual
+makeUnitTestSpec description functionName function =
+    describe description . mapM_ (unitTestToSpec . makeUnitTest)
+  where
+    makeUnitTest (param, resultExpected) =
+        UnitTest
+            { functionName
+            , function
+            , param
+            , resultExpected
+            }
+
+makeUnitTestSpec2
+    :: (TestShow param1, TestShow param2, TestShow result, Eq result)
+    => String
+    -> String
+    -> (param1 -> param2 -> result)
+    -> [(param1, param2, result)]
+    -> Spec
+makeUnitTestSpec2 description functionName function =
+    describe description . mapM_ (unitTestToSpec2 . makeUnitTest2)
+  where
+    makeUnitTest2 (param1, param2, resultExpected) =
+        UnitTest2
+            { functionName
+            , function
+            , param1
+            , param2
+            , resultExpected
+            }
+
+unitTestToSpec
+    :: (TestShow param, Eq result, TestShow result)
+    => UnitTest param result
+    -> Spec
+unitTestToSpec UnitTest
+    { functionName
+    , function
+    , param
+    , resultExpected
+    } = it description
+        $ property
+        $ counterexample counterexampleText
+        $ resultExpected == resultActual
+  where
+    counterexampleText = unlines
+        [ testShow resultExpected
+        , "/="
+        , testShow resultActual
+        ]
+    description = unwords
+        [ functionName
+        , testShow param
+        , "=="
+        , testShow resultExpected
+        ]
+    resultActual = function param
+
+unitTestToSpec2
+    :: (TestShow param1, TestShow param2, Eq result, TestShow result)
+    => UnitTest2 param1 param2 result
+    -> Spec
+unitTestToSpec2 UnitTest2
+    { functionName
+    , function
+    , param1
+    , param2
+    , resultExpected
+    } = it description
+        $ property
+        $ counterexample counterexampleText
+        $ resultExpected == resultActual
+  where
+    counterexampleText = unlines
+        [ testShow resultExpected
+        , "/="
+        , testShow resultActual
+        ]
+    description = unwords
+        [ functionName
+        , testShow param1
+        , testShow param2
+        , "=="
+        , testShow resultExpected
+        ]
+    resultActual = function param1 param2
 
 --------------------------------------------------------------------------------
 -- Latin characters
@@ -447,6 +525,9 @@ data LatinChar
     = A | B | C | D | E | F | G | H | I | J | K | L | M
     | N | O | P | Q | R | S | T | U | V | W | X | Y | Z
     deriving (Bounded, Enum, Eq, Ord, Show)
+
+instance TestShow LatinChar where
+    testShow = show
 
 --------------------------------------------------------------------------------
 -- Arbitraries

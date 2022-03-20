@@ -25,6 +25,8 @@ import Algebra.Equipartition
     , equipartitionLaws
     , equipartitionN
     )
+import Data.Functor
+    ( (<&>) )
 import Data.List.NonEmpty
     ( NonEmpty )
 import Data.Map.Strict
@@ -240,10 +242,10 @@ unitTests_equipartitionN_Natural = makeUnitTestSuite
     "equipartitionN Natural"
     "equipartitionN"
     (equipartitionN @Natural)
-    unitTestData_equipartitionN_Natural
+    (unitTestData_equipartitionN_Natural <&> \(a, b, c) -> ((a, b), c))
 
-unitTestData_equipartitionN_Natural :: [((Natural, Int), NonEmpty Natural)]
-unitTestData_equipartitionN_Natural = (\(a, b, c) -> ((a, b), c)) <$>
+unitTestData_equipartitionN_Natural :: [(Natural, Int, NonEmpty Natural)]
+unitTestData_equipartitionN_Natural =
     [ ( 0,  1, [                                     0])
     , ( 0,  2, [                                 0,  0])
     , ( 0,  3, [                             0,  0,  0])
@@ -320,11 +322,11 @@ unitTests_equipartitionN_Set = makeUnitTestSuite
     "equipartitionN Set"
     "equipartitionN"
     (equipartitionN @(Set LatinChar))
-    unitTestData_equipartitionN_Set
+    (unitTestData_equipartitionN_Set <&> (\(a, b, c) -> ((a, b), c)))
 
 unitTestData_equipartitionN_Set
-    :: [((Set LatinChar, Int), NonEmpty (Set LatinChar))]
-unitTestData_equipartitionN_Set = (\(a, b, c) -> ((a, b), c)) <$>
+    :: [(Set LatinChar, Int, NonEmpty (Set LatinChar))]
+unitTestData_equipartitionN_Set =
     [ (s, 1, [ [A ,  B ,  C ,  D ,  E ,  F ,  G ,  H] ])
     , (s, 2, [ [A ,  B ,  C ,  D], [E ,  F ,  G ,  H] ])
     , (s, 3, [ [A ,  B], [C ,  D ,  E], [F ,  G ,  H] ])
@@ -346,11 +348,11 @@ unitTests_equipartitionN_Map = makeUnitTestSuite
     "equipartitionN Map"
     "equipartitionN"
     (equipartitionN @(Map LatinChar Int))
-    unitTestData_equipartitionN_Map
+    (unitTestData_equipartitionN_Map <&> (\(a, b, c) -> ((a, b), c)))
 
 unitTestData_equipartitionN_Map
-    :: [((Map LatinChar Int, Int), NonEmpty (Map LatinChar Int))]
-unitTestData_equipartitionN_Map = (\(a, b, c) -> ((a, b), c)) <$>
+    :: [(Map LatinChar Int, Int, NonEmpty (Map LatinChar Int))]
+unitTestData_equipartitionN_Map =
     [ (m, 1, [ [A➔1 ,  B➔2 ,  C➔3 ,  D➔4 ,  E➔5 ,  F➔6 ,  G➔7 ,  H➔8] ])
     , (m, 2, [ [A➔1 ,  B➔2 ,  C➔3 ,  D➔4], [E➔5 ,  F➔6 ,  G➔7 ,  H➔8] ])
     , (m, 3, [ [A➔1 ,  B➔2], [C➔3 ,  D➔4 ,  E➔5], [F➔6 ,  G➔7 ,  H➔8] ])

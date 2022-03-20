@@ -133,10 +133,7 @@ equipartitionNatural
     -> NonEmpty Natural
     -- ^ The partitioned numbers.
 equipartitionNatural n count =
-    -- Note: due to the behaviour of the underlying partition algorithm, a
-    -- simple list reversal is enough to ensure that the resultant list is
-    -- sorted in ascending order.
-    NE.reverse $ unsafePartitionNatural n (1 <$ count)
+    unsafePartitionNatural n (1 <$ count)
 
 -- | Partitions a natural number into a number of parts, where the size of each
 --   part is proportional to the size of its corresponding element in the given
@@ -189,10 +186,10 @@ partitionNatural target weights
         -- 2. Attach an index to each portion, so that we can remember the
         --    original order:
         & NE.zip indices
-        -- 3. Sort the portions into descending order of their fractional
-        --    parts, and then sort each subsequence with equal fractional
-        --    parts into descending order of their integral parts:
-        & NE.sortBy (comparing (Down . (fractionalPart &&& integralPart) . snd))
+        -- 3. Sort the portions so that those that require rounding appear
+        --    first, and then in descending order of their sizes, and then
+        --    in descending order of index position as a tie-breaker.
+        & NE.sortBy (comparing (Down . (((isFractional &&& id) . snd) &&& fst)))
         -- 4. Apply pre-computed roundings to each portion:
         & NE.zipWith (fmap . round) roundings
         -- 5. Restore the original order:
@@ -269,21 +266,8 @@ consecutivePairs xs = case tailMay xs of
     Nothing -> []
     Just ys -> xs `zip` ys
 
--- Extract the fractional part of a rational number.
---
--- Examples:
---
--- >>> fractionalPart (3 % 2)
--- 1 % 2
---
--- >>> fractionalPart (11 % 10)
--- 1 % 10
---
-fractionalPart :: Rational -> Rational
-fractionalPart = snd . properFraction @_ @Integer
-
-integralPart :: Rational -> Integer
-integralPart = floor
+isFractional :: Rational -> Bool
+isFractional r = (floor r :: Integer) /= (ceiling r :: Integer)
 
 -- | Indicates a rounding direction to be used when converting from a
 --   fractional value to an integral value.

@@ -384,7 +384,7 @@ data LatinChar
     deriving (Bounded, Enum, Eq, Ord, Show)
 
 --------------------------------------------------------------------------------
--- Arbitraries
+-- Arbitrary instances
 --------------------------------------------------------------------------------
 
 newtype Sum a = Sum a

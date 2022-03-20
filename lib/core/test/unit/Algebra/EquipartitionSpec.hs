@@ -3,7 +3,6 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE FunctionalDependencies #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
-{-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE OverloadedLists #-}
 {-# LANGUAGE PatternSynonyms #-}
 {-# LANGUAGE ScopedTypeVariables #-}
@@ -58,8 +57,6 @@ import Test.Utils.Laws
     ( testLawsMany )
 
 import qualified Data.Foldable as F
-import qualified Data.List as L
-import qualified Data.Map as Map
 
 spec :: Spec
 spec = do
@@ -119,9 +116,9 @@ spec = do
     parallel $ describe "equipartitionN" $ do
 
         describe "unit tests" $ do
-            unitTests_equipartitionN_Natural
-            unitTests_equipartitionN_Set
-            unitTests_equipartitionN_Map
+            unitTestSpec_equipartitionN_Natural
+            unitTestSpec_equipartitionN_Set
+            unitTestSpec_equipartitionN_Map
 
 --------------------------------------------------------------------------------
 -- Bipartitioning
@@ -237,15 +234,18 @@ prop_bipartitionUntil_bipartitionWhile a (Fn f) =
 -- Unit tests: Equipartition Natural
 --------------------------------------------------------------------------------
 
-unitTests_equipartitionN_Natural :: Spec
-unitTests_equipartitionN_Natural = makeUnitTestSuite
+unitTestSpec_equipartitionN_Natural :: Spec
+unitTestSpec_equipartitionN_Natural = unitTestSpec
     "equipartitionN Natural"
     "equipartitionN"
     (equipartitionN @Natural)
-    (unitTestData_equipartitionN_Natural <&> \(a, b, c) -> ((a, b), c))
+    (unitTestData_equipartitionN_Natural)
 
-unitTestData_equipartitionN_Natural :: [(Natural, Int, NonEmpty Natural)]
-unitTestData_equipartitionN_Natural =
+unitTestData_equipartitionN_Natural :: UnitTestData2
+    (Natural)
+    (Int)
+    (NonEmpty Natural)
+unitTestData_equipartitionN_Natural = unitTestData2
     [ ( 0,  1, [                                     0])
     , ( 0,  2, [                                 0,  0])
     , ( 0,  3, [                             0,  0,  0])
@@ -317,16 +317,18 @@ unitTestData_equipartitionN_Natural =
 -- Unit tests: equipartitionN Set
 --------------------------------------------------------------------------------
 
-unitTests_equipartitionN_Set :: Spec
-unitTests_equipartitionN_Set = makeUnitTestSuite
+unitTestSpec_equipartitionN_Set :: Spec
+unitTestSpec_equipartitionN_Set = unitTestSpec
     "equipartitionN Set"
     "equipartitionN"
     (equipartitionN @(Set LatinChar))
-    (unitTestData_equipartitionN_Set <&> (\(a, b, c) -> ((a, b), c)))
+    (unitTestData_equipartitionN_Set)
 
-unitTestData_equipartitionN_Set
-    :: [(Set LatinChar, Int, NonEmpty (Set LatinChar))]
-unitTestData_equipartitionN_Set =
+unitTestData_equipartitionN_Set :: UnitTestData2
+    (Set LatinChar)
+    (Int)
+    (NonEmpty (Set LatinChar))
+unitTestData_equipartitionN_Set = unitTestData2
     [ (s, 1, [ [A ,  B ,  C ,  D ,  E ,  F ,  G ,  H] ])
     , (s, 2, [ [A ,  B ,  C ,  D], [E ,  F ,  G ,  H] ])
     , (s, 3, [ [A ,  B], [C ,  D ,  E], [F ,  G ,  H] ])
@@ -343,16 +345,18 @@ unitTestData_equipartitionN_Set =
 -- Unit tests: equipartitionN Map
 --------------------------------------------------------------------------------
 
-unitTests_equipartitionN_Map :: Spec
-unitTests_equipartitionN_Map = makeUnitTestSuite
+unitTestSpec_equipartitionN_Map :: Spec
+unitTestSpec_equipartitionN_Map = unitTestSpec
     "equipartitionN Map"
     "equipartitionN"
     (equipartitionN @(Map LatinChar Int))
-    (unitTestData_equipartitionN_Map <&> (\(a, b, c) -> ((a, b), c)))
+    (unitTestData_equipartitionN_Map)
 
-unitTestData_equipartitionN_Map
-    :: [(Map LatinChar Int, Int, NonEmpty (Map LatinChar Int))]
-unitTestData_equipartitionN_Map =
+unitTestData_equipartitionN_Map :: UnitTestData2
+    (Map LatinChar Int)
+    (Int)
+    (NonEmpty (Map LatinChar Int))
+unitTestData_equipartitionN_Map = unitTestData2
     [ (m, 1, [ [A➔1 ,  B➔2 ,  C➔3 ,  D➔4 ,  E➔5 ,  F➔6 ,  G➔7 ,  H➔8] ])
     , (m, 2, [ [A➔1 ,  B➔2 ,  C➔3 ,  D➔4], [E➔5 ,  F➔6 ,  G➔7 ,  H➔8] ])
     , (m, 3, [ [A➔1 ,  B➔2], [C➔3 ,  D➔4 ,  E➔5], [F➔6 ,  G➔7 ,  H➔8] ])
@@ -370,87 +374,100 @@ unitTestData_equipartitionN_Map =
     (➔) = (,)
 
 --------------------------------------------------------------------------------
--- Showing test values
---------------------------------------------------------------------------------
-
-class TestShow a where
-    testShow :: a -> String
-
-instance {-# OVERLAPS #-} TestShow String where
-    testShow = id
-
-instance TestShow a => TestShow [a] where
-    testShow as = mconcat
-        ["[", F.fold $ L.intersperse "," (testShow <$> as), "]"]
-
-instance (TestShow k, TestShow v) => TestShow (Map k v) where
-    testShow = testShow . fmap testShowEntry . Map.toList
-      where
-        testShowEntry (k, v) = mconcat ["(", testShow k, ",", testShow v, ")"]
-
-instance TestShow Int where
-    testShow = show
-
-instance TestShow Natural where
-    testShow = show
-
-instance TestShow a => TestShow (NonEmpty a) where
-    testShow = testShow . F.toList
-
-instance TestShow a => TestShow (Set a) where
-    testShow = testShow . F.toList
-
---------------------------------------------------------------------------------
 -- Unit test support
 --------------------------------------------------------------------------------
 
-class (Eq r, TestShow r) => UnitTest f p r | f p -> r where
-    applyFunction :: f -> p -> r
-    printParameters :: f -> p -> String
+class IsUnitTestDatum d f r | d -> f, d -> r where
+    params :: d -> [String]
+    resultActual :: f -> d -> r
+    resultExpected :: d -> r
 
-instance (Eq r, TestShow a, TestShow r) =>
-    UnitTest (a -> r) a r
+data UnitTestDatum1 p1 r = UnitTestDatum1 p1 r
+data UnitTestDatum2 p1 p2 r = UnitTestDatum2 p1 p2 r
+data UnitTestDatum3 p1 p2 p3 r = UnitTestDatum3 p1 p2 p3 r
+data UnitTestDatum4 p1 p2 p3 p4 r = UnitTestDatum4 p1 p2 p3 p4 r
+
+type UnitTestData1 p1 r = [UnitTestDatum1 p1 r]
+type UnitTestData2 p1 p2 r = [UnitTestDatum2 p1 p2 r]
+type UnitTestData3 p1 p2 p3 r = [UnitTestDatum3 p1 p2 p3 r]
+type UnitTestData4 p1 p2 p3 p4 r = [UnitTestDatum4 p1 p2 p3 p4 r]
+
+unitTestDatum1 :: (p1, r) -> UnitTestDatum1 p1 r
+unitTestDatum1 (p1, r) = UnitTestDatum1 p1 r
+unitTestDatum2 :: (p1, p2, r) -> UnitTestDatum2 p1 p2 r
+unitTestDatum2 (p1, p2, r) = UnitTestDatum2 p1 p2 r
+unitTestDatum3 :: (p1, p2, p3, r) -> UnitTestDatum3 p1 p2 p3 r
+unitTestDatum3 (p1, p2, p3, r) = UnitTestDatum3 p1 p2 p3 r
+unitTestDatum4 :: (p1, p2, p3, p4, r) -> UnitTestDatum4 p1 p2 p3 p4 r
+unitTestDatum4 (p1, p2, p3, p4, r) = UnitTestDatum4 p1 p2 p3 p4 r
+
+unitTestData1 :: [(p1, r)] -> UnitTestData1 p1 r
+unitTestData1 = fmap unitTestDatum1
+unitTestData2 :: [(p1, p2, r)] -> UnitTestData2 p1 p2 r
+unitTestData2 = fmap unitTestDatum2
+unitTestData3 :: [(p1, p2, p3, r)] -> UnitTestData3 p1 p2 p3 r
+unitTestData3 = fmap unitTestDatum3
+unitTestData4 :: [(p1, p2, p3, p4, r)] -> UnitTestData4 p1 p2 p3 p4 r
+unitTestData4 = fmap unitTestDatum4
+
+instance Show p1 =>
+    IsUnitTestDatum (UnitTestDatum1 p1 r) (p1 -> r) r
   where
-    applyFunction f a = f a
-    printParameters _ a = testShow a
+    params (UnitTestDatum1 p1 _) = [show p1]
+    resultActual f (UnitTestDatum1 p1 _) = f p1
+    resultExpected (UnitTestDatum1 _ r) = r
 
-instance (Eq r, TestShow a, TestShow b, TestShow r) =>
-    UnitTest (a -> b -> r) (a, b) r
+instance (Show p1, Show p2) =>
+    IsUnitTestDatum (UnitTestDatum2 p1 p2 r) (p1 -> p2 -> r) r
   where
-    applyFunction f (a, b) = f a b
-    printParameters _ (a, b) = unwords [testShow a, testShow b]
+    params (UnitTestDatum2 p1 p2 _) = [show p1, show p2]
+    resultActual f (UnitTestDatum2 p1 p2 _) = f p1 p2
+    resultExpected (UnitTestDatum2 _ _ r) = r
 
-makeUnitTestSuite
-    :: forall f p r. UnitTest f p r
+instance (Show p1, Show p2, Show p3) =>
+    IsUnitTestDatum (UnitTestDatum3 p1 p2 p3 r) (p1 -> p2 -> p3 -> r) r
+  where
+    params (UnitTestDatum3 p1 p2 p3 _) = [show p1, show p2, show p3]
+    resultActual f (UnitTestDatum3 p1 p2 p3 _) = f p1 p2 p3
+    resultExpected (UnitTestDatum3 _ _ _ r) = r
+
+instance (Show p1, Show p2, Show p3, Show p4) =>
+    IsUnitTestDatum (UnitTestDatum4 p1 p2 p3 p4 r) (p1 -> p2 -> p3 -> p4 -> r) r
+  where
+    params (UnitTestDatum4 p1 p2 p3 p4 _) = [show p1, show p2, show p3, show p4]
+    resultActual f (UnitTestDatum4 p1 p2 p3 p4 _) = f p1 p2 p3 p4
+    resultExpected (UnitTestDatum4 _ _ _ _ r) = r
+
+unitTestSpec
+    :: forall d f r. (IsUnitTestDatum d f r, Eq r, Show r)
     => String
     -> String
     -> f
-    -> [(p, r)]
+    -> [d]
     -> Spec
-makeUnitTestSuite suiteDescription functionName function =
-    describe suiteDescription . mapM_ makeUnitTest
+unitTestSpec specDescription functionName function =
+    describe specDescription . mapM_ unitTest
   where
-    makeUnitTest :: (p, r) -> Spec
-    makeUnitTest (p, resultExpected) = it description
+    unitTest :: d -> Spec
+    unitTest d = it description
         $ property
         $ counterexample counterexampleText
-        $ resultExpected == resultActual
+        $ resultExpected d == resultActual function d
       where
         counterexampleText = unlines
-            [ "expected"
+            [ ""
+            , "expected"
             , "/="
             , "actual"
-            , testShow resultExpected
+            , ""
+            , show (resultExpected d)
             , "/="
-            , testShow resultActual
+            , show (resultActual function d)
             ]
         description = unwords
             [ functionName
-            , printParameters function p
-            , "=="
-            , testShow resultExpected
+            , unwords (params d <&> \s -> "(" <> s <> ")")
             ]
-        resultActual = applyFunction function p
 
 --------------------------------------------------------------------------------
 -- Latin characters
@@ -460,9 +477,6 @@ data LatinChar
     = A | B | C | D | E | F | G | H | I | J | K | L | M
     | N | O | P | Q | R | S | T | U | V | W | X | Y | Z
     deriving (Bounded, Enum, Eq, Ord, Show)
-
-instance TestShow LatinChar where
-    testShow = show
 
 --------------------------------------------------------------------------------
 -- Arbitraries

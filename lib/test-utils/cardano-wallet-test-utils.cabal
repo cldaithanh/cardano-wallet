@@ -67,6 +67,7 @@ library
   exposed-modules:
       Test.Hspec.Extra
       Test.Hspec.Goldens
+      Test.Hspec.Unit
       Test.QuickCheck.Extra
       Test.Utils.Env
       Test.Utils.FilePath

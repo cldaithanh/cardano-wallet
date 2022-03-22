@@ -1,7 +1,6 @@
 {-# LANGUAGE DuplicateRecordFields #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE OverloadedLists #-}
 {-# LANGUAGE PatternSynonyms #-}
 {-# LANGUAGE ScopedTypeVariables #-}
@@ -27,6 +26,8 @@ import Data.List.NonEmpty
     ( NonEmpty )
 import Data.Map.Strict
     ( Map )
+import Data.Monoid
+    ( Sum (..) )
 import Data.Set
     ( Set )
 import GHC.Exts
@@ -386,15 +387,6 @@ data LatinChar
 --------------------------------------------------------------------------------
 -- Arbitrary instances
 --------------------------------------------------------------------------------
-
-newtype Sum a = Sum a
-    deriving (Arbitrary, Eq, Equipartition, Show)
-
-instance Monoid (Sum Natural) where
-    mempty = Sum 0
-
-instance Semigroup (Sum Natural) where
-    Sum n1 <> Sum n2 = Sum (n1 + n2)
 
 instance Arbitrary Natural where
     arbitrary = fromIntegral . abs <$> arbitrarySizedIntegral @Int

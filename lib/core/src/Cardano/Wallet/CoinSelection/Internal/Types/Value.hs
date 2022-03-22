@@ -15,6 +15,8 @@ import Algebra.Partition
     ( Partition )
 import Algebra.Subtract
     ( Subtract )
+import Data.Monoid
+    ( Sum (..) )
 import GHC.Generics
     ( Generic )
 import Numeric.Natural
@@ -26,9 +28,4 @@ newtype Value = Value {unValue :: Natural}
     deriving (Eq, Generic, Ord)
     deriving (Read, Show) via (Quiet Value)
     deriving newtype (Difference, Equipartition, Partition, Subtract)
-
-instance Monoid Value where
-    mempty = Value 0
-
-instance Semigroup Value where
-    Value v1 <> Value v2 = Value (v1 + v2)
+    deriving (Monoid, Semigroup) via (Sum Natural)

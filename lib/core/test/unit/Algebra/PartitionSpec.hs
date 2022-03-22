@@ -14,6 +14,8 @@ import Algebra.Partition
     ( Partition (..), partitionLaws )
 import Data.List.NonEmpty
     ( NonEmpty (..) )
+import Data.Monoid
+    ( Sum (..) )
 import Numeric.Natural
     ( Natural )
 import Test.Hspec
@@ -119,15 +121,6 @@ unitTestData_partition_Natural = unitTestData2
 --------------------------------------------------------------------------------
 -- Arbitrary instances
 --------------------------------------------------------------------------------
-
-newtype Sum a = Sum a
-    deriving (Arbitrary, Eq, Partition, Show)
-
-instance Monoid (Sum Natural) where
-    mempty = Sum 0
-
-instance Semigroup (Sum Natural) where
-    Sum n1 <> Sum n2 = Sum (n1 + n2)
 
 instance Arbitrary Natural where
     arbitrary = fromIntegral . abs <$> arbitrarySizedIntegral @Int

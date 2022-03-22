@@ -1,8 +1,9 @@
+{-# LANGUAGE DefaultSignatures #-}
+{-# LANGUAGE DerivingVia #-}
 {-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE StandaloneDeriving #-}
-{-# LANGUAGE TupleSections #-}
 {- HLINT ignore "Use camelCase" -}
 
 module Algebra.Partition
@@ -44,7 +45,25 @@ import qualified Data.List.NonEmpty as NE
 --------------------------------------------------------------------------------
 
 class Partition a where
-    partition :: a -> NonEmpty a -> (a, NonEmpty a)
+
+    partition
+        :: a -> NonEmpty a -> (a, NonEmpty a)
+    partitionMaybe
+        :: a -> NonEmpty a -> Maybe (NonEmpty a)
+
+    default partition
+        :: Monoid a
+        => a -> NonEmpty a -> (a, NonEmpty a)
+    partition a as = case partitionMaybe a as of
+        Nothing -> (a, mempty <$ as)
+        Just bs -> (mempty, bs)
+
+    default partitionMaybe
+        :: (Eq a, Monoid a)
+        => a -> NonEmpty a -> Maybe (NonEmpty a)
+    partitionMaybe a as = case partition a as of
+       (b, bs) | b == mempty -> Just bs
+       _ -> Nothing
 
 --------------------------------------------------------------------------------
 -- Laws
@@ -62,10 +81,11 @@ partitionLaw_sum a as =
 -- Instances
 --------------------------------------------------------------------------------
 
-instance Partition Natural where
-    partition n as = maybe (n, 0 <$ as) (0, ) (partitionNatural n as)
+instance Partition (Sum Natural) where
+    partitionMaybe a as =
+        fmap Sum <$> partitionNatural (getSum a) (getSum <$> as)
 
-deriving instance Partition a => Partition (Sum a)
+deriving via Sum Natural instance Partition Natural
 
 --------------------------------------------------------------------------------
 -- Testing

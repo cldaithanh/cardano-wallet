@@ -1,3 +1,5 @@
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE StandaloneDeriving #-}
 {-# LANGUAGE TypeApplications #-}
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 
@@ -68,11 +70,8 @@ spec =
 instance Arbitrary Natural where
     arbitrary = fromIntegral . abs <$> arbitrarySizedIntegral @Int
 
-instance Arbitrary a => Arbitrary (Keys a) where
-    arbitrary = Keys <$> arbitrary
-
-instance Arbitrary a => Arbitrary (Values a) where
-    arbitrary = Values <$> arbitrary
+deriving instance Arbitrary a => Arbitrary (Keys a)
+deriving instance Arbitrary a => Arbitrary (Values a)
 
 instance (Arbitrary k, Ord k, Arbitrary v, Eq v, Monoid v) =>
     Arbitrary (MonoidMap k v)

@@ -26,6 +26,8 @@ library
       -Wall
       -Wcompat
       -fwarn-redundant-constraints
+      -Wincomplete-uni-patterns
+      -Wincomplete-record-updates
   if (flag(release))
     ghc-options: -O2 -Werror
   build-depends:
@@ -128,6 +130,8 @@ executable cardano-wallet
   ghc-options:
       -threaded -rtsopts
       -Wall
+      -Wincomplete-uni-patterns
+      -Wincomplete-record-updates
   if (flag(release))
     ghc-options: -O2 -Werror
   build-depends:
@@ -159,6 +163,8 @@ executable local-cluster
   ghc-options:
       -threaded -rtsopts
       -Wall
+      -Wincomplete-uni-patterns
+      -Wincomplete-record-updates
   if (flag(release))
     ghc-options: -O2 -Werror
   build-depends:
@@ -189,6 +195,8 @@ executable mock-token-metadata-server
   ghc-options:
       -threaded -rtsopts
       -Wall
+      -Wincomplete-uni-patterns
+      -Wincomplete-record-updates
   if (flag(release))
     ghc-options: -O2 -Werror
   build-depends:

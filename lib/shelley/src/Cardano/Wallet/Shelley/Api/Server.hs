@@ -212,6 +212,8 @@ import qualified Cardano.Address.Style.Shelley as CA
 import qualified Cardano.Api as Cardano
 import qualified Cardano.Wallet.Primitive.AddressDerivation.Shared as Shared
 import qualified Cardano.Wallet.Primitive.AddressDerivation.Shelley as Shelley
+import Control.Exception
+    ( PatternMatchFail (PatternMatchFail), throw )
 import qualified Data.ByteString as BS
 import qualified Data.Text as T
 
@@ -583,8 +585,12 @@ postAnyAddress net addrData = do
                      CA.paymentAddress discriminant (spendingFrom spendingCred)
                  , EnterpriseDelegating )
         (ApiAddressData (AddrRewardAccount stakingCred) validation') -> do
-            let (Right stakeAddr) =
-                    CA.stakeAddress discriminant (stakingFrom stakingCred)
+            let cred = stakingFrom stakingCred
+                stakeAddr = case CA.stakeAddress discriminant cred of
+                    Left e -> throw
+                        $ PatternMatchFail
+                        $ "CA.stakeAddress discriminant cred: " <> show e
+                    Right sa -> sa
             guardValidation validation' stakingCred
             pure ( unAddress stakeAddr, RewardAccount )
         (ApiAddressData (AddrBase spendingCred stakingCred) validation') -> do
@@ -621,4 +627,8 @@ postAnyAddress net addrData = do
                       Left err -> (True, TextDecodingError $ prettyErrValidateScript err)
                       Right _ -> (False, TextDecodingError "")
               _ -> (False, TextDecodingError "")
-      (Right discriminant) = CA.mkNetworkDiscriminant netTag
+      discriminant = case CA.mkNetworkDiscriminant netTag of
+        Right nd -> nd
+        Left e -> throw
+            $ PatternMatchFail
+            $ "CA.mkNetworkDiscriminant netTag: " <> show e

@@ -612,7 +612,11 @@ withCluster tr dir LocalClusterConfig{..} onSetup onClusterStart =
     -- >>> rotate [1,2,3]
     -- [(1,[2,3]), (2, [1,3]), (3, [1,2])]
     rotate :: Ord a => [a] -> [(a, [a])]
-    rotate = nub . fmap (\(x:xs) -> (x, sort xs)) . permutations
+    rotate = nub . fmap listToTuple . permutations
+      where
+        listToTuple = \case
+            x : xs -> (x, sort xs)
+            _ -> error "rotate: incomplete pattern match (x : xs)"
 
 data LogFileConfig = LogFileConfig
     { minSeverityTerminal :: Severity

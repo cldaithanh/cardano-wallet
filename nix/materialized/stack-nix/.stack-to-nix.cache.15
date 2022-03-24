@@ -8,17 +8,17 @@
   , config
   , ... }:
   {
-    flags = { golden-tests = false; golden-tests-exe = false; };
+    flags = { development = false; };
     package = {
       specVersion = "1.10";
-      identifier = { name = "cardano-crypto"; version = "1.1.0"; };
-      license = "MIT";
-      copyright = "2016-2017 IOHK";
-      maintainer = "contact@typed.io";
-      author = "Vincent Hanquez";
-      homepage = "https://github.com/input-output-hk/cardano-crypto#readme";
+      identifier = { name = "measures"; version = "0.1.0.0"; };
+      license = "Apache-2.0";
+      copyright = "IOHK";
+      maintainer = "operations@iohk.io";
+      author = "IOHK";
+      homepage = "";
       url = "";
-      synopsis = "Cryptography primitives for cardano";
+      synopsis = "An abstraction for (tuples of) measured quantities";
       description = "";
       buildType = "Simple";
       };
@@ -26,71 +26,23 @@
       "library" = {
         depends = [
           (hsPkgs."base" or (errorHandler.buildDepError "base"))
-          (hsPkgs."memory" or (errorHandler.buildDepError "memory"))
-          (hsPkgs."deepseq" or (errorHandler.buildDepError "deepseq"))
-          (hsPkgs."bytestring" or (errorHandler.buildDepError "bytestring"))
-          (hsPkgs."basement" or (errorHandler.buildDepError "basement"))
-          (hsPkgs."foundation" or (errorHandler.buildDepError "foundation"))
-          (hsPkgs."cryptonite" or (errorHandler.buildDepError "cryptonite"))
-          (hsPkgs."hashable" or (errorHandler.buildDepError "hashable"))
-          (hsPkgs."integer-gmp" or (errorHandler.buildDepError "integer-gmp"))
+          (hsPkgs."base-deriving-via" or (errorHandler.buildDepError "base-deriving-via"))
           ];
         buildable = true;
         };
-      exes = {
-        "golden-tests" = {
-          depends = [
-            (hsPkgs."base" or (errorHandler.buildDepError "base"))
-            (hsPkgs."basement" or (errorHandler.buildDepError "basement"))
-            (hsPkgs."foundation" or (errorHandler.buildDepError "foundation"))
-            (hsPkgs."memory" or (errorHandler.buildDepError "memory"))
-            (hsPkgs."bytestring" or (errorHandler.buildDepError "bytestring"))
-            (hsPkgs."cryptonite" or (errorHandler.buildDepError "cryptonite"))
-            (hsPkgs."cardano-crypto" or (errorHandler.buildDepError "cardano-crypto"))
-            ] ++ (pkgs.lib).optional (flags.golden-tests-exe) (hsPkgs."inspector" or (errorHandler.buildDepError "inspector"));
-          buildable = if flags.golden-tests-exe then true else false;
-          };
-        };
       tests = {
-        "cardano-crypto-test" = {
+        "test" = {
           depends = [
             (hsPkgs."base" or (errorHandler.buildDepError "base"))
-            (hsPkgs."bytestring" or (errorHandler.buildDepError "bytestring"))
-            (hsPkgs."memory" or (errorHandler.buildDepError "memory"))
-            (hsPkgs."cryptonite" or (errorHandler.buildDepError "cryptonite"))
-            (hsPkgs."cardano-crypto" or (errorHandler.buildDepError "cardano-crypto"))
-            (hsPkgs."basement" or (errorHandler.buildDepError "basement"))
-            (hsPkgs."foundation" or (errorHandler.buildDepError "foundation"))
-            ];
-          buildable = true;
-          };
-        "cardano-crypto-golden-tests" = {
-          depends = [
-            (hsPkgs."base" or (errorHandler.buildDepError "base"))
-            (hsPkgs."basement" or (errorHandler.buildDepError "basement"))
-            (hsPkgs."foundation" or (errorHandler.buildDepError "foundation"))
-            (hsPkgs."memory" or (errorHandler.buildDepError "memory"))
-            (hsPkgs."bytestring" or (errorHandler.buildDepError "bytestring"))
-            (hsPkgs."cryptonite" or (errorHandler.buildDepError "cryptonite"))
-            (hsPkgs."cardano-crypto" or (errorHandler.buildDepError "cardano-crypto"))
-            ] ++ (pkgs.lib).optional (flags.golden-tests) (hsPkgs."inspector" or (errorHandler.buildDepError "inspector"));
-          buildable = if flags.golden-tests then true else false;
-          };
-        };
-      benchmarks = {
-        "cardano-crypto-bench" = {
-          depends = [
-            (hsPkgs."base" or (errorHandler.buildDepError "base"))
-            (hsPkgs."bytestring" or (errorHandler.buildDepError "bytestring"))
-            (hsPkgs."memory" or (errorHandler.buildDepError "memory"))
-            (hsPkgs."cryptonite" or (errorHandler.buildDepError "cryptonite"))
-            (hsPkgs."cardano-crypto" or (errorHandler.buildDepError "cardano-crypto"))
-            (hsPkgs."gauge" or (errorHandler.buildDepError "gauge"))
+            (hsPkgs."QuickCheck" or (errorHandler.buildDepError "QuickCheck"))
+            (hsPkgs."tasty" or (errorHandler.buildDepError "tasty"))
+            (hsPkgs."tasty-quickcheck" or (errorHandler.buildDepError "tasty-quickcheck"))
+            (hsPkgs."measures" or (errorHandler.buildDepError "measures"))
             ];
           buildable = true;
           };
         };
       };
     } // rec {
-    src = (pkgs.lib).mkDefault /nix/store/my7vh3mmfqa3il78hdab5i690zsygfbx-cardano-crypto-f730793;
+    src = (pkgs.lib).mkDefault /nix/store/bvppc469jii0bcz5y6mbv9svfi0nf7wi-cardano-base-41545ba/measures;
     }

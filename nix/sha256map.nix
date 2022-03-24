@@ -1,5 +1,6 @@
 {
   "https://github.com/input-output-hk/cardano-addresses"."8bf98905b903455196495e231b23613ad2264cb0" = "0jzlm1gnlbvz9kify2z74v9iydy6vf39nk954r73yaddknhxrq2r";
+  "https://github.com/jonathanknowles/quickcheck-quid"."05b28311a48191e57d0e3a99b8849cb8e9b71474" = "013bwiz1im70npjs0cj60d4zka9x9qvpbz87lxcg46vq0cxd49ca";
   "https://github.com/input-output-hk/optparse-applicative"."7497a29cb998721a9068d5725d49461f2bba0e7a" = "1gvsrg925vynwgqwplgjmp53vj953qyh3wbdf34pw21c8r47w35r";
   "https://github.com/input-output-hk/bech32"."ab61914443e5f53624d3b2995767761b3f68e576" = "0isqh5s6rdhmqa3jhvc32zb3kvzy149hmzddx1ld9f9jhls4f3wg";
   "https://github.com/input-output-hk/cardano-base"."41545ba3ac6b3095966316a99883d678b5ab8da8" = "0icq9y3nnl42fz536da84414av36g37894qnyw4rk3qkalksqwir";

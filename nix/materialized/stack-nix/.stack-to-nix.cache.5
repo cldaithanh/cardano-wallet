@@ -8,26 +8,46 @@
   , config
   , ... }:
   {
-    flags = { development = false; };
+    flags = { release = false; };
     package = {
       specVersion = "1.10";
-      identifier = { name = "base-deriving-via"; version = "0.1.0.0"; };
+      identifier = { name = "bech32-th"; version = "1.1.1"; };
       license = "Apache-2.0";
-      copyright = "IOHK";
-      maintainer = "operations@iohk.io";
-      author = "IOHK";
-      homepage = "";
+      copyright = "2020 IOHK";
+      maintainer = "operations@iohk.io, erikd@mega-nerd.com, jonathan.knowles@iohk.io";
+      author = "IOHK Engineering Team";
+      homepage = "https://github.com/input-output-hk/bech32";
       url = "";
-      synopsis = "A general hook newtype for use with deriving via";
-      description = "";
+      synopsis = "Template Haskell extensions to the Bech32 library.";
+      description = "Template Haskell extensions to the Bech32 library, including\nquasi-quoters for compile-time checking of Bech32 string\nliterals.";
       buildType = "Simple";
       };
     components = {
       "library" = {
-        depends = [ (hsPkgs."base" or (errorHandler.buildDepError "base")) ];
+        depends = [
+          (hsPkgs."base" or (errorHandler.buildDepError "base"))
+          (hsPkgs."bech32" or (errorHandler.buildDepError "bech32"))
+          (hsPkgs."template-haskell" or (errorHandler.buildDepError "template-haskell"))
+          (hsPkgs."text" or (errorHandler.buildDepError "text"))
+          ];
         buildable = true;
+        };
+      tests = {
+        "bech32-th-test" = {
+          depends = [
+            (hsPkgs."base" or (errorHandler.buildDepError "base"))
+            (hsPkgs."bech32" or (errorHandler.buildDepError "bech32"))
+            (hsPkgs."bech32-th" or (errorHandler.buildDepError "bech32-th"))
+            (hsPkgs."hspec" or (errorHandler.buildDepError "hspec"))
+            (hsPkgs."template-haskell" or (errorHandler.buildDepError "template-haskell"))
+            ];
+          build-tools = [
+            (hsPkgs.buildPackages.hspec-discover.components.exes.hspec-discover or (pkgs.buildPackages.hspec-discover or (errorHandler.buildToolDepError "hspec-discover:hspec-discover")))
+            ];
+          buildable = true;
+          };
         };
       };
     } // rec {
-    src = (pkgs.lib).mkDefault /nix/store/bvppc469jii0bcz5y6mbv9svfi0nf7wi-cardano-base-41545ba/base-deriving-via;
+    src = (pkgs.lib).mkDefault /nix/store/0dv7g23bmbdx55i5rxz18lk55pkw6kv4-bech32-ab61914/bech32-th;
     }

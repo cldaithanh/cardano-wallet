@@ -82,7 +82,7 @@ extra-deps:
     - core
 
 - git: https://github.com/jonathanknowles/quickcheck-quid
-  commit: 05b28311a48191e57d0e3a99b8849cb8e9b71474
+  commit: c2c819615521c9a9b4cb0fea5bbd8864e408cb6b
 
 ########################################################################
 ### cardano-node 1.33.0 and its dependencies

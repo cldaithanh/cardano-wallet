@@ -1,0 +1,49 @@
+* Building
+
+** Pre-requisites
+
+** Cabal
+:PROPERTIES:
+:header-args: :tangle "test-cabal.sh" :tangle-mode (identity #o755)
+:END:
+
+#+BEGIN_SRC sh :results code :wrap SRC sh :noweb yes
+cabal update
+#+END_SRC
+
+#+BEGIN_SRC sh
+# cabal build all
+#+END_SRC
+
+#+BEGIN_SRC sh
+cabal run cardano-wallet:exe:cardano-wallet -- --help
+#+END_SRC
+
+#+BEGIN_SRC sh
+cabal build cardano-wallet:exe:cardano-wallet -frelease
+#+END_SRC
+
+#+BEGIN_SRC sh
+cabal configure --enable-tests --enable-benchmarks
+#+END_SRC
+
+To run one of the unit test suites:
+#+BEGIN_SRC sh
+cabal run cardano-wallet-core:test:unit
+#+END_SRC
+
+To run the DB benchmark:
+#+BEGIN_SRC sh
+cabal run cardano-wallet-core:bench:db
+#+END_SRC
+
+To run the integration test suite:
+#+BEGIN_SRC sh
+cabal run cardano-wallet:test:integration
+#+END_SRC
+
+6. Install binaries from `./dist-newstyle/` into a system location:
+
+#+BEGIN_SRC sh
+cabal install --install-method=copy --installdir=/usr/local/bin
+#+END_SRC

@@ -356,6 +356,8 @@
             # Run by `nix run .`
             defaultApp = apps.cardano-wallet;
 
+            test-doc = pkgs.callPackage ./test-doc.nix {};
+
             packages = mkPackages project // mkScripts project // rec {
               dockerImage = mkDockerImage (mkPackages project.projectCross.musl64);
               pushDockerImage = import ./.buildkite/docker-build-push.nix {

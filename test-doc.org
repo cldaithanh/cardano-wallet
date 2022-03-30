@@ -34,15 +34,19 @@ cabal run cardano-wallet-core:test:unit --test-options "--match 'Cardano.Wallet.
 
 To run the entire test suite, remove the "--test-options" option.
 
-To run the DB benchmark:
+To run one of the DB benchmarks:
 #+BEGIN_SRC sh
-cabal run cardano-wallet-core:bench:db
+cabal bench cardano-wallet-core:bench:db --benchmark-options "SeqState"
 #+END_SRC
 
-To run the integration test suite:
+To run all the benchmarks, remove the "--benchmark-options" option.
+
+To run part of the integration test suite:
 #+BEGIN_SRC sh
-cabal run cardano-wallet:test:integration
+cabal test cardano-wallet:test:integration --test-options "--match CLI -j8"
 #+END_SRC
+
+To run the entire integration test suite, remove the "--test-options" option.
 
 6. Install binaries from `./dist-newstyle/` into a system location:
 

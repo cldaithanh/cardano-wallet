@@ -29,8 +29,10 @@ cabal configure --enable-tests --enable-benchmarks
 
 To run one of the unit test suites:
 #+BEGIN_SRC sh
-cabal run cardano-wallet-core:test:unit
+cabal run cardano-wallet-core:test:unit --test-options "--match 'Cardano.Wallet.Address.Pool'"
 #+END_SRC
+
+To run the entire test suite, remove the "--test-options" option.
 
 To run the DB benchmark:
 #+BEGIN_SRC sh

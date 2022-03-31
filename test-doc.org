@@ -12,8 +12,10 @@ cabal update
 #+END_SRC
 
 #+BEGIN_SRC sh
-# cabal build all
+cabal --ghc-options "-O0 -Wall -j8 +RTS -A256m -n4m -RTS" build lib:cardano-wallet-core
 #+END_SRC
+
+You can use ~cabal build all~ to build the entire project.
 
 #+BEGIN_SRC sh
 cabal run cardano-wallet:exe:cardano-wallet -- --help

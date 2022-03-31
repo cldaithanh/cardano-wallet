@@ -11,44 +11,65 @@
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE UndecidableInstances #-}
 
--- |
--- Copyright: © 2018-2020 IOHK
--- License: Apache-2.0
---
--- Auto-generated Sqlite & Persistent machinery via Template-Haskell. This has
--- been moved into a separate file so that we can treat it slightly differently
--- when computing code-coverage.
---
--- More than 6K lines end-up being generated from the instructions below! As a
--- result, we're going to ignore code-coverage on the following module and, no
--- hand-written functions should be written in this module!
+{- |
+ Copyright: © 2018-2020 IOHK
+ License: Apache-2.0
 
+ Auto-generated Sqlite & Persistent machinery via Template-Haskell. This has
+ been moved into a separate file so that we can treat it slightly differently
+ when computing code-coverage.
+
+ More than 6K lines end-up being generated from the instructions below! As a
+ result, we're going to ignore code-coverage on the following module and, no
+ hand-written functions should be written in this module!
+-}
 module Cardano.Wallet.DB.Sqlite.TH where
 
 import Prelude
 
-import Cardano.Address.Script
-    ( Cosigner, Script )
-import Cardano.Slotting.Slot
-    ( SlotNo )
-import Cardano.Wallet.DB.Sqlite.Types
-    ( BlockId, HDPassphrase, TxId, sqlSettings' )
-import Cardano.Wallet.Primitive.AddressDiscovery.Shared
-    ( CredentialType )
-import Data.Quantity
-    ( Percentage (..) )
-import Data.Text
-    ( Text )
-import Data.Time.Clock
-    ( UTCTime )
-import Data.Word
-    ( Word16, Word32, Word64, Word8 )
-import Database.Persist.TH
-    ( mkMigrate, mkPersist, persistLowerCase, share )
-import GHC.Generics
-    ( Generic (..) )
-import System.Random
-    ( StdGen )
+import Cardano.Address.Script (
+    Cosigner,
+    Script,
+ )
+import Cardano.Slotting.Slot (
+    SlotNo,
+ )
+import Cardano.Wallet.DB.Sqlite.Types (
+    BlockId,
+    HDPassphrase,
+    TxId,
+    sqlSettings',
+ )
+import Cardano.Wallet.Primitive.AddressDiscovery.Shared (
+    CredentialType,
+ )
+import Data.Quantity (
+    Percentage (..),
+ )
+import Data.Text (
+    Text,
+ )
+import Data.Time.Clock (
+    UTCTime,
+ )
+import Data.Word (
+    Word16,
+    Word32,
+    Word64,
+    Word8,
+ )
+import Database.Persist.TH (
+    mkMigrate,
+    mkPersist,
+    persistLowerCase,
+    share,
+ )
+import GHC.Generics (
+    Generic (..),
+ )
+import System.Random (
+    StdGen,
+ )
 
 import qualified Cardano.Wallet.Primitive.AddressDerivation as W
 import qualified Cardano.Wallet.Primitive.AddressDiscovery.Sequential as W

@@ -6,7 +6,6 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE NamedFieldPuns #-}
-{-# LANGUAGE NoMonomorphismRestriction #-}
 {-# LANGUAGE NumericUnderscores #-}
 {-# LANGUAGE OverloadedLabels #-}
 {-# LANGUAGE PolyKinds #-}
@@ -20,427 +19,539 @@
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE UndecidableInstances #-}
+{-# LANGUAGE NoMonomorphismRestriction #-}
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 
 module Cardano.Wallet.Api.TypesSpec (spec) where
 
-import Prelude hiding
-    ( id )
+import Prelude hiding (
+    id,
+ )
 
-import Cardano.Address.Script
-    ( Cosigner (..)
-    , KeyHash (..)
-    , KeyRole (..)
-    , Script (..)
-    , ScriptTemplate (..)
-    , ValidationLevel (..)
-    )
-import Cardano.Api
-    ( StakeAddress, deserialiseFromRawBytes, proxyToAsType )
-import Cardano.Mnemonic
-    ( CheckSumBits
-    , ConsistentEntropy
-    , Entropy
-    , EntropySize
-    , MnemonicException (..)
-    , SomeMnemonic (..)
-    , ValidChecksumSize
-    , ValidEntropySize
-    , entropyToMnemonic
-    , mkEntropy
-    )
-import Cardano.Wallet.Api
-    ( Api )
-import Cardano.Wallet.Api.Types
-    ( AccountPostData (..)
-    , AddressAmount (..)
-    , AddressAmountNoAssets (..)
-    , AnyAddress (..)
-    , ApiAccountKey (..)
-    , ApiAccountKeyShared (..)
-    , ApiAccountPublicKey (..)
-    , ApiActiveSharedWallet (..)
-    , ApiAddress (..)
-    , ApiAddressData (..)
-    , ApiAddressDataPayload (..)
-    , ApiAddressInspect (..)
-    , ApiAnyCertificate (..)
-    , ApiAsset (..)
-    , ApiAssetMintBurn (..)
-    , ApiBalanceTransactionPostData (..)
-    , ApiBase64
-    , ApiBlockInfo (..)
-    , ApiBlockReference (..)
-    , ApiBurnData (..)
-    , ApiByronWallet (..)
-    , ApiByronWalletBalance (..)
-    , ApiBytesT (..)
-    , ApiCertificate (..)
-    , ApiCoinSelection (..)
-    , ApiCoinSelectionChange (..)
-    , ApiCoinSelectionCollateral (..)
-    , ApiCoinSelectionOutput (..)
-    , ApiCoinSelectionWithdrawal (..)
-    , ApiConstructTransaction (..)
-    , ApiConstructTransactionData (..)
-    , ApiCredential (..)
-    , ApiDecodedTransaction (..)
-    , ApiDelegationAction (..)
-    , ApiDeregisterPool (..)
-    , ApiEpochInfo (..)
-    , ApiEra (..)
-    , ApiEraInfo (..)
-    , ApiErrorCode (..)
-    , ApiExternalCertificate (..)
-    , ApiExternalInput (..)
-    , ApiFee (..)
-    , ApiForeignStakeKey
-    , ApiHealthCheck (..)
-    , ApiMaintenanceAction (..)
-    , ApiMaintenanceActionPostData (..)
-    , ApiMintBurnData (..)
-    , ApiMintBurnInfo (..)
-    , ApiMintBurnOperation (..)
-    , ApiMintBurnTransaction (..)
-    , ApiMintData (..)
-    , ApiMnemonicT (..)
-    , ApiMultiDelegationAction (..)
-    , ApiNetworkClock (..)
-    , ApiNetworkInformation (..)
-    , ApiNetworkParameters (..)
-    , ApiNtpStatus (..)
-    , ApiNullStakeKey
-    , ApiOurStakeKey
-    , ApiPaymentDestination (..)
-    , ApiPendingSharedWallet (..)
-    , ApiPolicyKey (..)
-    , ApiPolicyScript (..)
-    , ApiPostAccountKeyData
-    , ApiPostAccountKeyDataWithPurpose
-    , ApiPostRandomAddressData
-    , ApiPutAddressesData (..)
-    , ApiRedeemer (..)
-    , ApiRegisterPool (..)
-    , ApiScriptTemplateEntry (..)
-    , ApiSelectCoinsAction (..)
-    , ApiSelectCoinsData (..)
-    , ApiSelectCoinsPayments (..)
-    , ApiSerialisedTransaction (..)
-    , ApiSharedWallet (..)
-    , ApiSharedWalletPatchData (..)
-    , ApiSharedWalletPostData (..)
-    , ApiSharedWalletPostDataFromAccountPubX (..)
-    , ApiSharedWalletPostDataFromMnemonics (..)
-    , ApiSignTransactionPostData (..)
-    , ApiSlotId (..)
-    , ApiSlotReference (..)
-    , ApiStakeKeyIndex (..)
-    , ApiStakeKeys
-    , ApiStakePool (..)
-    , ApiStakePoolFlag (..)
-    , ApiStakePoolMetrics (..)
-    , ApiT (..)
-    , ApiTransaction (..)
-    , ApiTxCollateral (..)
-    , ApiTxId (..)
-    , ApiTxInput (..)
-    , ApiTxInputGeneral (..)
-    , ApiTxMetadata (..)
-    , ApiTxOutputGeneral (..)
-    , ApiUtxoStatistics (..)
-    , ApiVerificationKeyShared (..)
-    , ApiVerificationKeyShelley (..)
-    , ApiWallet (..)
-    , ApiWalletAssetsBalance (..)
-    , ApiWalletBalance (..)
-    , ApiWalletDelegation (..)
-    , ApiWalletDelegationNext (..)
-    , ApiWalletDelegationStatus (..)
-    , ApiWalletDiscovery (..)
-    , ApiWalletInput (..)
-    , ApiWalletMigrationBalance (..)
-    , ApiWalletMigrationPlan (..)
-    , ApiWalletMigrationPlanPostData (..)
-    , ApiWalletMigrationPostData (..)
-    , ApiWalletOutput (..)
-    , ApiWalletPassphrase (..)
-    , ApiWalletPassphraseInfo (..)
-    , ApiWalletSignData (..)
-    , ApiWalletUtxoSnapshot (..)
-    , ApiWalletUtxoSnapshotEntry (..)
-    , ApiWithdrawal (..)
-    , ApiWithdrawalGeneral (..)
-    , ApiWithdrawalPostData (..)
-    , Base (Base16, Base64)
-    , ByronWalletFromXPrvPostData (..)
-    , ByronWalletPostData (..)
-    , ByronWalletPutPassphraseData (..)
-    , DecodeAddress (..)
-    , DecodeStakeAddress (..)
-    , EncodeAddress (..)
-    , EncodeStakeAddress (..)
-    , HealthCheckSMASH (..)
-    , Iso8601Time (..)
-    , KeyFormat (..)
-    , NtpSyncingStatus (..)
-    , PostMintBurnAssetData (..)
-    , PostTransactionFeeOldData (..)
-    , PostTransactionOldData (..)
-    , ResourceContext (..)
-    , SettingsPutData (..)
-    , SomeByronWalletPostData (..)
-    , VerificationKeyHashing (..)
-    , WalletOrAccountPostData (..)
-    , WalletPostData (..)
-    , WalletPutData (..)
-    , WalletPutPassphraseData (..)
-    , toApiAsset
-    )
-import Cardano.Wallet.Gen
-    ( genMnemonic
-    , genNatural
-    , genNestedTxMetadata
-    , genPercentage
-    , genScript
-    , genScriptCosigners
-    , genScriptTemplate
-    , genScriptTemplateEntry
-    , shrinkPercentage
-    , shrinkTxMetadata
-    )
-import Cardano.Wallet.Primitive.AddressDerivation
-    ( DerivationIndex (..)
-    , DerivationType (..)
-    , HardDerivation (..)
-    , Index (..)
-    , NetworkDiscriminant (..)
-    , Passphrase (..)
-    , PassphraseMaxLength (..)
-    , PassphraseMinLength (..)
-    , Role (..)
-    , WalletKey (..)
-    , fromHex
-    , passphraseMaxLength
-    , passphraseMinLength
-    )
-import Cardano.Wallet.Primitive.AddressDerivation.SharedKey
-    ( purposeCIP1854 )
-import Cardano.Wallet.Primitive.AddressDerivation.Shelley
-    ( ShelleyKey (..), generateKeyFromSeed )
-import Cardano.Wallet.Primitive.AddressDerivationSpec
-    ()
-import Cardano.Wallet.Primitive.AddressDiscovery.Sequential
-    ( AddressPoolGap, getAddressPoolGap, purposeCIP1852 )
-import Cardano.Wallet.Primitive.SyncProgress
-    ( SyncProgress (..) )
-import Cardano.Wallet.Primitive.Types
-    ( EpochNo (..)
-    , ExecutionUnitPrices (..)
-    , NonWalletCertificate (..)
-    , PoolId (..)
-    , PoolMetadataGCStatus (..)
-    , PoolMetadataSource
-    , PoolOwner (..)
-    , Settings
-    , SlotId (..)
-    , SlotInEpoch (..)
-    , SlotNo (..)
-    , SmashServer
-    , SortOrder (..)
-    , StakePoolMetadata (..)
-    , StakePoolTicker
-    , StartTime (..)
-    , WalletDelegationStatus (..)
-    , WalletId (..)
-    , WalletName (..)
-    , walletNameMaxLength
-    , walletNameMinLength
-    )
-import Cardano.Wallet.Primitive.Types.Address
-    ( Address (..), AddressState (..) )
-import Cardano.Wallet.Primitive.Types.Coin
-    ( Coin (..) )
-import Cardano.Wallet.Primitive.Types.Coin.Gen
-    ( genCoinPositive )
-import Cardano.Wallet.Primitive.Types.Hash
-    ( Hash (..) )
-import Cardano.Wallet.Primitive.Types.RewardAccount
-    ( RewardAccount (..) )
-import Cardano.Wallet.Primitive.Types.TokenBundle
-    ( AssetId (..), TokenBundle )
-import Cardano.Wallet.Primitive.Types.TokenBundle.Gen
-    ( genTokenBundleSmallRange, shrinkTokenBundleSmallRange )
-import Cardano.Wallet.Primitive.Types.TokenMap
-    ( TokenMap )
-import Cardano.Wallet.Primitive.Types.TokenMap.Gen
-    ( genAssetId, genTokenMapSmallRange, shrinkTokenMap )
-import Cardano.Wallet.Primitive.Types.TokenPolicy
-    ( AssetDecimals (..)
-    , AssetLogo (..)
-    , AssetMetadata (..)
-    , AssetURL (..)
-    , TokenFingerprint
-    , TokenName (..)
-    , TokenPolicyId (..)
-    , mkTokenFingerprint
-    )
-import Cardano.Wallet.Primitive.Types.TokenPolicy.Gen
-    ( genTokenName )
-import Cardano.Wallet.Primitive.Types.Tx
-    ( Direction (..)
-    , SealedTx (..)
-    , SerialisedTx (..)
-    , SerialisedTxParts (..)
-    , TxIn (..)
-    , TxMetadata (..)
-    , TxOut (..)
-    , TxScriptValidity (..)
-    , TxStatus (..)
-    , txOutMaxCoin
-    , unsafeSealedTxFromBytes
-    )
-import Cardano.Wallet.Primitive.Types.Tx.Gen
-    ( genTxOutCoin, genTxScriptValidity, shrinkTxScriptValidity )
-import Cardano.Wallet.Primitive.Types.UTxO
-    ( HistogramBar (..)
-    , UTxO (..)
-    , UTxOStatistics (..)
-    , computeUtxoStatistics
-    , log10
-    )
-import Cardano.Wallet.TokenMetadata
-    ( TokenMetadataError (..) )
-import Cardano.Wallet.Unsafe
-    ( unsafeFromText, unsafeXPrv )
-import Control.Lens
-    ( at, (?~) )
-import Control.Monad
-    ( forM, forM_, replicateM )
-import Control.Monad.IO.Class
-    ( liftIO )
-import Crypto.Hash
-    ( hash )
-import Data.Aeson
-    ( FromJSON (..), Result (..), fromJSON, withObject, (.:?), (.=) )
-import Data.Aeson.QQ
-    ( aesonQQ )
-import Data.ByteString
-    ( ByteString )
-import Data.Char
-    ( toLower )
-import Data.Data
-    ( dataTypeConstrs, dataTypeOf, showConstr )
-import Data.Either
-    ( lefts )
-import Data.FileEmbed
-    ( embedFile, makeRelativeToProject )
-import Data.Function
-    ( (&) )
-import Data.List
-    ( foldl' )
-import Data.List.NonEmpty
-    ( NonEmpty (..) )
-import Data.Maybe
-    ( fromJust, fromMaybe )
-import Data.OpenApi
-    ( Definitions, NamedSchema (..), Schema, ToSchema (..) )
-import Data.OpenApi.Declare
-    ( Declare, declare, look )
-import Data.Proxy
-    ( Proxy (..) )
-import Data.Quantity
-    ( Percentage, Quantity (..) )
-import Data.Text
-    ( Text )
-import Data.Text.Class
-    ( FromText (..), TextDecodingError (..) )
-import Data.Time.Clock
-    ( NominalDiffTime )
-import Data.Time.Clock.POSIX
-    ( utcTimeToPOSIXSeconds )
-import Data.Typeable
-    ( Typeable )
-import Data.Word
-    ( Word32, Word64, Word8 )
-import Data.Word.Odd
-    ( Word31 )
-import GHC.TypeLits
-    ( KnownSymbol, natVal, symbolVal )
-import Network.URI
-    ( URI, parseURI )
-import Numeric.Natural
-    ( Natural )
-import Servant
-    ( (:<|>)
-    , (:>)
-    , Capture
-    , Header'
-    , JSON
-    , PostNoContent
-    , QueryFlag
-    , QueryParam
-    , ReqBody
-    , StdMethod (..)
-    , Verb
-    )
-import Servant.API.Verbs
-    ( NoContentVerb )
-import Servant.OpenApi.Test
-    ( validateEveryToJSON, validateEveryToJSONWithPatternChecker )
-import System.Environment
-    ( lookupEnv )
-import System.FilePath
-    ( (</>) )
-import Test.Hspec
-    ( Spec, SpecWith, describe, it, shouldBe )
-import Test.Hspec.Extra
-    ( parallel )
-import Test.QuickCheck
-    ( Arbitrary (..)
-    , Gen
-    , InfiniteList (..)
-    , applyArbitrary2
-    , applyArbitrary3
-    , applyArbitrary4
-    , arbitraryBoundedEnum
-    , arbitraryPrintableChar
-    , arbitrarySizedBoundedIntegral
-    , choose
-    , chooseInt
-    , counterexample
-    , elements
-    , forAll
-    , frequency
-    , liftArbitrary
-    , listOf
-    , oneof
-    , property
-    , scale
-    , shrinkIntegral
-    , sized
-    , vector
-    , vectorOf
-    , (.&&.)
-    , (===)
-    )
-import Test.QuickCheck.Arbitrary.Generic
-    ( genericArbitrary, genericShrink )
-import Test.QuickCheck.Extra
-    ( reasonablySized )
-import Test.QuickCheck.Modifiers
-    ( NonNegative (..) )
-import Test.Text.Roundtrip
-    ( textRoundtrip )
-import Test.Utils.Paths
-    ( getTestData )
-import Test.Utils.Roundtrip
-    ( httpApiDataRoundtrip )
-import Test.Utils.Time
-    ( genUniformTime )
-import Text.Regex.PCRE
-    ( compBlank, execBlank, makeRegexOpts, matchTest )
-import Web.HttpApiData
-    ( FromHttpApiData (..) )
+import Cardano.Address.Script (
+    Cosigner (..),
+    KeyHash (..),
+    KeyRole (..),
+    Script (..),
+    ScriptTemplate (..),
+    ValidationLevel (..),
+ )
+import Cardano.Api (
+    StakeAddress,
+    deserialiseFromRawBytes,
+    proxyToAsType,
+ )
+import Cardano.Mnemonic (
+    CheckSumBits,
+    ConsistentEntropy,
+    Entropy,
+    EntropySize,
+    MnemonicException (..),
+    SomeMnemonic (..),
+    ValidChecksumSize,
+    ValidEntropySize,
+    entropyToMnemonic,
+    mkEntropy,
+ )
+import Cardano.Wallet.Api (
+    Api,
+ )
+import Cardano.Wallet.Api.Types (
+    AccountPostData (..),
+    AddressAmount (..),
+    AddressAmountNoAssets (..),
+    AnyAddress (..),
+    ApiAccountKey (..),
+    ApiAccountKeyShared (..),
+    ApiAccountPublicKey (..),
+    ApiActiveSharedWallet (..),
+    ApiAddress (..),
+    ApiAddressData (..),
+    ApiAddressDataPayload (..),
+    ApiAddressInspect (..),
+    ApiAnyCertificate (..),
+    ApiAsset (..),
+    ApiAssetMintBurn (..),
+    ApiBalanceTransactionPostData (..),
+    ApiBase64,
+    ApiBlockInfo (..),
+    ApiBlockReference (..),
+    ApiBurnData (..),
+    ApiByronWallet (..),
+    ApiByronWalletBalance (..),
+    ApiBytesT (..),
+    ApiCertificate (..),
+    ApiCoinSelection (..),
+    ApiCoinSelectionChange (..),
+    ApiCoinSelectionCollateral (..),
+    ApiCoinSelectionOutput (..),
+    ApiCoinSelectionWithdrawal (..),
+    ApiConstructTransaction (..),
+    ApiConstructTransactionData (..),
+    ApiCredential (..),
+    ApiDecodedTransaction (..),
+    ApiDelegationAction (..),
+    ApiDeregisterPool (..),
+    ApiEpochInfo (..),
+    ApiEra (..),
+    ApiEraInfo (..),
+    ApiErrorCode (..),
+    ApiExternalCertificate (..),
+    ApiExternalInput (..),
+    ApiFee (..),
+    ApiForeignStakeKey,
+    ApiHealthCheck (..),
+    ApiMaintenanceAction (..),
+    ApiMaintenanceActionPostData (..),
+    ApiMintBurnData (..),
+    ApiMintBurnInfo (..),
+    ApiMintBurnOperation (..),
+    ApiMintBurnTransaction (..),
+    ApiMintData (..),
+    ApiMnemonicT (..),
+    ApiMultiDelegationAction (..),
+    ApiNetworkClock (..),
+    ApiNetworkInformation (..),
+    ApiNetworkParameters (..),
+    ApiNtpStatus (..),
+    ApiNullStakeKey,
+    ApiOurStakeKey,
+    ApiPaymentDestination (..),
+    ApiPendingSharedWallet (..),
+    ApiPolicyKey (..),
+    ApiPolicyScript (..),
+    ApiPostAccountKeyData,
+    ApiPostAccountKeyDataWithPurpose,
+    ApiPostRandomAddressData,
+    ApiPutAddressesData (..),
+    ApiRedeemer (..),
+    ApiRegisterPool (..),
+    ApiScriptTemplateEntry (..),
+    ApiSelectCoinsAction (..),
+    ApiSelectCoinsData (..),
+    ApiSelectCoinsPayments (..),
+    ApiSerialisedTransaction (..),
+    ApiSharedWallet (..),
+    ApiSharedWalletPatchData (..),
+    ApiSharedWalletPostData (..),
+    ApiSharedWalletPostDataFromAccountPubX (..),
+    ApiSharedWalletPostDataFromMnemonics (..),
+    ApiSignTransactionPostData (..),
+    ApiSlotId (..),
+    ApiSlotReference (..),
+    ApiStakeKeyIndex (..),
+    ApiStakeKeys,
+    ApiStakePool (..),
+    ApiStakePoolFlag (..),
+    ApiStakePoolMetrics (..),
+    ApiT (..),
+    ApiTransaction (..),
+    ApiTxCollateral (..),
+    ApiTxId (..),
+    ApiTxInput (..),
+    ApiTxInputGeneral (..),
+    ApiTxMetadata (..),
+    ApiTxOutputGeneral (..),
+    ApiUtxoStatistics (..),
+    ApiVerificationKeyShared (..),
+    ApiVerificationKeyShelley (..),
+    ApiWallet (..),
+    ApiWalletAssetsBalance (..),
+    ApiWalletBalance (..),
+    ApiWalletDelegation (..),
+    ApiWalletDelegationNext (..),
+    ApiWalletDelegationStatus (..),
+    ApiWalletDiscovery (..),
+    ApiWalletInput (..),
+    ApiWalletMigrationBalance (..),
+    ApiWalletMigrationPlan (..),
+    ApiWalletMigrationPlanPostData (..),
+    ApiWalletMigrationPostData (..),
+    ApiWalletOutput (..),
+    ApiWalletPassphrase (..),
+    ApiWalletPassphraseInfo (..),
+    ApiWalletSignData (..),
+    ApiWalletUtxoSnapshot (..),
+    ApiWalletUtxoSnapshotEntry (..),
+    ApiWithdrawal (..),
+    ApiWithdrawalGeneral (..),
+    ApiWithdrawalPostData (..),
+    Base (Base16, Base64),
+    ByronWalletFromXPrvPostData (..),
+    ByronWalletPostData (..),
+    ByronWalletPutPassphraseData (..),
+    DecodeAddress (..),
+    DecodeStakeAddress (..),
+    EncodeAddress (..),
+    EncodeStakeAddress (..),
+    HealthCheckSMASH (..),
+    Iso8601Time (..),
+    KeyFormat (..),
+    NtpSyncingStatus (..),
+    PostMintBurnAssetData (..),
+    PostTransactionFeeOldData (..),
+    PostTransactionOldData (..),
+    ResourceContext (..),
+    SettingsPutData (..),
+    SomeByronWalletPostData (..),
+    VerificationKeyHashing (..),
+    WalletOrAccountPostData (..),
+    WalletPostData (..),
+    WalletPutData (..),
+    WalletPutPassphraseData (..),
+    toApiAsset,
+ )
+import Cardano.Wallet.Gen (
+    genMnemonic,
+    genNatural,
+    genNestedTxMetadata,
+    genPercentage,
+    genScript,
+    genScriptCosigners,
+    genScriptTemplate,
+    genScriptTemplateEntry,
+    shrinkPercentage,
+    shrinkTxMetadata,
+ )
+import Cardano.Wallet.Primitive.AddressDerivation (
+    DerivationIndex (..),
+    DerivationType (..),
+    HardDerivation (..),
+    Index (..),
+    NetworkDiscriminant (..),
+    Passphrase (..),
+    PassphraseMaxLength (..),
+    PassphraseMinLength (..),
+    Role (..),
+    WalletKey (..),
+    fromHex,
+    passphraseMaxLength,
+    passphraseMinLength,
+ )
+import Cardano.Wallet.Primitive.AddressDerivation.SharedKey (
+    purposeCIP1854,
+ )
+import Cardano.Wallet.Primitive.AddressDerivation.Shelley (
+    ShelleyKey (..),
+    generateKeyFromSeed,
+ )
+import Cardano.Wallet.Primitive.AddressDerivationSpec (
+
+ )
+import Cardano.Wallet.Primitive.AddressDiscovery.Sequential (
+    AddressPoolGap,
+    getAddressPoolGap,
+    purposeCIP1852,
+ )
+import Cardano.Wallet.Primitive.SyncProgress (
+    SyncProgress (..),
+ )
+import Cardano.Wallet.Primitive.Types (
+    EpochNo (..),
+    ExecutionUnitPrices (..),
+    NonWalletCertificate (..),
+    PoolId (..),
+    PoolMetadataGCStatus (..),
+    PoolMetadataSource,
+    PoolOwner (..),
+    Settings,
+    SlotId (..),
+    SlotInEpoch (..),
+    SlotNo (..),
+    SmashServer,
+    SortOrder (..),
+    StakePoolMetadata (..),
+    StakePoolTicker,
+    StartTime (..),
+    WalletDelegationStatus (..),
+    WalletId (..),
+    WalletName (..),
+    walletNameMaxLength,
+    walletNameMinLength,
+ )
+import Cardano.Wallet.Primitive.Types.Address (
+    Address (..),
+    AddressState (..),
+ )
+import Cardano.Wallet.Primitive.Types.Coin (
+    Coin (..),
+ )
+import Cardano.Wallet.Primitive.Types.Coin.Gen (
+    genCoinPositive,
+ )
+import Cardano.Wallet.Primitive.Types.Hash (
+    Hash (..),
+ )
+import Cardano.Wallet.Primitive.Types.RewardAccount (
+    RewardAccount (..),
+ )
+import Cardano.Wallet.Primitive.Types.TokenBundle (
+    AssetId (..),
+    TokenBundle,
+ )
+import Cardano.Wallet.Primitive.Types.TokenBundle.Gen (
+    genTokenBundleSmallRange,
+    shrinkTokenBundleSmallRange,
+ )
+import Cardano.Wallet.Primitive.Types.TokenMap (
+    TokenMap,
+ )
+import Cardano.Wallet.Primitive.Types.TokenMap.Gen (
+    genAssetId,
+    genTokenMapSmallRange,
+    shrinkTokenMap,
+ )
+import Cardano.Wallet.Primitive.Types.TokenPolicy (
+    AssetDecimals (..),
+    AssetLogo (..),
+    AssetMetadata (..),
+    AssetURL (..),
+    TokenFingerprint,
+    TokenName (..),
+    TokenPolicyId (..),
+    mkTokenFingerprint,
+ )
+import Cardano.Wallet.Primitive.Types.TokenPolicy.Gen (
+    genTokenName,
+ )
+import Cardano.Wallet.Primitive.Types.Tx (
+    Direction (..),
+    SealedTx (..),
+    SerialisedTx (..),
+    SerialisedTxParts (..),
+    TxIn (..),
+    TxMetadata (..),
+    TxOut (..),
+    TxScriptValidity (..),
+    TxStatus (..),
+    txOutMaxCoin,
+    unsafeSealedTxFromBytes,
+ )
+import Cardano.Wallet.Primitive.Types.Tx.Gen (
+    genTxOutCoin,
+    genTxScriptValidity,
+    shrinkTxScriptValidity,
+ )
+import Cardano.Wallet.Primitive.Types.UTxO (
+    HistogramBar (..),
+    UTxO (..),
+    UTxOStatistics (..),
+    computeUtxoStatistics,
+    log10,
+ )
+import Cardano.Wallet.TokenMetadata (
+    TokenMetadataError (..),
+ )
+import Cardano.Wallet.Unsafe (
+    unsafeFromText,
+    unsafeXPrv,
+ )
+import Control.Lens (
+    at,
+    (?~),
+ )
+import Control.Monad (
+    forM,
+    forM_,
+    replicateM,
+ )
+import Control.Monad.IO.Class (
+    liftIO,
+ )
+import Crypto.Hash (
+    hash,
+ )
+import Data.Aeson (
+    FromJSON (..),
+    Result (..),
+    fromJSON,
+    withObject,
+    (.:?),
+    (.=),
+ )
+import Data.Aeson.QQ (
+    aesonQQ,
+ )
+import Data.ByteString (
+    ByteString,
+ )
+import Data.Char (
+    toLower,
+ )
+import Data.Data (
+    dataTypeConstrs,
+    dataTypeOf,
+    showConstr,
+ )
+import Data.Either (
+    lefts,
+ )
+import Data.FileEmbed (
+    embedFile,
+    makeRelativeToProject,
+ )
+import Data.Function (
+    (&),
+ )
+import Data.List (
+    foldl',
+ )
+import Data.List.NonEmpty (
+    NonEmpty (..),
+ )
+import Data.Maybe (
+    fromJust,
+    fromMaybe,
+ )
+import Data.OpenApi (
+    Definitions,
+    NamedSchema (..),
+    Schema,
+    ToSchema (..),
+ )
+import Data.OpenApi.Declare (
+    Declare,
+    declare,
+    look,
+ )
+import Data.Proxy (
+    Proxy (..),
+ )
+import Data.Quantity (
+    Percentage,
+    Quantity (..),
+ )
+import Data.Text (
+    Text,
+ )
+import Data.Text.Class (
+    FromText (..),
+    TextDecodingError (..),
+ )
+import Data.Time.Clock (
+    NominalDiffTime,
+ )
+import Data.Time.Clock.POSIX (
+    utcTimeToPOSIXSeconds,
+ )
+import Data.Typeable (
+    Typeable,
+ )
+import Data.Word (
+    Word32,
+    Word64,
+    Word8,
+ )
+import Data.Word.Odd (
+    Word31,
+ )
+import GHC.TypeLits (
+    KnownSymbol,
+    natVal,
+    symbolVal,
+ )
+import Network.URI (
+    URI,
+    parseURI,
+ )
+import Numeric.Natural (
+    Natural,
+ )
+import Servant (
+    Capture,
+    Header',
+    JSON,
+    PostNoContent,
+    QueryFlag,
+    QueryParam,
+    ReqBody,
+    StdMethod (..),
+    Verb,
+    (:<|>),
+    (:>),
+ )
+import Servant.API.Verbs (
+    NoContentVerb,
+ )
+import Servant.OpenApi.Test (
+    validateEveryToJSON,
+    validateEveryToJSONWithPatternChecker,
+ )
+import System.Environment (
+    lookupEnv,
+ )
+import System.FilePath (
+    (</>),
+ )
+import Test.Hspec (
+    Spec,
+    SpecWith,
+    describe,
+    it,
+    shouldBe,
+ )
+import Test.Hspec.Extra (
+    parallel,
+ )
+import Test.QuickCheck (
+    Arbitrary (..),
+    Gen,
+    InfiniteList (..),
+    applyArbitrary2,
+    applyArbitrary3,
+    applyArbitrary4,
+    arbitraryBoundedEnum,
+    arbitraryPrintableChar,
+    arbitrarySizedBoundedIntegral,
+    choose,
+    chooseInt,
+    counterexample,
+    elements,
+    forAll,
+    frequency,
+    liftArbitrary,
+    listOf,
+    oneof,
+    property,
+    scale,
+    shrinkIntegral,
+    sized,
+    vector,
+    vectorOf,
+    (.&&.),
+    (===),
+ )
+import Test.QuickCheck.Arbitrary.Generic (
+    genericArbitrary,
+    genericShrink,
+ )
+import Test.QuickCheck.Extra (
+    reasonablySized,
+ )
+import Test.QuickCheck.Modifiers (
+    NonNegative (..),
+ )
+import Test.Text.Roundtrip (
+    textRoundtrip,
+ )
+import Test.Utils.Paths (
+    getTestData,
+ )
+import Test.Utils.Roundtrip (
+    httpApiDataRoundtrip,
+ )
+import Test.Utils.Time (
+    genUniformTime,
+ )
+import Text.Regex.PCRE (
+    compBlank,
+    execBlank,
+    makeRegexOpts,
+    matchTest,
+ )
+import Web.HttpApiData (
+    FromHttpApiData (..),
+ )
 
 import qualified Cardano.Wallet.Api.Types as Api
 import qualified Data.Aeson as Aeson
@@ -454,359 +565,433 @@ import qualified Data.Map.Strict as Map
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as T
 import qualified Data.Yaml as Yaml
-import qualified Prelude
 import qualified Test.Utils.Roundtrip as Utils
+import qualified Prelude
 
 spec :: Spec
 spec = parallel $ do
-    let jsonRoundtripAndGolden = Utils.jsonRoundtripAndGolden
-            ($(getTestData) </> "Cardano" </> "Wallet" </> "Api")
+    let jsonRoundtripAndGolden =
+            Utils.jsonRoundtripAndGolden
+                ($(getTestData) </> "Cardano" </> "Wallet" </> "Api")
 
     describe "JSON golden roundtrip" $ do
-            jsonRoundtripAndGolden $ Proxy @AnyAddress
-            jsonRoundtripAndGolden $ Proxy @ApiCredential
-            jsonRoundtripAndGolden $ Proxy @ApiAddressData
-            jsonRoundtripAndGolden $ Proxy @(ApiT DerivationIndex)
-            jsonRoundtripAndGolden $ Proxy @ApiPostAccountKeyData
-            jsonRoundtripAndGolden $ Proxy @ApiPostAccountKeyDataWithPurpose
-            jsonRoundtripAndGolden $ Proxy @ApiAccountKey
-            jsonRoundtripAndGolden $ Proxy @ApiPolicyKey
-            jsonRoundtripAndGolden $ Proxy @ApiAccountKeyShared
-            jsonRoundtripAndGolden $ Proxy @ApiEpochInfo
-            jsonRoundtripAndGolden $ Proxy @(ApiSelectCoinsData ('Testnet 0))
-            jsonRoundtripAndGolden $ Proxy @(ApiCoinSelection ('Testnet 0))
-            jsonRoundtripAndGolden $ Proxy @(ApiCoinSelectionChange ('Testnet 0))
-            jsonRoundtripAndGolden $ Proxy @(ApiCoinSelectionCollateral ('Testnet 0))
-            jsonRoundtripAndGolden $ Proxy @(ApiCoinSelectionOutput ('Testnet 0))
-            jsonRoundtripAndGolden $ Proxy @(ApiCoinSelectionWithdrawal ('Testnet 0))
-            jsonRoundtripAndGolden $ Proxy @ApiBase64
-            jsonRoundtripAndGolden $ Proxy @ApiBlockReference
-            jsonRoundtripAndGolden $ Proxy @ApiSlotReference
-            jsonRoundtripAndGolden $ Proxy @ApiDelegationAction
-            jsonRoundtripAndGolden $ Proxy @ApiNetworkInformation
-            jsonRoundtripAndGolden $ Proxy @ApiNetworkParameters
-            jsonRoundtripAndGolden $ Proxy @ApiEraInfo
-            jsonRoundtripAndGolden $ Proxy @ApiEra
-            jsonRoundtripAndGolden $ Proxy @ApiNetworkClock
-            jsonRoundtripAndGolden $ Proxy @ApiWalletDelegation
-            jsonRoundtripAndGolden $ Proxy @ApiHealthCheck
-            jsonRoundtripAndGolden $ Proxy @ApiWalletDelegationStatus
-            jsonRoundtripAndGolden $ Proxy @ApiWalletDelegationNext
-            jsonRoundtripAndGolden $ Proxy @(ApiT (Hash "Genesis"))
-            jsonRoundtripAndGolden $ Proxy @ApiStakePool
-            jsonRoundtripAndGolden $ Proxy @ApiStakePoolMetrics
-            jsonRoundtripAndGolden $ Proxy @(AddressAmount (ApiT Address, Proxy ('Testnet 0)))
-            jsonRoundtripAndGolden $ Proxy @(AddressAmountNoAssets (ApiT Address, Proxy ('Testnet 0)))
-            jsonRoundtripAndGolden $ Proxy @(ApiTransaction ('Testnet 0))
-            jsonRoundtripAndGolden $ Proxy @(ApiPutAddressesData ('Testnet 0))
-            jsonRoundtripAndGolden $ Proxy @ApiWallet
-            jsonRoundtripAndGolden $ Proxy @ApiSharedWalletPostData
-            jsonRoundtripAndGolden $ Proxy @ApiScriptTemplateEntry
-            jsonRoundtripAndGolden $ Proxy @ApiSharedWalletPostDataFromMnemonics
-            jsonRoundtripAndGolden $ Proxy @ApiSharedWalletPostDataFromAccountPubX
-            jsonRoundtripAndGolden $ Proxy @ApiSharedWallet
-            jsonRoundtripAndGolden $ Proxy @ApiActiveSharedWallet
-            jsonRoundtripAndGolden $ Proxy @ApiPendingSharedWallet
-            jsonRoundtripAndGolden $ Proxy @ApiSharedWalletPatchData
-            jsonRoundtripAndGolden $ Proxy @ApiByronWallet
-            jsonRoundtripAndGolden $ Proxy @ApiByronWalletBalance
-            jsonRoundtripAndGolden $ Proxy @(ApiWalletMigrationPlan ('Testnet 0))
-            jsonRoundtripAndGolden $ Proxy @ApiWalletMigrationBalance
-            jsonRoundtripAndGolden $ Proxy @(ApiWalletMigrationPlanPostData ('Testnet 0))
-            jsonRoundtripAndGolden $ Proxy @(ApiWalletMigrationPostData ('Testnet 0) "lenient")
-            jsonRoundtripAndGolden $ Proxy @(ApiWalletMigrationPostData ('Testnet 0) "raw")
-            jsonRoundtripAndGolden $ Proxy @ApiWalletPassphrase
-            jsonRoundtripAndGolden $ Proxy @ApiWalletUtxoSnapshot
-            jsonRoundtripAndGolden $ Proxy @ApiUtxoStatistics
-            jsonRoundtripAndGolden $ Proxy @ApiFee
-            jsonRoundtripAndGolden $ Proxy @ApiAssetMintBurn
-            jsonRoundtripAndGolden $ Proxy @ApiStakePoolMetrics
-            jsonRoundtripAndGolden $ Proxy @ApiTxId
-            jsonRoundtripAndGolden $ Proxy @ApiVerificationKeyShelley
-            jsonRoundtripAndGolden $ Proxy @ApiVerificationKeyShared
-            jsonRoundtripAndGolden $ Proxy @(ApiPaymentDestination ('Testnet 0))
-            jsonRoundtripAndGolden $ Proxy @(ApiConstructTransactionData ('Testnet 0))
-            jsonRoundtripAndGolden $ Proxy @(ApiConstructTransaction ('Testnet 0))
-            jsonRoundtripAndGolden $ Proxy @ApiMultiDelegationAction
-            jsonRoundtripAndGolden $ Proxy @ApiSignTransactionPostData
-            jsonRoundtripAndGolden $ Proxy @ApiSerialisedTransaction
-            jsonRoundtripAndGolden $ Proxy @(ApiBalanceTransactionPostData ('Testnet 0))
-            jsonRoundtripAndGolden $ Proxy @(ApiExternalInput ('Testnet 0))
-            jsonRoundtripAndGolden $ Proxy @(PostTransactionOldData ('Testnet 0))
-            jsonRoundtripAndGolden $ Proxy @(PostTransactionFeeOldData ('Testnet 0))
-            jsonRoundtripAndGolden $ Proxy @WalletPostData
-            jsonRoundtripAndGolden $ Proxy @AccountPostData
-            jsonRoundtripAndGolden $ Proxy @WalletOrAccountPostData
-            jsonRoundtripAndGolden $ Proxy @SomeByronWalletPostData
-            jsonRoundtripAndGolden $ Proxy @ByronWalletFromXPrvPostData
-            jsonRoundtripAndGolden $ Proxy @WalletPutData
-            jsonRoundtripAndGolden $ Proxy @SettingsPutData
-            jsonRoundtripAndGolden $ Proxy @WalletPutPassphraseData
-            jsonRoundtripAndGolden $ Proxy @ByronWalletPutPassphraseData
-            jsonRoundtripAndGolden $ Proxy @(ApiT (Hash "Tx"))
-            jsonRoundtripAndGolden $ Proxy @(ApiT (Passphrase "raw"))
-            jsonRoundtripAndGolden $ Proxy @(ApiT (Passphrase "lenient"))
-            jsonRoundtripAndGolden $ Proxy @(ApiT Address, Proxy ('Testnet 0))
-            jsonRoundtripAndGolden $ Proxy @(ApiT AddressPoolGap)
-            jsonRoundtripAndGolden $ Proxy @(ApiT Direction)
-            jsonRoundtripAndGolden $ Proxy @(ApiT TxMetadata)
-            jsonRoundtripAndGolden $ Proxy @(ApiT TxStatus)
-            jsonRoundtripAndGolden $ Proxy @(ApiT TxScriptValidity)
-            jsonRoundtripAndGolden $ Proxy @(ApiWalletBalance)
-            jsonRoundtripAndGolden $ Proxy @(ApiT WalletId)
-            jsonRoundtripAndGolden $ Proxy @(ApiT WalletName)
-            jsonRoundtripAndGolden $ Proxy @ApiWalletPassphraseInfo
-            jsonRoundtripAndGolden $ Proxy @(ApiT SyncProgress)
-            jsonRoundtripAndGolden $ Proxy @(ApiT StakePoolMetadata)
-            jsonRoundtripAndGolden $ Proxy @ApiPostRandomAddressData
-            jsonRoundtripAndGolden $ Proxy @ApiTxMetadata
-            jsonRoundtripAndGolden $ Proxy @(ApiDecodedTransaction ('Testnet 0))
-            jsonRoundtripAndGolden $ Proxy @(ApiTxInputGeneral ('Testnet 0))
-            jsonRoundtripAndGolden $ Proxy @(ApiTxOutputGeneral ('Testnet 0))
-            jsonRoundtripAndGolden $ Proxy @(ApiWithdrawalGeneral ('Testnet 0))
+        jsonRoundtripAndGolden $ Proxy @AnyAddress
+        jsonRoundtripAndGolden $ Proxy @ApiCredential
+        jsonRoundtripAndGolden $ Proxy @ApiAddressData
+        jsonRoundtripAndGolden $ Proxy @(ApiT DerivationIndex)
+        jsonRoundtripAndGolden $ Proxy @ApiPostAccountKeyData
+        jsonRoundtripAndGolden $ Proxy @ApiPostAccountKeyDataWithPurpose
+        jsonRoundtripAndGolden $ Proxy @ApiAccountKey
+        jsonRoundtripAndGolden $ Proxy @ApiPolicyKey
+        jsonRoundtripAndGolden $ Proxy @ApiAccountKeyShared
+        jsonRoundtripAndGolden $ Proxy @ApiEpochInfo
+        jsonRoundtripAndGolden $ Proxy @(ApiSelectCoinsData ( 'Testnet 0))
+        jsonRoundtripAndGolden $ Proxy @(ApiCoinSelection ( 'Testnet 0))
+        jsonRoundtripAndGolden $ Proxy @(ApiCoinSelectionChange ( 'Testnet 0))
+        jsonRoundtripAndGolden $ Proxy @(ApiCoinSelectionCollateral ( 'Testnet 0))
+        jsonRoundtripAndGolden $ Proxy @(ApiCoinSelectionOutput ( 'Testnet 0))
+        jsonRoundtripAndGolden $ Proxy @(ApiCoinSelectionWithdrawal ( 'Testnet 0))
+        jsonRoundtripAndGolden $ Proxy @ApiBase64
+        jsonRoundtripAndGolden $ Proxy @ApiBlockReference
+        jsonRoundtripAndGolden $ Proxy @ApiSlotReference
+        jsonRoundtripAndGolden $ Proxy @ApiDelegationAction
+        jsonRoundtripAndGolden $ Proxy @ApiNetworkInformation
+        jsonRoundtripAndGolden $ Proxy @ApiNetworkParameters
+        jsonRoundtripAndGolden $ Proxy @ApiEraInfo
+        jsonRoundtripAndGolden $ Proxy @ApiEra
+        jsonRoundtripAndGolden $ Proxy @ApiNetworkClock
+        jsonRoundtripAndGolden $ Proxy @ApiWalletDelegation
+        jsonRoundtripAndGolden $ Proxy @ApiHealthCheck
+        jsonRoundtripAndGolden $ Proxy @ApiWalletDelegationStatus
+        jsonRoundtripAndGolden $ Proxy @ApiWalletDelegationNext
+        jsonRoundtripAndGolden $ Proxy @(ApiT (Hash "Genesis"))
+        jsonRoundtripAndGolden $ Proxy @ApiStakePool
+        jsonRoundtripAndGolden $ Proxy @ApiStakePoolMetrics
+        jsonRoundtripAndGolden $ Proxy @(AddressAmount (ApiT Address, Proxy ( 'Testnet 0)))
+        jsonRoundtripAndGolden $ Proxy @(AddressAmountNoAssets (ApiT Address, Proxy ( 'Testnet 0)))
+        jsonRoundtripAndGolden $ Proxy @(ApiTransaction ( 'Testnet 0))
+        jsonRoundtripAndGolden $ Proxy @(ApiPutAddressesData ( 'Testnet 0))
+        jsonRoundtripAndGolden $ Proxy @ApiWallet
+        jsonRoundtripAndGolden $ Proxy @ApiSharedWalletPostData
+        jsonRoundtripAndGolden $ Proxy @ApiScriptTemplateEntry
+        jsonRoundtripAndGolden $ Proxy @ApiSharedWalletPostDataFromMnemonics
+        jsonRoundtripAndGolden $ Proxy @ApiSharedWalletPostDataFromAccountPubX
+        jsonRoundtripAndGolden $ Proxy @ApiSharedWallet
+        jsonRoundtripAndGolden $ Proxy @ApiActiveSharedWallet
+        jsonRoundtripAndGolden $ Proxy @ApiPendingSharedWallet
+        jsonRoundtripAndGolden $ Proxy @ApiSharedWalletPatchData
+        jsonRoundtripAndGolden $ Proxy @ApiByronWallet
+        jsonRoundtripAndGolden $ Proxy @ApiByronWalletBalance
+        jsonRoundtripAndGolden $ Proxy @(ApiWalletMigrationPlan ( 'Testnet 0))
+        jsonRoundtripAndGolden $ Proxy @ApiWalletMigrationBalance
+        jsonRoundtripAndGolden $ Proxy @(ApiWalletMigrationPlanPostData ( 'Testnet 0))
+        jsonRoundtripAndGolden $ Proxy @(ApiWalletMigrationPostData ( 'Testnet 0) "lenient")
+        jsonRoundtripAndGolden $ Proxy @(ApiWalletMigrationPostData ( 'Testnet 0) "raw")
+        jsonRoundtripAndGolden $ Proxy @ApiWalletPassphrase
+        jsonRoundtripAndGolden $ Proxy @ApiWalletUtxoSnapshot
+        jsonRoundtripAndGolden $ Proxy @ApiUtxoStatistics
+        jsonRoundtripAndGolden $ Proxy @ApiFee
+        jsonRoundtripAndGolden $ Proxy @ApiAssetMintBurn
+        jsonRoundtripAndGolden $ Proxy @ApiStakePoolMetrics
+        jsonRoundtripAndGolden $ Proxy @ApiTxId
+        jsonRoundtripAndGolden $ Proxy @ApiVerificationKeyShelley
+        jsonRoundtripAndGolden $ Proxy @ApiVerificationKeyShared
+        jsonRoundtripAndGolden $ Proxy @(ApiPaymentDestination ( 'Testnet 0))
+        jsonRoundtripAndGolden $ Proxy @(ApiConstructTransactionData ( 'Testnet 0))
+        jsonRoundtripAndGolden $ Proxy @(ApiConstructTransaction ( 'Testnet 0))
+        jsonRoundtripAndGolden $ Proxy @ApiMultiDelegationAction
+        jsonRoundtripAndGolden $ Proxy @ApiSignTransactionPostData
+        jsonRoundtripAndGolden $ Proxy @ApiSerialisedTransaction
+        jsonRoundtripAndGolden $ Proxy @(ApiBalanceTransactionPostData ( 'Testnet 0))
+        jsonRoundtripAndGolden $ Proxy @(ApiExternalInput ( 'Testnet 0))
+        jsonRoundtripAndGolden $ Proxy @(PostTransactionOldData ( 'Testnet 0))
+        jsonRoundtripAndGolden $ Proxy @(PostTransactionFeeOldData ( 'Testnet 0))
+        jsonRoundtripAndGolden $ Proxy @WalletPostData
+        jsonRoundtripAndGolden $ Proxy @AccountPostData
+        jsonRoundtripAndGolden $ Proxy @WalletOrAccountPostData
+        jsonRoundtripAndGolden $ Proxy @SomeByronWalletPostData
+        jsonRoundtripAndGolden $ Proxy @ByronWalletFromXPrvPostData
+        jsonRoundtripAndGolden $ Proxy @WalletPutData
+        jsonRoundtripAndGolden $ Proxy @SettingsPutData
+        jsonRoundtripAndGolden $ Proxy @WalletPutPassphraseData
+        jsonRoundtripAndGolden $ Proxy @ByronWalletPutPassphraseData
+        jsonRoundtripAndGolden $ Proxy @(ApiT (Hash "Tx"))
+        jsonRoundtripAndGolden $ Proxy @(ApiT (Passphrase "raw"))
+        jsonRoundtripAndGolden $ Proxy @(ApiT (Passphrase "lenient"))
+        jsonRoundtripAndGolden $ Proxy @(ApiT Address, Proxy ( 'Testnet 0))
+        jsonRoundtripAndGolden $ Proxy @(ApiT AddressPoolGap)
+        jsonRoundtripAndGolden $ Proxy @(ApiT Direction)
+        jsonRoundtripAndGolden $ Proxy @(ApiT TxMetadata)
+        jsonRoundtripAndGolden $ Proxy @(ApiT TxStatus)
+        jsonRoundtripAndGolden $ Proxy @(ApiT TxScriptValidity)
+        jsonRoundtripAndGolden $ Proxy @(ApiWalletBalance)
+        jsonRoundtripAndGolden $ Proxy @(ApiT WalletId)
+        jsonRoundtripAndGolden $ Proxy @(ApiT WalletName)
+        jsonRoundtripAndGolden $ Proxy @ApiWalletPassphraseInfo
+        jsonRoundtripAndGolden $ Proxy @(ApiT SyncProgress)
+        jsonRoundtripAndGolden $ Proxy @(ApiT StakePoolMetadata)
+        jsonRoundtripAndGolden $ Proxy @ApiPostRandomAddressData
+        jsonRoundtripAndGolden $ Proxy @ApiTxMetadata
+        jsonRoundtripAndGolden $ Proxy @(ApiDecodedTransaction ( 'Testnet 0))
+        jsonRoundtripAndGolden $ Proxy @(ApiTxInputGeneral ( 'Testnet 0))
+        jsonRoundtripAndGolden $ Proxy @(ApiTxOutputGeneral ( 'Testnet 0))
+        jsonRoundtripAndGolden $ Proxy @(ApiWithdrawalGeneral ( 'Testnet 0))
 
-            jsonRoundtripAndGolden $ Proxy @ApiMaintenanceAction
-            jsonRoundtripAndGolden $ Proxy @ApiMaintenanceActionPostData
-            jsonRoundtripAndGolden $ Proxy @ApiAsset
-            jsonRoundtripAndGolden $ Proxy @(ApiStakeKeys ('Testnet 0))
-            jsonRoundtripAndGolden $ Proxy @(ApiOurStakeKey ('Testnet 0))
-            jsonRoundtripAndGolden $ Proxy @(ApiForeignStakeKey ('Testnet 0))
-            jsonRoundtripAndGolden $ Proxy @ApiNullStakeKey
-            jsonRoundtripAndGolden $ Proxy @(PostMintBurnAssetData ('Testnet 0))
+        jsonRoundtripAndGolden $ Proxy @ApiMaintenanceAction
+        jsonRoundtripAndGolden $ Proxy @ApiMaintenanceActionPostData
+        jsonRoundtripAndGolden $ Proxy @ApiAsset
+        jsonRoundtripAndGolden $ Proxy @(ApiStakeKeys ( 'Testnet 0))
+        jsonRoundtripAndGolden $ Proxy @(ApiOurStakeKey ( 'Testnet 0))
+        jsonRoundtripAndGolden $ Proxy @(ApiForeignStakeKey ( 'Testnet 0))
+        jsonRoundtripAndGolden $ Proxy @ApiNullStakeKey
+        jsonRoundtripAndGolden $ Proxy @(PostMintBurnAssetData ( 'Testnet 0))
 
     describe "ToText-FromText Roundtrip" $ do
-            textRoundtrip $ Proxy @Iso8601Time
-            textRoundtrip $ Proxy @SortOrder
-            textRoundtrip $ Proxy @Coin
-            textRoundtrip $ Proxy @TokenFingerprint
+        textRoundtrip $ Proxy @Iso8601Time
+        textRoundtrip $ Proxy @SortOrder
+        textRoundtrip $ Proxy @Coin
+        textRoundtrip $ Proxy @TokenFingerprint
 
     describe "SealedTx JSON decoding" $ do
         -- NOTE(AB): I tried to factor more of the properties as their structure only
         -- differs by the encoding but this required exporting 'HasBase' from Types to
-        let parseJSONSealedTx jsonTx = (serialisedTx . getApiT  <$> Aeson.eitherDecode @(ApiT SealedTx) jsonTx)
+        let parseJSONSealedTx jsonTx = (serialisedTx . getApiT <$> Aeson.eitherDecode @(ApiT SealedTx) jsonTx)
 
         it "can decode from base-16 encoded string" $
-            forAll selectFromPreparedBinaries $ \ bs ->
-                 let result = parseJSONSealedTx $ Aeson.encode $ ApiBytesT @'Base16 bs
-                  in result == Right bs &
-                     counterexample ("Parse result: " <> show result)
+            forAll selectFromPreparedBinaries $ \bs ->
+                let result = parseJSONSealedTx $ Aeson.encode $ ApiBytesT @ 'Base16 bs
+                 in result == Right bs
+                        & counterexample ("Parse result: " <> show result)
 
         it "can decode from base-64 encoded string" $
-            forAll selectFromPreparedBinaries $ \ bs ->
-                 let result = parseJSONSealedTx $ Aeson.encode $ ApiBytesT @'Base64 bs
-                  in result == Right bs &
-                     counterexample ("Parse result: " <> show result)
+            forAll selectFromPreparedBinaries $ \bs ->
+                let result = parseJSONSealedTx $ Aeson.encode $ ApiBytesT @ 'Base64 bs
+                 in result == Right bs
+                        & counterexample ("Parse result: " <> show result)
 
     describe "AddressAmount" $ do
         it "fromText \"22323\"" $
             let err =
-                    "Parse error. " <>
-                    "Expecting format \"<amount>@<address>\" but got \"22323\""
-            in
-                fromText @(AddressAmount Text) "22323"
+                    "Parse error. "
+                        <> "Expecting format \"<amount>@<address>\" but got \"22323\""
+             in fromText @(AddressAmount Text) "22323"
                     === Left (TextDecodingError err)
 
     describe "HttpApiData roundtrip" $ do
-            httpApiDataRoundtrip $ Proxy @(ApiT WalletId)
-            httpApiDataRoundtrip $ Proxy @(ApiT AddressState)
-            httpApiDataRoundtrip $ Proxy @Iso8601Time
-            httpApiDataRoundtrip $ Proxy @(ApiT SortOrder)
+        httpApiDataRoundtrip $ Proxy @(ApiT WalletId)
+        httpApiDataRoundtrip $ Proxy @(ApiT AddressState)
+        httpApiDataRoundtrip $ Proxy @Iso8601Time
+        httpApiDataRoundtrip $ Proxy @(ApiT SortOrder)
 
     describe
         "verify that every type used with JSON content type in a servant API \
-        \has compatible ToJSON and ToSchema instances using validateToJSON." $ do
-        let match regex sourc = matchTest
-                (makeRegexOpts compBlank execBlank $ T.unpack regex)
-                (T.unpack sourc)
-        validateEveryToJSONWithPatternChecker
-            match
-            (Proxy :: Proxy (Api ('Testnet 0) ApiStakePool))
-        -- NOTE See (ToSchema WalletOrAccountPostData)
-        validateEveryToJSON
-            (Proxy :: Proxy (
-                ReqBody '[JSON] AccountPostData :> PostNoContent
-              :<|>
-                ReqBody '[JSON] WalletPostData  :> PostNoContent
-            ))
+        \has compatible ToJSON and ToSchema instances using validateToJSON."
+        $ do
+            let match regex sourc =
+                    matchTest
+                        (makeRegexOpts compBlank execBlank $ T.unpack regex)
+                        (T.unpack sourc)
+            validateEveryToJSONWithPatternChecker
+                match
+                (Proxy :: Proxy (Api ( 'Testnet 0) ApiStakePool))
+            -- NOTE See (ToSchema WalletOrAccountPostData)
+            validateEveryToJSON
+                ( Proxy ::
+                    Proxy
+                        ( ReqBody '[JSON] AccountPostData :> PostNoContent
+                            :<|> ReqBody '[JSON] WalletPostData :> PostNoContent
+                        )
+                )
 
     describe
         "verify that every path specified by the servant server matches an \
-        \existing path in the specification" $
-        validateEveryPath (Proxy :: Proxy (Api ('Testnet 0) ApiStakePool))
+        \existing path in the specification"
+        $ validateEveryPath (Proxy :: Proxy (Api ( 'Testnet 0) ApiStakePool))
 
     describe "verify JSON parsing failures too" $ do
         it "ApiT (Passphrase \"raw\") (too short)" $ do
             let minLength = passphraseMinLength (Proxy :: Proxy "raw")
-            let msg = "Error in $: passphrase is too short: \
-                    \expected at least " <> show minLength <> " characters"
+            let msg =
+                    "Error in $: passphrase is too short: \
+                    \expected at least "
+                        <> show minLength
+                        <> " characters"
             Aeson.parseEither parseJSON [aesonQQ|"patate"|]
                 `shouldBe` (Left @String @(ApiT (Passphrase "raw")) msg)
 
         it "ApiT (Passphrase \"raw\") (too long)" $ do
             let maxLength = passphraseMaxLength (Proxy :: Proxy "raw")
-            let msg = "Error in $: passphrase is too long: \
-                    \expected at most " <> show maxLength <> " characters"
-            Aeson.parseEither parseJSON [aesonQQ|
+            let msg =
+                    "Error in $: passphrase is too long: \
+                    \expected at most "
+                        <> show maxLength
+                        <> " characters"
+            Aeson.parseEither
+                parseJSON
+                [aesonQQ|
                 #{replicate (2*maxLength) '*'}
-            |] `shouldBe` (Left @String @(ApiT (Passphrase "raw")) msg)
+            |]
+                `shouldBe` (Left @String @(ApiT (Passphrase "raw")) msg)
 
         it "ApiT (Passphrase \"lenient\") (too long)" $ do
             let maxLength = passphraseMaxLength (Proxy :: Proxy "lenient")
-            let msg = "Error in $: passphrase is too long: \
-                    \expected at most " <> show maxLength <> " characters"
-            Aeson.parseEither parseJSON [aesonQQ|
+            let msg =
+                    "Error in $: passphrase is too long: \
+                    \expected at most "
+                        <> show maxLength
+                        <> " characters"
+            Aeson.parseEither
+                parseJSON
+                [aesonQQ|
                 #{replicate (2*maxLength) '*'}
-            |] `shouldBe` (Left @String @(ApiT (Passphrase "lenient")) msg)
+            |]
+                `shouldBe` (Left @String @(ApiT (Passphrase "lenient")) msg)
 
         it "ApiT WalletName (too short)" $ do
-            let msg = "Error in $: name is too short: \
-                    \expected at least " <> show walletNameMinLength <> " character"
+            let msg =
+                    "Error in $: name is too short: \
+                    \expected at least "
+                        <> show walletNameMinLength
+                        <> " character"
             Aeson.parseEither parseJSON [aesonQQ|""|]
                 `shouldBe` (Left @String @(ApiT WalletName) msg)
 
         it "ApiT WalletName (too long)" $ do
-            let msg = "Error in $: name is too long: \
-                    \expected at most " <> show walletNameMaxLength <> " characters"
-            Aeson.parseEither parseJSON [aesonQQ|
+            let msg =
+                    "Error in $: name is too long: \
+                    \expected at most "
+                        <> show walletNameMaxLength
+                        <> " characters"
+            Aeson.parseEither
+                parseJSON
+                [aesonQQ|
                 #{replicate (2*walletNameMaxLength) '*'}
-            |] `shouldBe` (Left @String @(ApiT WalletName) msg)
+            |]
+                `shouldBe` (Left @String @(ApiT WalletName) msg)
 
         it "ApiMnemonicT '[12] (not enough words)" $ do
-            let msg = "Error in $: Invalid number of words: 12 words\
+            let msg =
+                    "Error in $: Invalid number of words: 12 words\
                     \ are expected."
-            Aeson.parseEither parseJSON [aesonQQ|
+            Aeson.parseEither
+                parseJSON
+                [aesonQQ|
                 ["toilet", "toilet", "toilet"]
-            |] `shouldBe` (Left @String @(ApiMnemonicT '[12]) msg)
-
+            |]
+                `shouldBe` (Left @String @(ApiMnemonicT '[12]) msg)
 
         it "ApiT DerivationIndex (too small)" $ do
-            let message = unwords
-                  [ "Error in $:"
-                  , "A derivation index must be a natural number between"
-                  , show (getIndex @'Soft minBound)
-                  , "and"
-                  , show (getIndex @'Soft maxBound)
-                  , "with an optional 'H' suffix (e.g. '1815H' or '44')."
-                  , "Indexes without suffixes are called 'Soft'"
-                  , "Indexes with suffixes are called 'Hardened'."
-                  ]
+            let message =
+                    unwords
+                        [ "Error in $:"
+                        , "A derivation index must be a natural number between"
+                        , show (getIndex @ 'Soft minBound)
+                        , "and"
+                        , show (getIndex @ 'Soft maxBound)
+                        , "with an optional 'H' suffix (e.g. '1815H' or '44')."
+                        , "Indexes without suffixes are called 'Soft'"
+                        , "Indexes with suffixes are called 'Hardened'."
+                        ]
 
-            let value = show $ pred $ toInteger $ getIndex @'Soft minBound
+            let value = show $ pred $ toInteger $ getIndex @ 'Soft minBound
             Aeson.parseEither parseJSON [aesonQQ|#{value}|]
                 `shouldBe` Left @String @(ApiT DerivationIndex) message
 
         it "ApiT DerivationIndex (too large)" $ do
-            let message = unwords
-                  [ "Error in $:"
-                  , "A derivation index must be a natural number between"
-                  , show (getIndex @'Soft minBound)
-                  , "and"
-                  , show (getIndex @'Soft maxBound)
-                  , "with an optional 'H' suffix (e.g. '1815H' or '44')."
-                  , "Indexes without suffixes are called 'Soft'"
-                  , "Indexes with suffixes are called 'Hardened'."
-                  ]
+            let message =
+                    unwords
+                        [ "Error in $:"
+                        , "A derivation index must be a natural number between"
+                        , show (getIndex @ 'Soft minBound)
+                        , "and"
+                        , show (getIndex @ 'Soft maxBound)
+                        , "with an optional 'H' suffix (e.g. '1815H' or '44')."
+                        , "Indexes without suffixes are called 'Soft'"
+                        , "Indexes with suffixes are called 'Hardened'."
+                        ]
 
-            let value = show $ succ $ toInteger $ getIndex @'Soft maxBound
+            let value = show $ succ $ toInteger $ getIndex @ 'Soft maxBound
             Aeson.parseEither parseJSON [aesonQQ|#{value}|]
                 `shouldBe` Left @String @(ApiT DerivationIndex) message
 
         it "ApiT AddressPoolGap (too small)" $ do
-            let msg = "Error in $: An address pool gap must be a natural number between "
-                    <> show (getAddressPoolGap minBound)
-                    <> " and "
-                    <> show (getAddressPoolGap maxBound)
-                    <> "."
-            Aeson.parseEither parseJSON [aesonQQ|
+            let msg =
+                    "Error in $: An address pool gap must be a natural number between "
+                        <> show (getAddressPoolGap minBound)
+                        <> " and "
+                        <> show (getAddressPoolGap maxBound)
+                        <> "."
+            Aeson.parseEither
+                parseJSON
+                [aesonQQ|
                 #{getAddressPoolGap minBound - 1}
-            |] `shouldBe` (Left @String @(ApiT AddressPoolGap) msg)
+            |]
+                `shouldBe` (Left @String @(ApiT AddressPoolGap) msg)
 
         it "ApiT AddressPoolGap (too big)" $ do
-            let msg = "Error in $: An address pool gap must be a natural number between "
-                    <> show (getAddressPoolGap minBound)
-                    <> " and "
-                    <> show (getAddressPoolGap maxBound)
-                    <> "."
-            Aeson.parseEither parseJSON [aesonQQ|
+            let msg =
+                    "Error in $: An address pool gap must be a natural number between "
+                        <> show (getAddressPoolGap minBound)
+                        <> " and "
+                        <> show (getAddressPoolGap maxBound)
+                        <> "."
+            Aeson.parseEither
+                parseJSON
+                [aesonQQ|
                 #{getAddressPoolGap maxBound + 1}
-            |] `shouldBe` (Left @String @(ApiT AddressPoolGap) msg)
+            |]
+                `shouldBe` (Left @String @(ApiT AddressPoolGap) msg)
 
         it "ApiT AddressPoolGap (not a integer)" $ do
-            let msg = "Error in $: parsing Integer failed, unexpected floating number\
+            let msg =
+                    "Error in $: parsing Integer failed, unexpected floating number\
                     \ 2.5"
-            Aeson.parseEither parseJSON [aesonQQ|
+            Aeson.parseEither
+                parseJSON
+                [aesonQQ|
                 2.5
-            |] `shouldBe` (Left @String @(ApiT AddressPoolGap) msg)
+            |]
+                `shouldBe` (Left @String @(ApiT AddressPoolGap) msg)
 
         it "ApiT (Hash \"Tx\")" $ do
-            let msg = "Error in $: Invalid tx hash: \
+            let msg =
+                    "Error in $: Invalid tx hash: \
                     \expecting a hex-encoded value that is 32 bytes in length."
-            Aeson.parseEither parseJSON [aesonQQ|
+            Aeson.parseEither
+                parseJSON
+                [aesonQQ|
                 "-----"
-            |] `shouldBe` (Left @String @(ApiT (Hash "Tx")) msg)
+            |]
+                `shouldBe` (Left @String @(ApiT (Hash "Tx")) msg)
 
         it "ApiT WalletId" $ do
-            let msg = "Error in $: wallet id should be a hex-encoded \
+            let msg =
+                    "Error in $: wallet id should be a hex-encoded \
                     \string of 40 characters"
-            Aeson.parseEither parseJSON [aesonQQ|
+            Aeson.parseEither
+                parseJSON
+                [aesonQQ|
                 "invalid-id"
-            |] `shouldBe` (Left @String @(ApiT WalletId) msg)
+            |]
+                `shouldBe` (Left @String @(ApiT WalletId) msg)
 
         it "AddressAmount (too small)" $ do
-            let msg = "Error in $.amount.quantity: \
+            let msg =
+                    "Error in $.amount.quantity: \
                     \parsing AddressAmount failed, parsing Natural failed, \
                     \unexpected negative number -14"
-            Aeson.parseEither parseJSON [aesonQQ|
+            Aeson.parseEither
+                parseJSON
+                [aesonQQ|
                 { "address": "<addr>"
                 , "amount": {"unit":"lovelace","quantity":-14}
                 }
-            |] `shouldBe` (Left @String @(AddressAmount (ApiT Address, Proxy ('Testnet 0))) msg)
+            |]
+                `shouldBe` (Left @String @(AddressAmount (ApiT Address, Proxy ( 'Testnet 0))) msg)
 
         it "AddressAmount (too big)" $ do
-            let msg = "Error in $: parsing AddressAmount failed, \
+            let msg =
+                    "Error in $: parsing AddressAmount failed, \
                     \invalid coin value: value has to be lower \
-                    \than or equal to " <> show (unCoin txOutMaxCoin)
-                    <> " lovelace."
-            Aeson.parseEither parseJSON [aesonQQ|
+                    \than or equal to "
+                        <> show (unCoin txOutMaxCoin)
+                        <> " lovelace."
+            Aeson.parseEither
+                parseJSON
+                [aesonQQ|
                 { "address": "<addr>"
                 , "amount":
                     { "unit":"lovelace"
                     ,"quantity":#{unCoin txOutMaxCoin + 1}
                     }
                 }
-            |] `shouldBe` (Left @String @(AddressAmount (ApiT Address, Proxy ('Testnet 0))) msg)
+            |]
+                `shouldBe` (Left @String @(AddressAmount (ApiT Address, Proxy ( 'Testnet 0))) msg)
 
         it "ApiT PoolId" $ do
             let msg =
                     "Error in $: Invalid stake pool id: expecting a Bech32 \
                     \encoded value with human readable part of 'pool'."
-            Aeson.parseEither parseJSON [aesonQQ|
+            Aeson.parseEither
+                parseJSON
+                [aesonQQ|
                 "invalid-id"
-            |] `shouldBe` (Left @String @(ApiT PoolId) msg)
+            |]
+                `shouldBe` (Left @String @(ApiT PoolId) msg)
 
         it "ApiT PoolId" $ do
             let msg =
                     "Error in $: Invalid stake pool id: expecting a Bech32 \
                     \encoded value with human readable part of 'pool'."
-            Aeson.parseEither parseJSON [aesonQQ|
+            Aeson.parseEither
+                parseJSON
+                [aesonQQ|
                 "4c43d68b21921034519c36d2475f5adba989bb4465ec"
-            |] `shouldBe` (Left @String @(ApiT PoolId) msg)
+            |]
+                `shouldBe` (Left @String @(ApiT PoolId) msg)
 
         it "ApiT (Hash \"Genesis\")" $ do
-            let msg = "Error in $: Invalid genesis hash: \
+            let msg =
+                    "Error in $: Invalid genesis hash: \
                     \expecting a hex-encoded value that is 32 bytes in length."
-            Aeson.parseEither parseJSON [aesonQQ|
+            Aeson.parseEither
+                parseJSON
+                [aesonQQ|
                 "-----"
-            |] `shouldBe` (Left @String @(ApiT (Hash "Genesis")) msg)
+            |]
+                `shouldBe` (Left @String @(ApiT (Hash "Genesis")) msg)
 
         describe "StakePoolMetadata" $ do
-            let msg = "Error in $.ticker: stake pool ticker length must be \
-                      \3-5 characters"
+            let msg =
+                    "Error in $.ticker: stake pool ticker length must be \
+                    \3-5 characters"
 
             let testInvalidTicker :: Text -> SpecWith ()
                 testInvalidTicker txt =
                     it ("Invalid ticker length: " ++ show (T.length txt)) $ do
-                        Aeson.parseEither parseJSON [aesonQQ|
+                        Aeson.parseEither
+                            parseJSON
+                            [aesonQQ|
                             {
                                 "owner": "ed25519_pk1afhcpw2tg7nr2m3wr4x8jaa4dv7d09gnv27kwfxpjyvukwxs8qdqwg85xp",
                                 "homepage": "https://12345",
@@ -814,7 +999,8 @@ spec = parallel $ do
                                 "pledge_address": "ed25519_pk15vz9yc5c3upgze8tg5kd7kkzxqgqfxk5a3kudp22hdg0l2za00sq2ufkk7",
                                 "name": "invalid"
                             }
-                        |] `shouldBe` (Left @String @(ApiT StakePoolMetadata) msg)
+                        |]
+                            `shouldBe` (Left @String @(ApiT StakePoolMetadata) msg)
 
             forM_ ["too long", "sh", ""] testInvalidTicker
 
@@ -825,469 +1011,537 @@ spec = parallel $ do
                 `shouldBe` (Left @Text @(ApiT WalletId) msg)
 
         it "ApiT AddressState" $ do
-            let msg = "Unable to decode the given text value.\
+            let msg =
+                    "Unable to decode the given text value.\
                     \ Please specify one of the following values: used, unused."
             parseUrlPiece "patate"
                 `shouldBe` (Left @Text @(ApiT AddressState) msg)
 
-    parallel $ describe "pointless tests to trigger coverage for record accessors" $ do
-        it "ApiEpochInfo" $ property $ \x ->
-            let
-                x' = ApiEpochInfo
-                    { epochNumber = epochNumber (x :: ApiEpochInfo)
-                    , epochStartTime = epochStartTime (x :: ApiEpochInfo)
-                    }
-            in
-                x' === x .&&. show x' === show x
-        it "ApiSelectCoinsData" $ property $ \x ->
-            let
-                x' = ApiSelectCoinsPayments
-                    { payments = payments (x :: ApiSelectCoinsPayments ('Testnet 0))
-                    , withdrawal = withdrawal (x :: ApiSelectCoinsPayments ('Testnet 0))
-                    , metadata = metadata (x :: ApiSelectCoinsPayments ('Testnet 0))
-                    }
-            in
-                x' === x .&&. show x' === show x
-        it "ApiCoinSelection" $ property $ \x ->
-            let
-                x' = ApiCoinSelection
-                    { inputs = inputs
-                        (x :: ApiCoinSelection ('Testnet 0))
-                    , outputs = outputs
-                        (x :: ApiCoinSelection ('Testnet 0))
-                    , change = change
-                        (x :: ApiCoinSelection ('Testnet 0))
-                    , collateral = collateral
-                        (x :: ApiCoinSelection ('Testnet 0))
-                    , withdrawals = withdrawals
-                        (x :: ApiCoinSelection ('Testnet 0))
-                    , certificates = certificates
-                        (x :: ApiCoinSelection ('Testnet 0))
-                    , depositsTaken = depositsTaken
-                        (x :: ApiCoinSelection ('Testnet 0))
-                    , depositsReturned = depositsReturned
-                        (x :: ApiCoinSelection ('Testnet 0))
-                    , metadata = metadata
-                        (x :: ApiCoinSelection ('Testnet 0))
-                    }
-            in
-                x' === x .&&. show x' === show x
-        it "ApiCoinSelectionChange" $ property $ \x ->
-            let
-                x' = ApiCoinSelectionChange
-                    { address = address
-                        (x :: ApiCoinSelectionChange ('Testnet 0))
-                    , amount = amount
-                        (x :: ApiCoinSelectionChange ('Testnet 0))
-                    , assets = assets
-                        (x :: ApiCoinSelectionChange ('Testnet 0))
-                    , derivationPath = derivationPath
-                        (x :: ApiCoinSelectionChange ('Testnet 0))
-                    }
-            in
-                x' === x .&&. show x' === show x
-        it "ApiCoinSelectionCollateral" $ property $ \x ->
-            let
-                x' = ApiCoinSelectionCollateral
-                    { id = id
-                        (x :: ApiCoinSelectionCollateral ('Testnet 0))
-                    , index = index
-                        (x :: ApiCoinSelectionCollateral ('Testnet 0))
-                    , address = address
-                        (x :: ApiCoinSelectionCollateral ('Testnet 0))
-                    , amount = amount
-                        (x :: ApiCoinSelectionCollateral ('Testnet 0))
-                    , derivationPath = derivationPath
-                        (x :: ApiCoinSelectionCollateral ('Testnet 0))
-                    }
-            in
-                x' === x .&&. show x' === show x
-        it "ApiCoinSelectionOutput" $ property $ \x ->
-            let
-                x' = ApiCoinSelectionOutput
-                    { address = address
-                        (x :: ApiCoinSelectionOutput ('Testnet 0))
-                    , amount = amount
-                        (x :: ApiCoinSelectionOutput ('Testnet 0))
-                    , assets = assets
-                        (x :: ApiCoinSelectionOutput ('Testnet 0))
-                    }
-            in
-                x' === x .&&. show x' === show x
-        it "ApiWallet" $ property $ \x ->
-            let
-                x' = ApiWallet
-                    { id = id (x :: ApiWallet)
-                    , addressPoolGap = addressPoolGap (x :: ApiWallet)
-                    , balance = balance (x :: ApiWallet)
-                    , assets = assets (x :: ApiWallet)
-                    , delegation = delegation (x :: ApiWallet)
-                    , name = name (x :: ApiWallet)
-                    , passphrase = passphrase (x :: ApiWallet)
-                    , state = state (x :: ApiWallet)
-                    , tip = tip (x :: ApiWallet)
-                    }
-            in
-                x' === x .&&. show x' === show x
-        it "ApiByronWallet" $ property $ \x ->
-            let
-                x' = ApiByronWallet
-                    { id = id (x :: ApiByronWallet)
-                    , balance = balance (x :: ApiByronWallet)
-                    , assets = assets (x :: ApiByronWallet)
-                    , name = name (x :: ApiByronWallet)
-                    , passphrase = passphrase (x :: ApiByronWallet)
-                    , state = state (x :: ApiByronWallet)
-                    , tip = tip (x :: ApiByronWallet)
-                    , discovery = discovery (x :: ApiByronWallet)
-                    }
-            in
-                x' === x .&&. show x' === show x
-        it "ApiWalletMigrationBalance" $ property $ \x ->
-            let
-                x' = ApiWalletMigrationBalance
-                    { ada = ada
-                        (x :: ApiWalletMigrationBalance)
-                    , assets = assets
-                        (x :: ApiWalletMigrationBalance)
-                    }
-            in
-                x' === x .&&. show x' === show x
-        it "ApiWalletMigrationPlan" $ property $ \x ->
-            let
-                x' = ApiWalletMigrationPlan
-                    { selections = selections
-                        (x :: ApiWalletMigrationPlan ('Testnet 0))
-                    , totalFee = totalFee
-                        (x :: ApiWalletMigrationPlan ('Testnet 0))
-                    , balanceLeftover = balanceLeftover
-                        (x :: ApiWalletMigrationPlan ('Testnet 0))
-                    , balanceSelected = balanceSelected
-                        (x :: ApiWalletMigrationPlan ('Testnet 0))
-                    }
-            in
-                x' === x .&&. show x' === show x
-        it "ApiWalletMigrationPlanPostData" $ property $ \x ->
-            let
-                x' = ApiWalletMigrationPlanPostData
-                    { addresses = addresses
-                        (x :: ApiWalletMigrationPlanPostData ('Testnet 0))
-                    }
-            in
-                x' === x .&&. show x' === show x
-        it "ApiWalletMigrationPostData lenient" $ property $ \x ->
-            let
-                x' = ApiWalletMigrationPostData
-                    { passphrase = passphrase
-                        (x :: ApiWalletMigrationPostData ('Testnet 0) "lenient")
-                    , addresses = addresses
-                        (x :: ApiWalletMigrationPostData ('Testnet 0) "lenient")
-                    }
-            in
-                x' === x .&&. show x' === show x
-        it "ApiWalletMigrationPostData raw" $ property $ \x ->
-            let
-                x' = ApiWalletMigrationPostData
-                    { passphrase = passphrase
-                        (x :: ApiWalletMigrationPostData ('Testnet 0) "raw")
-                    , addresses = addresses
-                        (x :: ApiWalletMigrationPostData ('Testnet 0) "raw")
-                    }
-            in
-                x' === x .&&. show x' === show x
-        it "ApiWalletPassphrase" $ property $ \x ->
-            let
-                x' = ApiWalletPassphrase
-                    { passphrase =
-                        passphrase (x :: ApiWalletPassphrase)
-                    }
-            in
-                x' === x .&&. show x' === show x
-        it "ApiFee" $ property $ \x ->
-            let
-                x' = ApiFee
-                    { estimatedMin = estimatedMin (x :: ApiFee)
-                    , estimatedMax = estimatedMax (x :: ApiFee)
-                    , minimumCoins = minimumCoins (x :: ApiFee)
-                    , deposit = deposit (x :: ApiFee)
-                    }
-            in
-                x' === x .&&. show x' === show x
-        it "ApiTxId" $ property $ \x ->
-            let
-                x' = ApiTxId
-                    { id = id (x :: ApiTxId)
-                    }
-            in
-                x' === x .&&. show x' === show x
-        it "WalletPostData" $ property $ \x ->
-            let
-                x' = WalletPostData
-                    { addressPoolGap = addressPoolGap (x :: WalletPostData)
-                    , mnemonicSentence = mnemonicSentence (x :: WalletPostData)
-                    , mnemonicSecondFactor = mnemonicSecondFactor (x :: WalletPostData)
-                    , name = name (x :: WalletPostData)
-                    , passphrase = passphrase (x :: WalletPostData)
-                    }
-            in
-                x' === x .&&. show x' === show x
-        it "WalletPutData" $ property $ \x ->
-            let
-                x' = WalletPutData
-                    { name = name (x :: WalletPutData)
-                    }
-            in
-                x' === x .&&. show x' === show x
-        it "SettingsPutData" $ property $ \x ->
-            let
-                x' = SettingsPutData
-                    { settings = settings (x :: SettingsPutData)
-                    }
-            in
-                x' === x .&&. show x' === show x
-        it "WalletPutPassphraseData" $ property $ \x ->
-            let
-                x' = WalletPutPassphraseData
-                    { oldPassphrase = oldPassphrase (x :: WalletPutPassphraseData)
-                    , newPassphrase = newPassphrase (x :: WalletPutPassphraseData)
-                    }
-            in
-                x' === x .&&. show x' === show x
-        it "ByronWalletPutPassphraseData" $ property $ \x ->
-            let
-                x' = ByronWalletPutPassphraseData
-                    { oldPassphrase = oldPassphrase (x :: ByronWalletPutPassphraseData)
-                    , newPassphrase = newPassphrase (x :: ByronWalletPutPassphraseData)
-                    }
-            in
-                x' === x .&&. show x' === show x
-        it "ApiSignTransactionPostData" $ property $ \x ->
-            let
-                x' = ApiSignTransactionPostData
-                    { transaction = transaction (x :: ApiSignTransactionPostData)
-                    , passphrase = passphrase (x :: ApiSignTransactionPostData)
-                    }
-            in
-                x' === x .&&. show x' === show x
-        it "PostMintBurnAssetData" $ property $ \x ->
-          let
-            x' = PostMintBurnAssetData
-                 { mintBurn = mintBurn (x :: PostMintBurnAssetData ('Testnet 0))
-                 , passphrase = passphrase (x :: PostMintBurnAssetData ('Testnet 0))
-                 , metadata = metadata (x :: PostMintBurnAssetData ('Testnet 0))
-                 }
-          in
-               x' === x .&&. show x' === show x
-        it "PostTransactionOldData" $ property $ \x ->
-            let
-                x' = PostTransactionOldData
-                    { payments = payments (x :: PostTransactionOldData ('Testnet 0))
-                    , passphrase = passphrase (x :: PostTransactionOldData ('Testnet 0))
-                    , withdrawal = withdrawal (x :: PostTransactionOldData ('Testnet 0))
-                    , metadata = metadata (x :: PostTransactionOldData ('Testnet 0))
-                    , timeToLive = timeToLive (x :: PostTransactionOldData ('Testnet 0))
-                    }
-            in
-                x' === x .&&. show x' === show x
-        it "PostTransactionFeeOldData" $ property $ \x ->
-            let
-                x' = PostTransactionFeeOldData
-                    { payments = payments (x :: PostTransactionFeeOldData ('Testnet 0))
-                    , withdrawal = withdrawal (x :: PostTransactionFeeOldData ('Testnet 0))
-                    , metadata = metadata (x :: PostTransactionFeeOldData ('Testnet 0))
-                    , timeToLive = timeToLive (x :: PostTransactionFeeOldData ('Testnet 0))
-                    }
-            in
-                x' === x .&&. show x' === show x
-        it "ApiBalanceTransactionPostData" $ property $ \x ->
-            let
-                x' = ApiBalanceTransactionPostData
-                    { transaction = transaction (x :: ApiBalanceTransactionPostData ('Testnet 0))
-                    , inputs = inputs (x :: ApiBalanceTransactionPostData ('Testnet 0))
-                    , redeemers = redeemers (x :: ApiBalanceTransactionPostData ('Testnet 0))
-                    }
-            in
-                x' === x .&&. show x' === show x
-        it "ApiTransaction" $ property $ \x ->
-            let
-                x' = ApiTransaction
-                    { id = id
-                        (x :: ApiTransaction ('Testnet 0))
-                    , amount = amount
-                        (x :: ApiTransaction ('Testnet 0))
-                    , fee = fee
-                        (x :: ApiTransaction ('Testnet 0))
-                    , depositTaken = depositTaken
-                        (x :: ApiTransaction ('Testnet 0))
-                    , depositReturned = depositReturned
-                        (x :: ApiTransaction ('Testnet 0))
-                    , insertedAt = insertedAt
-                        (x :: ApiTransaction ('Testnet 0))
-                    , pendingSince = pendingSince
-                        (x :: ApiTransaction ('Testnet 0))
-                    , expiresAt = expiresAt
-                        (x :: ApiTransaction ('Testnet 0))
-                    , depth = depth
-                        (x :: ApiTransaction ('Testnet 0))
-                    , direction = direction
-                        (x :: ApiTransaction ('Testnet 0))
-                    , inputs = inputs
-                        (x :: ApiTransaction ('Testnet 0))
-                    , outputs = outputs
-                        (x :: ApiTransaction ('Testnet 0))
-                    , collateral = collateral
-                        (x :: ApiTransaction ('Testnet 0))
-                    , status = status
-                        (x :: ApiTransaction ('Testnet 0))
-                    , withdrawals = withdrawals
-                        (x :: ApiTransaction ('Testnet 0))
-                    , mint = mint
-                        (x :: ApiTransaction ('Testnet 0))
-                    , metadata = metadata
-                        (x :: ApiTransaction ('Testnet 0))
-                    , scriptValidity = scriptValidity
-                        (x :: ApiTransaction ('Testnet 0))
-                    }
-            in
-                x' === x .&&. show x' === show x
-        it "ApiConstructTransactionData" $ property $ \x ->
-            let
-                x' = ApiConstructTransactionData
-                    { payments = payments
-                        (x :: ApiConstructTransactionData ('Testnet 0))
-                    , withdrawal = withdrawal
-                        (x :: ApiConstructTransactionData ('Testnet 0))
-                    , metadata = metadata
-                        (x :: ApiConstructTransactionData ('Testnet 0))
-                    , mintBurn = mintBurn
-                        (x :: ApiConstructTransactionData ('Testnet 0))
-                    , delegations = delegations
-                        (x :: ApiConstructTransactionData ('Testnet 0))
-                    , validityInterval = validityInterval
-                        (x :: ApiConstructTransactionData ('Testnet 0))
-                    }
-            in
-                x' === x .&&. show x' === show x
-        it "ApiDecodedTransaction" $ property $ \x ->
-            let
-                x' = ApiDecodedTransaction
-                    { id = id (x :: ApiDecodedTransaction ('Testnet 0))
-                    , fee = fee (x :: ApiDecodedTransaction ('Testnet 0))
-                    , inputs = inputs (x :: ApiDecodedTransaction ('Testnet 0))
-                    , outputs = outputs (x :: ApiDecodedTransaction ('Testnet 0))
-                    , collateral = collateral (x :: ApiDecodedTransaction ('Testnet 0))
-                    , withdrawals = withdrawals (x :: ApiDecodedTransaction ('Testnet 0))
-                    , metadata = metadata (x :: ApiDecodedTransaction ('Testnet 0))
-                    , assetsMinted = assetsMinted (x :: ApiDecodedTransaction ('Testnet 0))
-                    , assetsBurned = assetsBurned (x :: ApiDecodedTransaction ('Testnet 0))
-                    , certificates = certificates (x :: ApiDecodedTransaction ('Testnet 0))
-                    , depositsTaken = depositsTaken (x :: ApiDecodedTransaction ('Testnet 0))
-                    , depositsReturned = depositsReturned (x :: ApiDecodedTransaction ('Testnet 0))
-                    , scriptValidity = scriptValidity (x :: ApiDecodedTransaction ('Testnet 0))
-                    }
-            in
-                x' === x .&&. show x' === show x
-        it "ApiPutAddressesData" $ property $ \x ->
-            let
-                x' = ApiPutAddressesData
-                    { addresses = addresses (x :: ApiPutAddressesData ('Testnet 0))
-                    }
-            in
-                x' === x .&&. show x' === show x
-        it "AddressAmount" $ property $ \x ->
-            let
-                x' = AddressAmount
-                    { address = address
-                        (x :: AddressAmount (ApiT Address, Proxy ('Testnet 0)))
-                    , amount = amount
-                        (x :: AddressAmount (ApiT Address, Proxy ('Testnet 0)))
-                    , assets = assets
-                        (x :: AddressAmount (ApiT Address, Proxy ('Testnet 0)))
-                    }
-            in
-                x' === x .&&. show x' === show x
-        it "AddressAmountNoAssets" $ property $ \x ->
-            let
-                x' = AddressAmountNoAssets
-                    { address = address
-                        (x :: AddressAmountNoAssets
-                            (ApiT Address, Proxy ('Testnet 0)))
-                    , amount = amount
-                        (x :: AddressAmountNoAssets
-                            (ApiT Address, Proxy ('Testnet 0)))
-                    }
-            in
-                x' === x .&&. show x' === show x
-        it "ApiBlockReference" $ property $ \x ->
-            let
-                x' = ApiBlockReference
-                    { absoluteSlotNumber = absoluteSlotNumber (x :: ApiBlockReference)
-                    , slotId = slotId (x :: ApiBlockReference)
-                    , time = time (x :: ApiBlockReference)
-                    , block = block (x :: ApiBlockReference)
-                    }
-            in
-                x' === x .&&. show x' === show x
-        it "ApiSlotReference" $ property $ \x ->
-            let
-                x' = ApiSlotReference
-                    { absoluteSlotNumber = absoluteSlotNumber (x :: ApiSlotReference)
-                    , slotId = slotId (x :: ApiSlotReference)
-                    , time = time (x :: ApiSlotReference)
-                    }
-            in
-                x' === x .&&. show x' === show x
-        it "ApiNetworkInformation" $ property $ \x ->
-            let
-                x' = ApiNetworkInformation
-                    { syncProgress = syncProgress (x :: ApiNetworkInformation)
-                    , nextEpoch = nextEpoch (x :: ApiNetworkInformation)
-                    , nodeTip = nodeTip (x :: ApiNetworkInformation)
-                    , networkTip = networkTip (x :: ApiNetworkInformation)
-                    , nodeEra = nodeEra (x :: ApiNetworkInformation)
-                    }
-            in
-                x' === x .&&. show x' === show x
-        it "ApiNetworkClock" $ property $ \x ->
-            let
-                x' = ApiNetworkClock
-                    { ntpStatus = ntpStatus (x :: ApiNetworkClock)
-                    }
-            in
-                x' === x .&&. show x' === show x
-        it "ApiNetworkParameters" $ property $ \x ->
-            let x' = ApiNetworkParameters
-                    { genesisBlockHash =
-                        genesisBlockHash (x :: ApiNetworkParameters)
-                    , blockchainStartTime =
-                        blockchainStartTime (x :: ApiNetworkParameters)
-                    , slotLength =
-                        slotLength (x :: ApiNetworkParameters)
-                    , epochLength =
-                        epochLength (x :: ApiNetworkParameters)
-                    , securityParameter =
-                        securityParameter (x :: ApiNetworkParameters)
-                    , activeSlotCoefficient =
-                        activeSlotCoefficient (x :: ApiNetworkParameters)
-                    , decentralizationLevel =
-                        decentralizationLevel (x :: ApiNetworkParameters)
-                    , desiredPoolNumber =
-                        desiredPoolNumber (x :: ApiNetworkParameters)
-                    , minimumUtxoValue =
-                        minimumUtxoValue (x :: ApiNetworkParameters)
-                    , maximumTokenBundleSize =
-                        maximumTokenBundleSize (x :: ApiNetworkParameters)
-                    , eras =
-                        eras (x :: ApiNetworkParameters)
-                    , maximumCollateralInputCount =
-                        maximumCollateralInputCount (x :: ApiNetworkParameters)
-                    , minimumCollateralPercentage =
-                        minimumCollateralPercentage (x :: ApiNetworkParameters)
-                    , executionUnitPrices =
-                        executionUnitPrices (x :: ApiNetworkParameters)
-                    }
-            in
-            x' === x .&&. show x' === show x
+    parallel $
+        describe "pointless tests to trigger coverage for record accessors" $ do
+            it "ApiEpochInfo" $
+                property $ \x ->
+                    let x' =
+                            ApiEpochInfo
+                                { epochNumber = epochNumber (x :: ApiEpochInfo)
+                                , epochStartTime = epochStartTime (x :: ApiEpochInfo)
+                                }
+                     in x' === x .&&. show x' === show x
+            it "ApiSelectCoinsData" $
+                property $ \x ->
+                    let x' =
+                            ApiSelectCoinsPayments
+                                { payments = payments (x :: ApiSelectCoinsPayments ( 'Testnet 0))
+                                , withdrawal = withdrawal (x :: ApiSelectCoinsPayments ( 'Testnet 0))
+                                , metadata = metadata (x :: ApiSelectCoinsPayments ( 'Testnet 0))
+                                }
+                     in x' === x .&&. show x' === show x
+            it "ApiCoinSelection" $
+                property $ \x ->
+                    let x' =
+                            ApiCoinSelection
+                                { inputs =
+                                    inputs
+                                        (x :: ApiCoinSelection ( 'Testnet 0))
+                                , outputs =
+                                    outputs
+                                        (x :: ApiCoinSelection ( 'Testnet 0))
+                                , change =
+                                    change
+                                        (x :: ApiCoinSelection ( 'Testnet 0))
+                                , collateral =
+                                    collateral
+                                        (x :: ApiCoinSelection ( 'Testnet 0))
+                                , withdrawals =
+                                    withdrawals
+                                        (x :: ApiCoinSelection ( 'Testnet 0))
+                                , certificates =
+                                    certificates
+                                        (x :: ApiCoinSelection ( 'Testnet 0))
+                                , depositsTaken =
+                                    depositsTaken
+                                        (x :: ApiCoinSelection ( 'Testnet 0))
+                                , depositsReturned =
+                                    depositsReturned
+                                        (x :: ApiCoinSelection ( 'Testnet 0))
+                                , metadata =
+                                    metadata
+                                        (x :: ApiCoinSelection ( 'Testnet 0))
+                                }
+                     in x' === x .&&. show x' === show x
+            it "ApiCoinSelectionChange" $
+                property $ \x ->
+                    let x' =
+                            ApiCoinSelectionChange
+                                { address =
+                                    address
+                                        (x :: ApiCoinSelectionChange ( 'Testnet 0))
+                                , amount =
+                                    amount
+                                        (x :: ApiCoinSelectionChange ( 'Testnet 0))
+                                , assets =
+                                    assets
+                                        (x :: ApiCoinSelectionChange ( 'Testnet 0))
+                                , derivationPath =
+                                    derivationPath
+                                        (x :: ApiCoinSelectionChange ( 'Testnet 0))
+                                }
+                     in x' === x .&&. show x' === show x
+            it "ApiCoinSelectionCollateral" $
+                property $ \x ->
+                    let x' =
+                            ApiCoinSelectionCollateral
+                                { id =
+                                    id
+                                        (x :: ApiCoinSelectionCollateral ( 'Testnet 0))
+                                , index =
+                                    index
+                                        (x :: ApiCoinSelectionCollateral ( 'Testnet 0))
+                                , address =
+                                    address
+                                        (x :: ApiCoinSelectionCollateral ( 'Testnet 0))
+                                , amount =
+                                    amount
+                                        (x :: ApiCoinSelectionCollateral ( 'Testnet 0))
+                                , derivationPath =
+                                    derivationPath
+                                        (x :: ApiCoinSelectionCollateral ( 'Testnet 0))
+                                }
+                     in x' === x .&&. show x' === show x
+            it "ApiCoinSelectionOutput" $
+                property $ \x ->
+                    let x' =
+                            ApiCoinSelectionOutput
+                                { address =
+                                    address
+                                        (x :: ApiCoinSelectionOutput ( 'Testnet 0))
+                                , amount =
+                                    amount
+                                        (x :: ApiCoinSelectionOutput ( 'Testnet 0))
+                                , assets =
+                                    assets
+                                        (x :: ApiCoinSelectionOutput ( 'Testnet 0))
+                                }
+                     in x' === x .&&. show x' === show x
+            it "ApiWallet" $
+                property $ \x ->
+                    let x' =
+                            ApiWallet
+                                { id = id (x :: ApiWallet)
+                                , addressPoolGap = addressPoolGap (x :: ApiWallet)
+                                , balance = balance (x :: ApiWallet)
+                                , assets = assets (x :: ApiWallet)
+                                , delegation = delegation (x :: ApiWallet)
+                                , name = name (x :: ApiWallet)
+                                , passphrase = passphrase (x :: ApiWallet)
+                                , state = state (x :: ApiWallet)
+                                , tip = tip (x :: ApiWallet)
+                                }
+                     in x' === x .&&. show x' === show x
+            it "ApiByronWallet" $
+                property $ \x ->
+                    let x' =
+                            ApiByronWallet
+                                { id = id (x :: ApiByronWallet)
+                                , balance = balance (x :: ApiByronWallet)
+                                , assets = assets (x :: ApiByronWallet)
+                                , name = name (x :: ApiByronWallet)
+                                , passphrase = passphrase (x :: ApiByronWallet)
+                                , state = state (x :: ApiByronWallet)
+                                , tip = tip (x :: ApiByronWallet)
+                                , discovery = discovery (x :: ApiByronWallet)
+                                }
+                     in x' === x .&&. show x' === show x
+            it "ApiWalletMigrationBalance" $
+                property $ \x ->
+                    let x' =
+                            ApiWalletMigrationBalance
+                                { ada =
+                                    ada
+                                        (x :: ApiWalletMigrationBalance)
+                                , assets =
+                                    assets
+                                        (x :: ApiWalletMigrationBalance)
+                                }
+                     in x' === x .&&. show x' === show x
+            it "ApiWalletMigrationPlan" $
+                property $ \x ->
+                    let x' =
+                            ApiWalletMigrationPlan
+                                { selections =
+                                    selections
+                                        (x :: ApiWalletMigrationPlan ( 'Testnet 0))
+                                , totalFee =
+                                    totalFee
+                                        (x :: ApiWalletMigrationPlan ( 'Testnet 0))
+                                , balanceLeftover =
+                                    balanceLeftover
+                                        (x :: ApiWalletMigrationPlan ( 'Testnet 0))
+                                , balanceSelected =
+                                    balanceSelected
+                                        (x :: ApiWalletMigrationPlan ( 'Testnet 0))
+                                }
+                     in x' === x .&&. show x' === show x
+            it "ApiWalletMigrationPlanPostData" $
+                property $ \x ->
+                    let x' =
+                            ApiWalletMigrationPlanPostData
+                                { addresses =
+                                    addresses
+                                        (x :: ApiWalletMigrationPlanPostData ( 'Testnet 0))
+                                }
+                     in x' === x .&&. show x' === show x
+            it "ApiWalletMigrationPostData lenient" $
+                property $ \x ->
+                    let x' =
+                            ApiWalletMigrationPostData
+                                { passphrase =
+                                    passphrase
+                                        (x :: ApiWalletMigrationPostData ( 'Testnet 0) "lenient")
+                                , addresses =
+                                    addresses
+                                        (x :: ApiWalletMigrationPostData ( 'Testnet 0) "lenient")
+                                }
+                     in x' === x .&&. show x' === show x
+            it "ApiWalletMigrationPostData raw" $
+                property $ \x ->
+                    let x' =
+                            ApiWalletMigrationPostData
+                                { passphrase =
+                                    passphrase
+                                        (x :: ApiWalletMigrationPostData ( 'Testnet 0) "raw")
+                                , addresses =
+                                    addresses
+                                        (x :: ApiWalletMigrationPostData ( 'Testnet 0) "raw")
+                                }
+                     in x' === x .&&. show x' === show x
+            it "ApiWalletPassphrase" $
+                property $ \x ->
+                    let x' =
+                            ApiWalletPassphrase
+                                { passphrase =
+                                    passphrase (x :: ApiWalletPassphrase)
+                                }
+                     in x' === x .&&. show x' === show x
+            it "ApiFee" $
+                property $ \x ->
+                    let x' =
+                            ApiFee
+                                { estimatedMin = estimatedMin (x :: ApiFee)
+                                , estimatedMax = estimatedMax (x :: ApiFee)
+                                , minimumCoins = minimumCoins (x :: ApiFee)
+                                , deposit = deposit (x :: ApiFee)
+                                }
+                     in x' === x .&&. show x' === show x
+            it "ApiTxId" $
+                property $ \x ->
+                    let x' =
+                            ApiTxId
+                                { id = id (x :: ApiTxId)
+                                }
+                     in x' === x .&&. show x' === show x
+            it "WalletPostData" $
+                property $ \x ->
+                    let x' =
+                            WalletPostData
+                                { addressPoolGap = addressPoolGap (x :: WalletPostData)
+                                , mnemonicSentence = mnemonicSentence (x :: WalletPostData)
+                                , mnemonicSecondFactor = mnemonicSecondFactor (x :: WalletPostData)
+                                , name = name (x :: WalletPostData)
+                                , passphrase = passphrase (x :: WalletPostData)
+                                }
+                     in x' === x .&&. show x' === show x
+            it "WalletPutData" $
+                property $ \x ->
+                    let x' =
+                            WalletPutData
+                                { name = name (x :: WalletPutData)
+                                }
+                     in x' === x .&&. show x' === show x
+            it "SettingsPutData" $
+                property $ \x ->
+                    let x' =
+                            SettingsPutData
+                                { settings = settings (x :: SettingsPutData)
+                                }
+                     in x' === x .&&. show x' === show x
+            it "WalletPutPassphraseData" $
+                property $ \x ->
+                    let x' =
+                            WalletPutPassphraseData
+                                { oldPassphrase = oldPassphrase (x :: WalletPutPassphraseData)
+                                , newPassphrase = newPassphrase (x :: WalletPutPassphraseData)
+                                }
+                     in x' === x .&&. show x' === show x
+            it "ByronWalletPutPassphraseData" $
+                property $ \x ->
+                    let x' =
+                            ByronWalletPutPassphraseData
+                                { oldPassphrase = oldPassphrase (x :: ByronWalletPutPassphraseData)
+                                , newPassphrase = newPassphrase (x :: ByronWalletPutPassphraseData)
+                                }
+                     in x' === x .&&. show x' === show x
+            it "ApiSignTransactionPostData" $
+                property $ \x ->
+                    let x' =
+                            ApiSignTransactionPostData
+                                { transaction = transaction (x :: ApiSignTransactionPostData)
+                                , passphrase = passphrase (x :: ApiSignTransactionPostData)
+                                }
+                     in x' === x .&&. show x' === show x
+            it "PostMintBurnAssetData" $
+                property $ \x ->
+                    let x' =
+                            PostMintBurnAssetData
+                                { mintBurn = mintBurn (x :: PostMintBurnAssetData ( 'Testnet 0))
+                                , passphrase = passphrase (x :: PostMintBurnAssetData ( 'Testnet 0))
+                                , metadata = metadata (x :: PostMintBurnAssetData ( 'Testnet 0))
+                                }
+                     in x' === x .&&. show x' === show x
+            it "PostTransactionOldData" $
+                property $ \x ->
+                    let x' =
+                            PostTransactionOldData
+                                { payments = payments (x :: PostTransactionOldData ( 'Testnet 0))
+                                , passphrase = passphrase (x :: PostTransactionOldData ( 'Testnet 0))
+                                , withdrawal = withdrawal (x :: PostTransactionOldData ( 'Testnet 0))
+                                , metadata = metadata (x :: PostTransactionOldData ( 'Testnet 0))
+                                , timeToLive = timeToLive (x :: PostTransactionOldData ( 'Testnet 0))
+                                }
+                     in x' === x .&&. show x' === show x
+            it "PostTransactionFeeOldData" $
+                property $ \x ->
+                    let x' =
+                            PostTransactionFeeOldData
+                                { payments = payments (x :: PostTransactionFeeOldData ( 'Testnet 0))
+                                , withdrawal = withdrawal (x :: PostTransactionFeeOldData ( 'Testnet 0))
+                                , metadata = metadata (x :: PostTransactionFeeOldData ( 'Testnet 0))
+                                , timeToLive = timeToLive (x :: PostTransactionFeeOldData ( 'Testnet 0))
+                                }
+                     in x' === x .&&. show x' === show x
+            it "ApiBalanceTransactionPostData" $
+                property $ \x ->
+                    let x' =
+                            ApiBalanceTransactionPostData
+                                { transaction = transaction (x :: ApiBalanceTransactionPostData ( 'Testnet 0))
+                                , inputs = inputs (x :: ApiBalanceTransactionPostData ( 'Testnet 0))
+                                , redeemers = redeemers (x :: ApiBalanceTransactionPostData ( 'Testnet 0))
+                                }
+                     in x' === x .&&. show x' === show x
+            it "ApiTransaction" $
+                property $ \x ->
+                    let x' =
+                            ApiTransaction
+                                { id =
+                                    id
+                                        (x :: ApiTransaction ( 'Testnet 0))
+                                , amount =
+                                    amount
+                                        (x :: ApiTransaction ( 'Testnet 0))
+                                , fee =
+                                    fee
+                                        (x :: ApiTransaction ( 'Testnet 0))
+                                , depositTaken =
+                                    depositTaken
+                                        (x :: ApiTransaction ( 'Testnet 0))
+                                , depositReturned =
+                                    depositReturned
+                                        (x :: ApiTransaction ( 'Testnet 0))
+                                , insertedAt =
+                                    insertedAt
+                                        (x :: ApiTransaction ( 'Testnet 0))
+                                , pendingSince =
+                                    pendingSince
+                                        (x :: ApiTransaction ( 'Testnet 0))
+                                , expiresAt =
+                                    expiresAt
+                                        (x :: ApiTransaction ( 'Testnet 0))
+                                , depth =
+                                    depth
+                                        (x :: ApiTransaction ( 'Testnet 0))
+                                , direction =
+                                    direction
+                                        (x :: ApiTransaction ( 'Testnet 0))
+                                , inputs =
+                                    inputs
+                                        (x :: ApiTransaction ( 'Testnet 0))
+                                , outputs =
+                                    outputs
+                                        (x :: ApiTransaction ( 'Testnet 0))
+                                , collateral =
+                                    collateral
+                                        (x :: ApiTransaction ( 'Testnet 0))
+                                , status =
+                                    status
+                                        (x :: ApiTransaction ( 'Testnet 0))
+                                , withdrawals =
+                                    withdrawals
+                                        (x :: ApiTransaction ( 'Testnet 0))
+                                , mint =
+                                    mint
+                                        (x :: ApiTransaction ( 'Testnet 0))
+                                , metadata =
+                                    metadata
+                                        (x :: ApiTransaction ( 'Testnet 0))
+                                , scriptValidity =
+                                    scriptValidity
+                                        (x :: ApiTransaction ( 'Testnet 0))
+                                }
+                     in x' === x .&&. show x' === show x
+            it "ApiConstructTransactionData" $
+                property $ \x ->
+                    let x' =
+                            ApiConstructTransactionData
+                                { payments =
+                                    payments
+                                        (x :: ApiConstructTransactionData ( 'Testnet 0))
+                                , withdrawal =
+                                    withdrawal
+                                        (x :: ApiConstructTransactionData ( 'Testnet 0))
+                                , metadata =
+                                    metadata
+                                        (x :: ApiConstructTransactionData ( 'Testnet 0))
+                                , mintBurn =
+                                    mintBurn
+                                        (x :: ApiConstructTransactionData ( 'Testnet 0))
+                                , delegations =
+                                    delegations
+                                        (x :: ApiConstructTransactionData ( 'Testnet 0))
+                                , validityInterval =
+                                    validityInterval
+                                        (x :: ApiConstructTransactionData ( 'Testnet 0))
+                                }
+                     in x' === x .&&. show x' === show x
+            it "ApiDecodedTransaction" $
+                property $ \x ->
+                    let x' =
+                            ApiDecodedTransaction
+                                { id = id (x :: ApiDecodedTransaction ( 'Testnet 0))
+                                , fee = fee (x :: ApiDecodedTransaction ( 'Testnet 0))
+                                , inputs = inputs (x :: ApiDecodedTransaction ( 'Testnet 0))
+                                , outputs = outputs (x :: ApiDecodedTransaction ( 'Testnet 0))
+                                , collateral = collateral (x :: ApiDecodedTransaction ( 'Testnet 0))
+                                , withdrawals = withdrawals (x :: ApiDecodedTransaction ( 'Testnet 0))
+                                , metadata = metadata (x :: ApiDecodedTransaction ( 'Testnet 0))
+                                , assetsMinted = assetsMinted (x :: ApiDecodedTransaction ( 'Testnet 0))
+                                , assetsBurned = assetsBurned (x :: ApiDecodedTransaction ( 'Testnet 0))
+                                , certificates = certificates (x :: ApiDecodedTransaction ( 'Testnet 0))
+                                , depositsTaken = depositsTaken (x :: ApiDecodedTransaction ( 'Testnet 0))
+                                , depositsReturned = depositsReturned (x :: ApiDecodedTransaction ( 'Testnet 0))
+                                , scriptValidity = scriptValidity (x :: ApiDecodedTransaction ( 'Testnet 0))
+                                }
+                     in x' === x .&&. show x' === show x
+            it "ApiPutAddressesData" $
+                property $ \x ->
+                    let x' =
+                            ApiPutAddressesData
+                                { addresses = addresses (x :: ApiPutAddressesData ( 'Testnet 0))
+                                }
+                     in x' === x .&&. show x' === show x
+            it "AddressAmount" $
+                property $ \x ->
+                    let x' =
+                            AddressAmount
+                                { address =
+                                    address
+                                        (x :: AddressAmount (ApiT Address, Proxy ( 'Testnet 0)))
+                                , amount =
+                                    amount
+                                        (x :: AddressAmount (ApiT Address, Proxy ( 'Testnet 0)))
+                                , assets =
+                                    assets
+                                        (x :: AddressAmount (ApiT Address, Proxy ( 'Testnet 0)))
+                                }
+                     in x' === x .&&. show x' === show x
+            it "AddressAmountNoAssets" $
+                property $ \x ->
+                    let x' =
+                            AddressAmountNoAssets
+                                { address =
+                                    address
+                                        ( x ::
+                                            AddressAmountNoAssets
+                                                (ApiT Address, Proxy ( 'Testnet 0))
+                                        )
+                                , amount =
+                                    amount
+                                        ( x ::
+                                            AddressAmountNoAssets
+                                                (ApiT Address, Proxy ( 'Testnet 0))
+                                        )
+                                }
+                     in x' === x .&&. show x' === show x
+            it "ApiBlockReference" $
+                property $ \x ->
+                    let x' =
+                            ApiBlockReference
+                                { absoluteSlotNumber = absoluteSlotNumber (x :: ApiBlockReference)
+                                , slotId = slotId (x :: ApiBlockReference)
+                                , time = time (x :: ApiBlockReference)
+                                , block = block (x :: ApiBlockReference)
+                                }
+                     in x' === x .&&. show x' === show x
+            it "ApiSlotReference" $
+                property $ \x ->
+                    let x' =
+                            ApiSlotReference
+                                { absoluteSlotNumber = absoluteSlotNumber (x :: ApiSlotReference)
+                                , slotId = slotId (x :: ApiSlotReference)
+                                , time = time (x :: ApiSlotReference)
+                                }
+                     in x' === x .&&. show x' === show x
+            it "ApiNetworkInformation" $
+                property $ \x ->
+                    let x' =
+                            ApiNetworkInformation
+                                { syncProgress = syncProgress (x :: ApiNetworkInformation)
+                                , nextEpoch = nextEpoch (x :: ApiNetworkInformation)
+                                , nodeTip = nodeTip (x :: ApiNetworkInformation)
+                                , networkTip = networkTip (x :: ApiNetworkInformation)
+                                , nodeEra = nodeEra (x :: ApiNetworkInformation)
+                                }
+                     in x' === x .&&. show x' === show x
+            it "ApiNetworkClock" $
+                property $ \x ->
+                    let x' =
+                            ApiNetworkClock
+                                { ntpStatus = ntpStatus (x :: ApiNetworkClock)
+                                }
+                     in x' === x .&&. show x' === show x
+            it "ApiNetworkParameters" $
+                property $ \x ->
+                    let x' =
+                            ApiNetworkParameters
+                                { genesisBlockHash =
+                                    genesisBlockHash (x :: ApiNetworkParameters)
+                                , blockchainStartTime =
+                                    blockchainStartTime (x :: ApiNetworkParameters)
+                                , slotLength =
+                                    slotLength (x :: ApiNetworkParameters)
+                                , epochLength =
+                                    epochLength (x :: ApiNetworkParameters)
+                                , securityParameter =
+                                    securityParameter (x :: ApiNetworkParameters)
+                                , activeSlotCoefficient =
+                                    activeSlotCoefficient (x :: ApiNetworkParameters)
+                                , decentralizationLevel =
+                                    decentralizationLevel (x :: ApiNetworkParameters)
+                                , desiredPoolNumber =
+                                    desiredPoolNumber (x :: ApiNetworkParameters)
+                                , minimumUtxoValue =
+                                    minimumUtxoValue (x :: ApiNetworkParameters)
+                                , maximumTokenBundleSize =
+                                    maximumTokenBundleSize (x :: ApiNetworkParameters)
+                                , eras =
+                                    eras (x :: ApiNetworkParameters)
+                                , maximumCollateralInputCount =
+                                    maximumCollateralInputCount (x :: ApiNetworkParameters)
+                                , minimumCollateralPercentage =
+                                    minimumCollateralPercentage (x :: ApiNetworkParameters)
+                                , executionUnitPrices =
+                                    executionUnitPrices (x :: ApiNetworkParameters)
+                                }
+                     in x' === x .&&. show x' === show x
 
     describe "Api Errors" $ do
         it "Every constructor from ApiErrorCode has a corresponding type in the schema" $
@@ -1295,30 +1549,34 @@ spec = parallel $ do
                 errStr = case res of
                     Error s -> s
                     _ -> ""
-            in counterexample errStr $ res == Success SchemaApiErrorCode
+             in counterexample errStr $ res == Success SchemaApiErrorCode
 
 {-------------------------------------------------------------------------------
                               Error type Encoding
 -------------------------------------------------------------------------------}
 
--- | We use this empty data type to define a custom
--- JSON instance that checks ApiErrorCode has corresponding
--- constructors in the schema file.
+{- | We use this empty data type to define a custom
+ JSON instance that checks ApiErrorCode has corresponding
+ constructors in the schema file.
+-}
 data SchemaApiErrorCode = SchemaApiErrorCode
     deriving (Show, Eq)
 
 instance FromJSON SchemaApiErrorCode where
     parseJSON = withObject "SchemaApiErrorCode" $ \o -> do
-        vals <- forM (fmap showConstr $ dataTypeConstrs $ dataTypeOf NoSuchWallet)
-            $ \n -> do
+        vals <- forM (fmap showConstr $ dataTypeConstrs $ dataTypeOf NoSuchWallet) $
+            \n -> do
                 (r :: Maybe Yaml.Value) <- o .:? T.pack (toSchemaName n)
                 pure $ maybe (Left n) Right r
         case lefts vals of
             [] -> pure SchemaApiErrorCode
-            xs -> fail ("Missing ApiErrorCode constructors for: "
-                <> show xs
-                <> "\nEach of these need a corresponding swagger type of the form: "
-                <> "x-errConstructorName")
+            xs ->
+                fail
+                    ( "Missing ApiErrorCode constructors for: "
+                        <> show xs
+                        <> "\nEach of these need a corresponding swagger type of the form: "
+                        <> "x-errConstructorName"
+                    )
       where
         toSchemaName :: String -> String
         toSchemaName [] = []
@@ -1329,21 +1587,20 @@ instance FromJSON SchemaApiErrorCode where
 -------------------------------------------------------------------------------}
 
 -- Dummy instances
-instance EncodeAddress ('Testnet 0) where
+instance EncodeAddress ( 'Testnet 0) where
     encodeAddress = const "<addr>"
 
-instance DecodeAddress ('Testnet 0) where
+instance DecodeAddress ( 'Testnet 0) where
     decodeAddress "<addr>" = Right $ Address "<addr>"
     decodeAddress _ = Left $ TextDecodingError "invalid address"
 
 -- Dummy instances
-instance EncodeStakeAddress ('Testnet 0) where
+instance EncodeStakeAddress ( 'Testnet 0) where
     encodeStakeAddress = const "<stake-addr>"
 
-instance DecodeStakeAddress ('Testnet 0) where
+instance DecodeStakeAddress ( 'Testnet 0) where
     decodeStakeAddress "<stake-addr>" = Right $ RewardAccount "<stake-addr>"
     decodeStakeAddress _ = Left $ TextDecodingError "invalid stake address"
-
 
 {-------------------------------------------------------------------------------
                               Arbitrary Instances
@@ -1355,10 +1612,11 @@ instance Arbitrary (Proxy (n :: NetworkDiscriminant)) where
 
 instance Arbitrary (ApiAddress n) where
     shrink _ = []
-    arbitrary = ApiAddress
-        <$> fmap (, Proxy @n) arbitrary
-        <*> arbitrary
-        <*> arbitrary
+    arbitrary =
+        ApiAddress
+            <$> fmap (,Proxy @n) arbitrary
+            <*> arbitrary
+            <*> arbitrary
 
 instance Arbitrary ApiEpochInfo where
     arbitrary = ApiEpochInfo <$> arbitrary <*> genUniformTime
@@ -1383,7 +1641,7 @@ instance Arbitrary ScriptTemplate where
 instance Arbitrary ApiCredential where
     arbitrary = do
         pubKey <- BS.pack <$> replicateM 32 arbitrary
-        oneof [ pure $ CredentialPubKey pubKey, CredentialScript <$> arbitrary ]
+        oneof [pure $ CredentialPubKey pubKey, CredentialScript <$> arbitrary]
 
 instance Arbitrary ValidationLevel where
     arbitrary =
@@ -1394,17 +1652,18 @@ instance Arbitrary ApiAddressData where
         validation' <- oneof [pure Nothing, Just <$> arbitrary]
         credential1 <- arbitrary
         credential2 <- arbitrary
-        addr <- elements
-            [ AddrEnterprise credential1
-            , AddrRewardAccount credential2
-            , AddrBase credential1 credential2
-            ]
+        addr <-
+            elements
+                [ AddrEnterprise credential1
+                , AddrRewardAccount credential2
+                , AddrBase credential1 credential2
+                ]
         pure $ ApiAddressData addr validation'
 
 instance Arbitrary AnyAddress where
     arbitrary = do
         payload' <- BS.pack <$> replicateM 32 arbitrary
-        network' <- choose (0,1)
+        network' <- choose (0, 1)
         addrType <- arbitraryBoundedEnum
         pure $ AnyAddress payload' addrType network'
 
@@ -1421,7 +1680,7 @@ instance Arbitrary ApiMultiDelegationAction where
     shrink = genericShrink
 
 instance Arbitrary Cosigner where
-    arbitrary = Cosigner <$> choose (0,10)
+    arbitrary = Cosigner <$> choose (0, 10)
 
 instance Arbitrary ApiPendingSharedWallet where
     arbitrary = genericArbitrary -- fixme: seems to be slow
@@ -1430,9 +1689,11 @@ instance Arbitrary ApiActiveSharedWallet where
     arbitrary = genericArbitrary -- fixme: seems to be slow
 
 instance Arbitrary ApiSharedWallet where
-    arbitrary = oneof
-        [ ApiSharedWallet . Right <$> arbitrary
-        , ApiSharedWallet . Left <$> arbitrary ]
+    arbitrary =
+        oneof
+            [ ApiSharedWallet . Right <$> arbitrary
+            , ApiSharedWallet . Left <$> arbitrary
+            ]
 
 instance Arbitrary ApiScriptTemplateEntry where
     arbitrary = genScriptTemplateEntry
@@ -1447,8 +1708,10 @@ instance Arbitrary ApiSharedWalletPostData where
     arbitrary = do
         let fromMnemonics = arbitrary :: Gen ApiSharedWalletPostDataFromMnemonics
         let fromAccXPub = arbitrary :: Gen ApiSharedWalletPostDataFromAccountPubX
-        oneof [ ApiSharedWalletPostData . Right <$> fromAccXPub
-              , ApiSharedWalletPostData . Left <$> fromMnemonics ]
+        oneof
+            [ ApiSharedWalletPostData . Right <$> fromAccXPub
+            , ApiSharedWalletPostData . Left <$> fromMnemonics
+            ]
 
 instance Arbitrary ApiSharedWalletPatchData where
     arbitrary = genericArbitrary
@@ -1464,7 +1727,8 @@ instance Arbitrary (ApiSelectCoinsData n) where
 
 instance Arbitrary ApiCertificate where
     arbitrary =
-        oneof [ JoinPool <$> arbitraryRewardAccountPath <*> arbitrary
+        oneof
+            [ JoinPool <$> arbitraryRewardAccountPath <*> arbitrary
             , QuitPool <$> arbitraryRewardAccountPath
             , RegisterRewardAccount <$> arbitraryRewardAccountPath
             ]
@@ -1474,33 +1738,36 @@ instance Arbitrary ApiCertificate where
     shrink = genericShrink
 
 instance Arbitrary (ApiCoinSelection n) where
-    arbitrary = ApiCoinSelection
-        <$> reasonablySized arbitrary
-        <*> reasonablySized arbitrary
-        <*> reasonablySized arbitrary
-        <*> reasonablySized arbitrary
-        <*> reasonablySized arbitrary
-        <*> reasonablySized arbitrary
-        <*> reasonablySized arbitrary
-        <*> reasonablySized arbitrary
-        <*> arbitrary
+    arbitrary =
+        ApiCoinSelection
+            <$> reasonablySized arbitrary
+            <*> reasonablySized arbitrary
+            <*> reasonablySized arbitrary
+            <*> reasonablySized arbitrary
+            <*> reasonablySized arbitrary
+            <*> reasonablySized arbitrary
+            <*> reasonablySized arbitrary
+            <*> reasonablySized arbitrary
+            <*> arbitrary
     shrink = genericShrink
 
 instance Arbitrary (ApiCoinSelectionChange n) where
-    arbitrary = ApiCoinSelectionChange
-        <$> fmap (, Proxy @n) arbitrary
-        <*> arbitrary
-        <*> arbitrary
-        <*> arbitrary
+    arbitrary =
+        ApiCoinSelectionChange
+            <$> fmap (,Proxy @n) arbitrary
+            <*> arbitrary
+            <*> arbitrary
+            <*> arbitrary
     shrink _ = []
 
 instance Arbitrary (ApiCoinSelectionCollateral n) where
-    arbitrary = ApiCoinSelectionCollateral
-        <$> arbitrary
-        <*> arbitrary
-        <*> fmap (, Proxy @n) arbitrary
-        <*> arbitrary
-        <*> arbitrary
+    arbitrary =
+        ApiCoinSelectionCollateral
+            <$> arbitrary
+            <*> arbitrary
+            <*> fmap (,Proxy @n) arbitrary
+            <*> arbitrary
+            <*> arbitrary
     shrink _ = []
 
 instance Arbitrary (ApiCoinSelectionOutput n) where
@@ -1508,10 +1775,11 @@ instance Arbitrary (ApiCoinSelectionOutput n) where
     shrink _ = []
 
 instance Arbitrary (ApiCoinSelectionWithdrawal n) where
-    arbitrary = ApiCoinSelectionWithdrawal
-        <$> fmap (, Proxy @n) arbitrary
-        <*> reasonablySized arbitrary
-        <*> arbitrary
+    arbitrary =
+        ApiCoinSelectionWithdrawal
+            <$> fmap (,Proxy @n) arbitrary
+            <*> reasonablySized arbitrary
+            <*> arbitrary
 
 instance Arbitrary AddressState where
     arbitrary = genericArbitrary
@@ -1556,36 +1824,42 @@ instance Arbitrary ApiByronWalletBalance where
     shrink = genericShrink
 
 instance Arbitrary ApiWalletMigrationBalance where
-    arbitrary = ApiWalletMigrationBalance
-        <$> reasonablySized arbitrary
-        <*> reasonablySized arbitrary
+    arbitrary =
+        ApiWalletMigrationBalance
+            <$> reasonablySized arbitrary
+            <*> reasonablySized arbitrary
     shrink = genericShrink
 
 instance Arbitrary (ApiWalletMigrationPlan n) where
-    arbitrary = ApiWalletMigrationPlan
-        <$> reasonablySized arbitrary
-        <*> reasonablySized arbitrary
-        <*> reasonablySized arbitrary
-        <*> reasonablySized arbitrary
+    arbitrary =
+        ApiWalletMigrationPlan
+            <$> reasonablySized arbitrary
+            <*> reasonablySized arbitrary
+            <*> reasonablySized arbitrary
+            <*> reasonablySized arbitrary
     shrink = genericShrink
 
 instance Arbitrary (ApiWalletMigrationPlanPostData n) where
     arbitrary = do
         addrCount <- choose (1, 255)
-        addrs <- (:|)
-            <$> arbitrary
-            <*> replicateM (addrCount - 1) arbitrary
-        pure $ ApiWalletMigrationPlanPostData ((, Proxy @n) <$> addrs)
+        addrs <-
+            (:|)
+                <$> arbitrary
+                <*> replicateM (addrCount - 1) arbitrary
+        pure $ ApiWalletMigrationPlanPostData ((,Proxy @n) <$> addrs)
 
-instance Arbitrary (Passphrase purpose) =>
-         Arbitrary (ApiWalletMigrationPostData n purpose) where
+instance
+    Arbitrary (Passphrase purpose) =>
+    Arbitrary (ApiWalletMigrationPostData n purpose)
+    where
     arbitrary = do
         pwd <- arbitrary
         addrCount <- choose (1, 255)
-        addrs <- (:|)
-            <$> arbitrary
-            <*> replicateM (addrCount - 1) arbitrary
-        pure $ ApiWalletMigrationPostData pwd ((, Proxy @n) <$> addrs)
+        addrs <-
+            (:|)
+                <$> arbitrary
+                <*> replicateM (addrCount - 1) arbitrary
+        pure $ ApiWalletMigrationPostData pwd ((,Proxy @n) <$> addrs)
 
 instance Arbitrary ApiWalletPassphrase where
     arbitrary = genericArbitrary
@@ -1620,8 +1894,10 @@ instance Arbitrary WalletOrAccountPostData where
     arbitrary = do
         let walletPostDataGen = arbitrary :: Gen WalletPostData
         let accountPostDataGen = arbitrary :: Gen AccountPostData
-        oneof [ WalletOrAccountPostData . Left <$> walletPostDataGen
-              , WalletOrAccountPostData . Right <$> accountPostDataGen ]
+        oneof
+            [ WalletOrAccountPostData . Left <$> walletPostDataGen
+            , WalletOrAccountPostData . Right <$> accountPostDataGen
+            ]
 
 instance Arbitrary ApiAccountPublicKey where
     arbitrary = do
@@ -1644,7 +1920,7 @@ instance Arbitrary ByronWalletFromXPrvPostData where
     arbitrary = do
         n <- arbitrary
         rootXPrv <- ApiT . unsafeXPrv . BS.pack <$> vector 128
-        bytesNumber <- choose (64,100)
+        bytesNumber <- choose (64, 100)
         h <- ApiT . Hash . B8.pack <$> replicateM bytesNumber arbitrary
         pure $ ByronWalletFromXPrvPostData n rootXPrv h
 
@@ -1660,7 +1936,7 @@ instance Arbitrary (ByronWalletPostData '[15]) where
     arbitrary = genericArbitrary
     shrink = genericShrink
 
-instance Arbitrary (ByronWalletPostData '[12,15,18,21,24]) where
+instance Arbitrary (ByronWalletPostData '[12, 15, 18, 21, 24]) where
     arbitrary = genericArbitrary
     shrink = genericShrink
 
@@ -1677,9 +1953,11 @@ instance Arbitrary SmashServer where
     arbitrary = genericArbitrary
 
 instance Arbitrary URI where
-    arbitrary = elements
-        [fromJust (parseURI "https://my.little.friend")
-        ,fromJust (parseURI "http://its-friday.com:8000")]
+    arbitrary =
+        elements
+            [ fromJust (parseURI "https://my.little.friend")
+            , fromJust (parseURI "http://its-friday.com:8000")
+            ]
 
 instance Arbitrary Settings where
     arbitrary = genericArbitrary
@@ -1713,35 +1991,42 @@ instance Arbitrary ApiWalletDelegationStatus where
     arbitrary = genericArbitrary
 
 instance Arbitrary ApiWalletDelegationNext where
-    arbitrary = oneof
-        [ ApiWalletDelegationNext Api.Delegating
-            <$> fmap Just arbitrary
-            <*> fmap Just arbitrary
-        , ApiWalletDelegationNext Api.NotDelegating
-            Nothing . Just <$> arbitrary
-        ]
+    arbitrary =
+        oneof
+            [ ApiWalletDelegationNext Api.Delegating
+                <$> fmap Just arbitrary
+                <*> fmap Just arbitrary
+            , ApiWalletDelegationNext
+                Api.NotDelegating
+                Nothing
+                . Just
+                <$> arbitrary
+            ]
 
 instance Arbitrary (Passphrase "lenient") where
     arbitrary = do
         n <- choose (passphraseMinLength p, passphraseMaxLength p)
         bytes <- T.encodeUtf8 . T.pack <$> replicateM n arbitraryPrintableChar
         return $ Passphrase $ BA.convert bytes
-      where p = Proxy :: Proxy "lenient"
+      where
+        p = Proxy :: Proxy "lenient"
 
     shrink (Passphrase bytes)
         | BA.length bytes <= passphraseMinLength p = []
         | otherwise =
-            [ Passphrase
-            $ BA.convert
-            $ B8.take (passphraseMinLength p)
-            $ BA.convert bytes
+            [ Passphrase $
+                BA.convert $
+                    B8.take (passphraseMinLength p) $
+                        BA.convert bytes
             ]
-      where p = Proxy :: Proxy "lenient"
+      where
+        p = Proxy :: Proxy "lenient"
 
 instance Arbitrary ApiWalletDelegation where
-    arbitrary = ApiWalletDelegation
-        <$> fmap (\x -> x { changesAt = Nothing }) arbitrary
-        <*> oneof [ vector i | i <- [0..2 ] ]
+    arbitrary =
+        ApiWalletDelegation
+            <$> fmap (\x -> x {changesAt = Nothing}) arbitrary
+            <*> oneof [vector i | i <- [0 .. 2]]
 
 instance Arbitrary PoolId where
     arbitrary = do
@@ -1749,45 +2034,51 @@ instance Arbitrary PoolId where
         return $ PoolId $ BS.pack $ take 28 bytes
 
 instance Arbitrary ApiStakePool where
-    arbitrary = ApiStakePool
-        <$> arbitrary
-        <*> arbitrary
-        <*> arbitrary
-        <*> arbitrary
-        <*> arbitrary
-        <*> arbitrary
-        <*> arbitrary
-        <*> arbitrary
+    arbitrary =
+        ApiStakePool
+            <$> arbitrary
+            <*> arbitrary
+            <*> arbitrary
+            <*> arbitrary
+            <*> arbitrary
+            <*> arbitrary
+            <*> arbitrary
+            <*> arbitrary
 
 instance Arbitrary ApiStakePoolMetrics where
-    arbitrary = ApiStakePoolMetrics
-        <$> (Quantity . fromIntegral <$> choose (1::Integer, 1_000_000_000_000))
-        <*> arbitrary
-        <*> (choose (0.0, 5.0))
-        <*> (Quantity . fromIntegral <$> choose (1::Integer, 22_600_000))
+    arbitrary =
+        ApiStakePoolMetrics
+            <$> (Quantity . fromIntegral <$> choose (1 :: Integer, 1_000_000_000_000))
+            <*> arbitrary
+            <*> (choose (0.0, 5.0))
+            <*> (Quantity . fromIntegral <$> choose (1 :: Integer, 22_600_000))
 
 instance Arbitrary ApiStakePoolFlag where
     shrink = genericShrink
     arbitrary = genericArbitrary
 
 instance Arbitrary StakePoolMetadata where
-    arbitrary = StakePoolMetadata
-        <$> arbitrary
-        <*> arbitraryText 50
-        <*> arbitraryMaybeText 255
-        <*> arbitraryText 100
+    arbitrary =
+        StakePoolMetadata
+            <$> arbitrary
+            <*> arbitraryText 50
+            <*> arbitraryMaybeText 255
+            <*> arbitraryText 100
       where
         arbitraryText maxLen = do
             len <- choose (1, maxLen)
             T.pack <$> vector len
-        arbitraryMaybeText maxLen = frequency
-            [ (9, Just <$> arbitraryText maxLen)
-            , (1, pure Nothing) ]
+        arbitraryMaybeText maxLen =
+            frequency
+                [ (9, Just <$> arbitraryText maxLen)
+                , (1, pure Nothing)
+                ]
 
 instance Arbitrary StakePoolTicker where
-    arbitrary = unsafeFromText . T.pack <$> do
-        len <- choose (3, 5)
-        replicateM len arbitrary
+    arbitrary =
+        unsafeFromText . T.pack <$> do
+            len <- choose (3, 5)
+            replicateM len arbitrary
 
 instance Arbitrary ApiWalletSignData where
     arbitrary = ApiWalletSignData <$> arbitrary <*> arbitrary
@@ -1803,8 +2094,9 @@ instance Arbitrary WalletId where
 
 instance Arbitrary WalletName where
     arbitrary = do
-        len <- Test.QuickCheck.scale (min walletNameMaxLength) $ sized $ \n ->
-            chooseInt (walletNameMinLength, walletNameMinLength `max` n)
+        len <- Test.QuickCheck.scale (min walletNameMaxLength) $
+            sized $ \n ->
+                chooseInt (walletNameMinLength, walletNameMinLength `max` n)
         WalletName . T.pack <$> vectorOf len arbitraryPrintableChar
     shrink (WalletName t)
         | T.length t <= walletNameMinLength = []
@@ -1833,28 +2125,30 @@ instance Arbitrary a => Arbitrary (NonEmpty a) where
     arbitrary = genericArbitrary
     shrink = genericShrink
 
--- | The initial seed has to be vector or length multiple of 4 bytes and shorter
--- than 64 bytes. Note that this is good for testing or examples, but probably
--- not for generating truly random Mnemonic words.
+{- | The initial seed has to be vector or length multiple of 4 bytes and shorter
+ than 64 bytes. Note that this is good for testing or examples, but probably
+ not for generating truly random Mnemonic words.
+-}
 instance
     ( ValidEntropySize n
     , ValidChecksumSize n csz
-    ) => Arbitrary (Entropy n) where
+    ) =>
+    Arbitrary (Entropy n)
+    where
     arbitrary =
-        let
-            size = fromIntegral $ natVal @n Proxy
+        let size = fromIntegral $ natVal @n Proxy
             entropy =
-                mkEntropy  @n . BA.convert . B8.pack <$> vector (size `quot` 8)
-        in
-            either (error . show . UnexpectedEntropyError) Prelude.id <$> entropy
+                mkEntropy @n . BA.convert . B8.pack <$> vector (size `quot` 8)
+         in either (error . show . UnexpectedEntropyError) Prelude.id <$> entropy
 
-instance {-# OVERLAPS #-}
+instance
+    {-# OVERLAPS #-}
     ( n ~ EntropySize mw
     , csz ~ CheckSumBits n
     , ConsistentEntropy n mw csz
-    )
-    => Arbitrary (ApiMnemonicT (mw ': '[]))
-  where
+    ) =>
+    Arbitrary (ApiMnemonicT (mw ': '[]))
+    where
     arbitrary = do
         ent <- arbitrary @(Entropy n)
         return
@@ -1867,9 +2161,9 @@ instance
     , csz ~ CheckSumBits n
     , ConsistentEntropy n mw csz
     , Arbitrary (ApiMnemonicT rest)
-    )
-    => Arbitrary (ApiMnemonicT (mw ': rest))
-  where
+    ) =>
+    Arbitrary (ApiMnemonicT (mw ': rest))
+    where
     arbitrary = do
         ApiMnemonicT x <- arbitrary @(ApiMnemonicT '[mw])
         ApiMnemonicT y <- arbitrary @(ApiMnemonicT rest)
@@ -1888,11 +2182,13 @@ instance
             ]
 
 instance Arbitrary ApiBlockReference where
-    arbitrary = ApiBlockReference
-        <$> arbitrary <*> arbitrary <*> genUniformTime <*> arbitrary
+    arbitrary =
+        ApiBlockReference
+            <$> arbitrary <*> arbitrary <*> genUniformTime <*> arbitrary
     shrink (ApiBlockReference sln sli t bh) =
         [ ApiBlockReference sln' sli' t bh'
-        | (sln', sli', bh') <- shrink (sln, sli, bh) ]
+        | (sln', sli', bh') <- shrink (sln, sli, bh)
+        ]
 
 instance Arbitrary ApiBlockInfo where
     arbitrary = genericArbitrary
@@ -1902,7 +2198,8 @@ instance Arbitrary ApiSlotReference where
     arbitrary = ApiSlotReference <$> arbitrary <*> arbitrary <*> genUniformTime
     shrink (ApiSlotReference sln sli t) =
         [ ApiSlotReference sln' sli' t
-        | (sln', sli') <- shrink (sln, sli) ]
+        | (sln', sli') <- shrink (sln, sli)
+        ]
 
 instance Arbitrary ApiSlotId where
     arbitrary = genericArbitrary
@@ -1953,7 +2250,7 @@ instance Arbitrary (Quantity "second" NominalDiffTime) where
 instance Arbitrary (Quantity "percent" Double) where
     shrink (Quantity 0.0) = []
     shrink _ = [Quantity 0.0]
-    arbitrary = Quantity <$> choose (0,100)
+    arbitrary = Quantity <$> choose (0, 100)
 
 instance Arbitrary ApiPolicyKey where
     arbitrary = do
@@ -1972,9 +2269,10 @@ instance Arbitrary ApiVerificationKeyShelley where
         hashing <- elements [WithHashing, WithoutHashing]
         ApiVerificationKeyShelley <$> genKeyRole (len hashing) <*> pure hashing
       where
-        genKeyRole n = (,)
-            <$> fmap B8.pack (vectorOf n arbitrary)
-            <*> elements [UtxoExternal, UtxoInternal, MutableAccount]
+        genKeyRole n =
+            (,)
+                <$> fmap B8.pack (vectorOf n arbitrary)
+                <*> elements [UtxoExternal, UtxoInternal, MutableAccount]
         len WithHashing = 28
         len WithoutHashing = 32
 
@@ -1985,15 +2283,15 @@ instance Arbitrary ApiVerificationKeyShared where
     arbitrary =
         oneof [noHashedGen, hashedGen]
       where
-          noHashedGen = do
-              payload' <- fmap B8.pack (replicateM 32 arbitrary)
-              role' <- elements [UtxoExternal, MutableAccount]
-              pure $ ApiVerificationKeyShared (payload', role') WithoutHashing
+        noHashedGen = do
+            payload' <- fmap B8.pack (replicateM 32 arbitrary)
+            role' <- elements [UtxoExternal, MutableAccount]
+            pure $ ApiVerificationKeyShared (payload', role') WithoutHashing
 
-          hashedGen = do
-              payload' <- fmap B8.pack (replicateM 28 arbitrary)
-              role' <- elements [UtxoExternal, MutableAccount]
-              pure $ ApiVerificationKeyShared (payload', role') WithHashing
+        hashedGen = do
+            payload' <- fmap B8.pack (replicateM 28 arbitrary)
+            role' <- elements [UtxoExternal, MutableAccount]
+            pure $ ApiVerificationKeyShared (payload', role') WithHashing
 
 instance ToSchema ApiVerificationKeyShared where
     declareNamedSchema _ = declareSchemaForDefinition "ApiVerificationKeyShared"
@@ -2048,26 +2346,31 @@ instance Arbitrary AssetDecimals where
 
 instance Arbitrary AssetMetadata where
     -- TODO: We should add a proper arbitrary instance
-    arbitrary = AssetMetadata "asset" "An asset"
-        <$> (oneof [pure Nothing, pure $ Just "AST"])
-        <*> genMaybe (pure $ AssetURL $ fromJust $ parseURI "https://asset.url")
-        <*> genLogo
-        <*> arbitrary
+    arbitrary =
+        AssetMetadata "asset" "An asset"
+            <$> (oneof [pure Nothing, pure $ Just "AST"])
+            <*> genMaybe (pure $ AssetURL $ fromJust $ parseURI "https://asset.url")
+            <*> genLogo
+            <*> arbitrary
       where
-        genMaybe g = frequency
-            [ (80, pure Nothing)
-            , (20, Just <$> g)
-            ]
+        genMaybe g =
+            frequency
+                [ (80, pure Nothing)
+                , (20, Just <$> g)
+                ]
         genLogo = genMaybe $ pure $ AssetLogo $ B8.pack "<logo>"
 
     shrink _ = []
 
 instance Arbitrary TokenMetadataError where
-    arbitrary = oneof $ map pure
-        [ TokenMetadataClientError (error "actual exception not needed")
-        , TokenMetadataFetchError (error "actual exception not needed")
-        , TokenMetadataJSONParseError "" ""
-        ]
+    arbitrary =
+        oneof $
+            map
+                pure
+                [ TokenMetadataClientError (error "actual exception not needed")
+                , TokenMetadataFetchError (error "actual exception not needed")
+                , TokenMetadataJSONParseError "" ""
+                ]
 
 instance Arbitrary ApiAsset where
     arbitrary = toApiAsset <$> arbitrary <*> genAssetId
@@ -2081,144 +2384,163 @@ instance Arbitrary a => Arbitrary (AddressAmountNoAssets a) where
     shrink _ = []
 
 instance Arbitrary ApiSignTransactionPostData where
-    arbitrary = ApiSignTransactionPostData
-        <$> arbitrary
-        <*> arbitrary
+    arbitrary =
+        ApiSignTransactionPostData
+            <$> arbitrary
+            <*> arbitrary
 
 instance Arbitrary (PostTransactionOldData n) where
-    arbitrary = PostTransactionOldData
-        <$> arbitrary
-        <*> arbitrary
-        <*> elements [Just SelfWithdrawal, Nothing]
-        <*> arbitrary
-        <*> arbitrary
+    arbitrary =
+        PostTransactionOldData
+            <$> arbitrary
+            <*> arbitrary
+            <*> elements [Just SelfWithdrawal, Nothing]
+            <*> arbitrary
+            <*> arbitrary
 
 instance Arbitrary (ApiConstructTransactionData n) where
-    arbitrary = ApiConstructTransactionData
-        <$> arbitrary
-        <*> elements [Just SelfWithdrawal]
-        <*> arbitrary
-        <*> arbitrary
-        <*> arbitrary
-        <*> pure Nothing
+    arbitrary =
+        ApiConstructTransactionData
+            <$> arbitrary
+            <*> elements [Just SelfWithdrawal]
+            <*> arbitrary
+            <*> arbitrary
+            <*> arbitrary
+            <*> pure Nothing
 
 instance Arbitrary (ApiExternalInput n) where
-    arbitrary = ApiExternalInput
-        <$> arbitrary
-        <*> arbitrary
-        <*> arbitrary
-        <*> arbitrary
-        <*> arbitrary
-        <*> arbitrary
+    arbitrary =
+        ApiExternalInput
+            <$> arbitrary
+            <*> arbitrary
+            <*> arbitrary
+            <*> arbitrary
+            <*> arbitrary
+            <*> arbitrary
 
 instance Arbitrary (ApiBalanceTransactionPostData n) where
-    arbitrary = ApiBalanceTransactionPostData
-        <$> arbitrary
-        <*> arbitrary
-        <*> arbitrary
+    arbitrary =
+        ApiBalanceTransactionPostData
+            <$> arbitrary
+            <*> arbitrary
+            <*> arbitrary
 
 instance Arbitrary (ApiRedeemer n) where
-    arbitrary = oneof
-        [ ApiRedeemerSpending <$> arbitrary <*> arbitrary
-        , ApiRedeemerMinting <$> arbitrary <*> arbitrary
-        , ApiRedeemerRewarding <$> arbitrary <*> arbitrary
-        ]
+    arbitrary =
+        oneof
+            [ ApiRedeemerSpending <$> arbitrary <*> arbitrary
+            , ApiRedeemerMinting <$> arbitrary <*> arbitrary
+            , ApiRedeemerRewarding <$> arbitrary <*> arbitrary
+            ]
 
 instance Arbitrary (ApiTxInputGeneral n) where
-    arbitrary = oneof
-        [ ExternalInput <$> arbitrary
-        , WalletInput <$> arbitrary
-        ]
+    arbitrary =
+        oneof
+            [ ExternalInput <$> arbitrary
+            , WalletInput <$> arbitrary
+            ]
 
 instance Arbitrary (ApiWithdrawalGeneral (t :: NetworkDiscriminant)) where
-    arbitrary = ApiWithdrawalGeneral
-        <$> fmap (, Proxy @t) arbitrary
-        <*> arbitrary
-        <*> oneof [pure External, pure Our]
+    arbitrary =
+        ApiWithdrawalGeneral
+            <$> fmap (,Proxy @t) arbitrary
+            <*> arbitrary
+            <*> oneof [pure External, pure Our]
 
 instance Arbitrary (ApiWalletInput n) where
-    arbitrary = ApiWalletInput
-        <$> arbitrary
-        <*> arbitrary
-        <*> arbitrary
-        <*> arbitrary
-        <*> arbitrary
-        <*> arbitrary
+    arbitrary =
+        ApiWalletInput
+            <$> arbitrary
+            <*> arbitrary
+            <*> arbitrary
+            <*> arbitrary
+            <*> arbitrary
+            <*> arbitrary
 
 instance Arbitrary (ApiWalletOutput n) where
-    arbitrary = ApiWalletOutput
-        <$> arbitrary
-        <*> arbitrary
-        <*> arbitrary
-        <*> arbitrary
+    arbitrary =
+        ApiWalletOutput
+            <$> arbitrary
+            <*> arbitrary
+            <*> arbitrary
+            <*> arbitrary
 
 instance Arbitrary (ApiTxOutputGeneral n) where
-    arbitrary = oneof
-        [ ExternalOutput <$> arbitrary
-        , WalletOutput <$> arbitrary
-        ]
+    arbitrary =
+        oneof
+            [ ExternalOutput <$> arbitrary
+            , WalletOutput <$> arbitrary
+            ]
 
 instance Arbitrary NonWalletCertificate where
-    arbitrary = oneof
-        [ pure GenesisCertificate
-        , pure MIRCertificate
-        ]
+    arbitrary =
+        oneof
+            [ pure GenesisCertificate
+            , pure MIRCertificate
+            ]
 
 instance Arbitrary ApiDeregisterPool where
-    arbitrary = ApiDeregisterPool
-        <$> arbitrary
-        <*> arbitrary
+    arbitrary =
+        ApiDeregisterPool
+            <$> arbitrary
+            <*> arbitrary
 
 instance Arbitrary ApiRegisterPool where
-    arbitrary = ApiRegisterPool
-        <$> arbitrary
-        <*> arbitrary
-        <*> fmap Quantity genPercentage
-        <*> arbitrary
-        <*> arbitrary
-        <*> pure Nothing
+    arbitrary =
+        ApiRegisterPool
+            <$> arbitrary
+            <*> arbitrary
+            <*> fmap Quantity genPercentage
+            <*> arbitrary
+            <*> arbitrary
+            <*> pure Nothing
 
 instance Arbitrary (ApiExternalCertificate n) where
-    arbitrary = oneof
-        [ RegisterRewardAccountExternal <$> genRewardAcct
-        , JoinPoolExternal <$> genRewardAcct <*> arbitrary
-        , QuitPoolExternal <$> genRewardAcct
-        ]
+    arbitrary =
+        oneof
+            [ RegisterRewardAccountExternal <$> genRewardAcct
+            , JoinPoolExternal <$> genRewardAcct <*> arbitrary
+            , QuitPoolExternal <$> genRewardAcct
+            ]
       where
-          genRewardAcct = fmap (, Proxy @n) arbitrary
+        genRewardAcct = fmap (,Proxy @n) arbitrary
 
 instance Arbitrary (ApiAnyCertificate n) where
-    arbitrary = oneof
-        [ WalletDelegationCertificate <$> arbitrary
-        , DelegationCertificate <$> arbitrary
-        , StakePoolRegister <$> arbitrary
-        , StakePoolDeregister <$> arbitrary
-        , OtherCertificate <$> arbitrary
-        ]
+    arbitrary =
+        oneof
+            [ WalletDelegationCertificate <$> arbitrary
+            , DelegationCertificate <$> arbitrary
+            , StakePoolRegister <$> arbitrary
+            , StakePoolDeregister <$> arbitrary
+            , OtherCertificate <$> arbitrary
+            ]
 
 instance Arbitrary (ApiDecodedTransaction n) where
-    arbitrary = ApiDecodedTransaction
-        <$> arbitrary
-        <*> arbitrary
-        <*> arbitrary
-        <*> arbitrary
-        <*> arbitrary
-        <*> arbitrary
-        <*> arbitrary
-        <*> arbitrary
-        <*> arbitrary
-        <*> arbitrary
-        <*> arbitrary
-        <*> arbitrary
-        <*> arbitrary
+    arbitrary =
+        ApiDecodedTransaction
+            <$> arbitrary
+            <*> arbitrary
+            <*> arbitrary
+            <*> arbitrary
+            <*> arbitrary
+            <*> arbitrary
+            <*> arbitrary
+            <*> arbitrary
+            <*> arbitrary
+            <*> arbitrary
+            <*> arbitrary
+            <*> arbitrary
+            <*> arbitrary
 
 instance Arbitrary StakeAddress where
     arbitrary = do
-        header  <- elements [ BS.singleton 241, BS.singleton 224 ]
+        header <- elements [BS.singleton 241, BS.singleton 224]
         payload <- BS.pack <$> vector 28
-        pure $ fromJust $ deserialiseFromRawBytes
-            (proxyToAsType Proxy)
-            (header <> payload)
+        pure $
+            fromJust $
+                deserialiseFromRawBytes
+                    (proxyToAsType Proxy)
+                    (header <> payload)
 
 instance Arbitrary (PostMintBurnAssetData n) where
     arbitrary = applyArbitrary3 PostMintBurnAssetData
@@ -2229,18 +2551,21 @@ instance Arbitrary (ApiConstructTransaction n) where
 instance Arbitrary ApiAssetMintBurn where
     arbitrary = do
         keyhash <- arbitrary
-        script <- elements
-            [ ApiT $ RequireSignatureOf keyhash
-            , ApiT $ RequireAllOf
-                [ RequireSignatureOf keyhash
-                , ActiveFromSlot 100
+        script <-
+            elements
+                [ ApiT $ RequireSignatureOf keyhash
+                , ApiT $
+                    RequireAllOf
+                        [ RequireSignatureOf keyhash
+                        , ActiveFromSlot 100
+                        ]
+                , ApiT $
+                    RequireAllOf
+                        [ RequireSignatureOf keyhash
+                        , ActiveFromSlot 100
+                        , ActiveUntilSlot 150
+                        ]
                 ]
-            , ApiT $ RequireAllOf
-                [ RequireSignatureOf keyhash
-                , ActiveFromSlot 100
-                , ActiveUntilSlot 150
-                ]
-            ]
         policyid <- arbitrary
         ApiAssetMintBurn
             <$> arbitrary
@@ -2248,21 +2573,24 @@ instance Arbitrary ApiAssetMintBurn where
             <*> arbitrary
 
 instance Arbitrary (ApiMintBurnData n) where
-    arbitrary = ApiMintBurnData
-        <$> elements
-            [ ApiT $ RequireSignatureOf (Cosigner 0)
-            , ApiT $ RequireAllOf
-                [ RequireSignatureOf (Cosigner 0)
-                , ActiveFromSlot 100
+    arbitrary =
+        ApiMintBurnData
+            <$> elements
+                [ ApiT $ RequireSignatureOf (Cosigner 0)
+                , ApiT $
+                    RequireAllOf
+                        [ RequireSignatureOf (Cosigner 0)
+                        , ActiveFromSlot 100
+                        ]
+                , ApiT $
+                    RequireAllOf
+                        [ RequireSignatureOf (Cosigner 0)
+                        , ActiveFromSlot 100
+                        , ActiveUntilSlot 150
+                        ]
                 ]
-            , ApiT $ RequireAllOf
-                [ RequireSignatureOf (Cosigner 0)
-                , ActiveFromSlot 100
-                , ActiveUntilSlot 150
-                ]
-            ]
-        <*> (ApiT <$> genTokenName)
-        <*> arbitrary
+            <*> (ApiT <$> genTokenName)
+            <*> arbitrary
 
 instance Arbitrary ApiStakeKeyIndex where
     arbitrary = ApiStakeKeyIndex <$> arbitrary
@@ -2271,18 +2599,21 @@ instance Arbitrary (ApiMintData n) where
     arbitrary = ApiMintData <$> arbitrary <*> arbitrary
 
 instance Arbitrary (ApiPaymentDestination n) where
-    arbitrary = oneof
-        [ ApiPaymentAddresses <$> arbitrary
-        , ApiPaymentAll <$> arbitrary]
+    arbitrary =
+        oneof
+            [ ApiPaymentAddresses <$> arbitrary
+            , ApiPaymentAll <$> arbitrary
+            ]
 
 instance Arbitrary ApiBurnData where
     arbitrary = ApiBurnData <$> arbitrary
 
 instance Arbitrary (ApiMintBurnOperation n) where
-    arbitrary = oneof
-        [ ApiMint <$> arbitrary
-        , ApiBurn <$> arbitrary
-        ]
+    arbitrary =
+        oneof
+            [ ApiMint <$> arbitrary
+            , ApiBurn <$> arbitrary
+            ]
 
 instance Arbitrary (ApiMintBurnTransaction n) where
     arbitrary = ApiMintBurnTransaction <$> arbitrary <*> arbitrary
@@ -2292,18 +2623,18 @@ instance Arbitrary ApiMintBurnInfo where
         mpi <- arbitrary
         policyId <- arbitrary
         assetName <- arbitrary
-        let
-            subject = mkTokenFingerprint policyId assetName
-            script  =
+        let subject = mkTokenFingerprint policyId assetName
+            script =
                 RequireSignatureOf
                     (KeyHash Payment $ getHash $ unTokenPolicyId policyId)
 
-        pure $ ApiMintBurnInfo
-            (ApiT mpi)
-            (ApiT policyId)
-            (ApiT assetName)
-            (ApiT subject)
-            (ApiT script)
+        pure $
+            ApiMintBurnInfo
+                (ApiT mpi)
+                (ApiT policyId)
+                (ApiT assetName)
+                (ApiT subject)
+                (ApiT script)
 
 instance Typeable n => ToSchema (ApiMintBurnTransaction n) where
     declareNamedSchema _ = do
@@ -2322,60 +2653,63 @@ instance Arbitrary ApiWithdrawalPostData where
 
 instance Arbitrary (ApiPutAddressesData n) where
     arbitrary = do
-        n <- choose (1,255)
+        n <- choose (1, 255)
         addrs <- vector n
-        pure $ ApiPutAddressesData ((, Proxy @n) <$> addrs)
+        pure $ ApiPutAddressesData ((,Proxy @n) <$> addrs)
 
 instance Arbitrary (PostTransactionFeeOldData n) where
-    arbitrary = PostTransactionFeeOldData
-        <$> arbitrary
-        <*> elements [Just SelfWithdrawal, Nothing]
-        <*> arbitrary
-        <*> arbitrary
+    arbitrary =
+        PostTransactionFeeOldData
+            <$> arbitrary
+            <*> elements [Just SelfWithdrawal, Nothing]
+            <*> arbitrary
+            <*> arbitrary
 
 selectFromPreparedBinaries :: Gen ByteString
-selectFromPreparedBinaries = elements $ toByteString <$>
-    [ "83a400818258200eaa33be8780935ca5a7c1e628a2d54402446f96236ca8f1770e07fa22b\
-      \a864808018282583901bdd74c3bd086d38939876fcbd56e91dd56fccca9be70b424390443\
-      \67af33d417814e6fa7953195797d73f9b5fb511854b4b0d8b2023959951a002dc6c082583\
-      \9011a2f2f103b895dbe7388acc9cc10f90dc4ada53f46c841d2ac44630789fc61d21ddfcb\
-      \d4d43652bf05c40c346fa794871423b65052d7614c1b0000001748472188021a0001ffb80\
-      \3198d11a1008182582043ea6d45e9abe6e30faff4a9b675abdc49534a6eda9ba96f9368d1\
-      \2d879dfc6758409b898ca143e1b245c9c745c690b8137b724fc63f8a3b852bcd2234cee4e\
-      \68c25cd333e845a224b9cb4600f271d545e35a41d17a16c046aea66ed34a536559f0df6"
-    , "83a400818258200eaa33be8780935ca5a7c1e628a2d54402446f96236ca8f1770e07fa22b\
-      \a86481301828258390118b8c2b229e68b21c54c68d91944fead4c043e8348368b1ac551c9\
-      \00c93e3edd82798a526ccf85b2a42e04037349ffe185e26a16356dfce61a002dc6c082583\
-      \90110a9b4666ba80e4878491d1ac20465c9893a8df5581dc705770626203d4d23fe6a7acd\
-      \da5a1b41f56100f02bfa270a3c560c4e55cf8312331b0000001748472188021a0001ffb80\
-      \3198d4fa10081825820fc2f860286fc72c1c1e29f1c0a23e9e11771f60e1d26799f71846c\
-      \89f5aa91315840e4dec970d40b749d9bc77996c2f102bd056b5f9ba3fd13745f410d8fc96\
-      \e0aaca4a4b4e1d52d6ce1d92b0d79412e542f2bebfa29f991c09c131b1dfeb2832300f6"
-    , "83a40081825820c03484e3bf981bec7cc5cf4da1a3d9fe4eab83b3f5f7574752a2b8a9b24\
-      \09b2f0001828258390154fe81cb1633e9f2f4446b78f67f00ac19abc4351be6548719118b\
-      \f8c93e3edd82798a526ccf85b2a42e04037349ffe185e26a16356dfce61a000f424082583\
-      \90184f41fa42d8ab05639aeb780ff4b3fe290f11d3439b04303fdfa9488af33d417814e6f\
-      \a7953195797d73f9b5fb511854b4b0d8b2023959951a001c84c8021a0001ffb803198d88a\
-      \10081825820931c2a7343df63fb785aec4b2de688b8290cf634f638f647f22c2e68256919\
-      \6a5840c6e88b52c406131a7b004b76fe24f611b1f5d19964ee2ce3144fff391a725be7a5a\
-      \b3f27389eb75dbe354026d5822f7b71f9deb84cff0126e809bd5690409f00f6"
-    , "83a400818258200eaa33be8780935ca5a7c1e628a2d54402446f96236ca8f1770e07fa22b\
-      \a8648000184825839014067fb21919c12519843c07d09b4c548e34f7e7c473b352f2751bd\
-      \a42387e650558a9026a0b9623adc92aa411f8fa598ee901db296a51bf51a000f424082583\
-      \90132a432e6d711312ba6c390725ee81cd525c9b5ec5e8bf99772062d6d2387e650558a90\
-      \26a0b9623adc92aa411f8fa598ee901db296a51bf51a000f4240825839011a2f2f103b895\
-      \dbe7388acc9cc10f90dc4ada53f46c841d2ac44630789fc61d21ddfcbd4d43652bf05c40c\
-      \346fa794871423b65052d7614c1b0000000ba42b175482583901c59701fee28ad31559870\
-      \ecd6ea92b143b1ce1b68ccb62f8e8437b3089fc61d21ddfcbd4d43652bf05c40c346fa794\
-      \871423b65052d7614c1b0000000ba42b1754021a000234d803198d16a10081825820c15b9\
-      \90344122b12494a5edd1020d9eb32e34b0f82691f8e31645ddab712ff2b58408e6a29053f\
-      \9f7f04f3de256cc4b30f24b2d5ffe4927c86e9d6310b224afb94f4e5b8eea6573e6fa1404\
-      \07153c12fdf8cf619edff0c7c27aa91ae3acb56041a00f6"
-    ]
+selectFromPreparedBinaries =
+    elements $
+        toByteString
+            <$> [ "83a400818258200eaa33be8780935ca5a7c1e628a2d54402446f96236ca8f1770e07fa22b\
+                  \a864808018282583901bdd74c3bd086d38939876fcbd56e91dd56fccca9be70b424390443\
+                  \67af33d417814e6fa7953195797d73f9b5fb511854b4b0d8b2023959951a002dc6c082583\
+                  \9011a2f2f103b895dbe7388acc9cc10f90dc4ada53f46c841d2ac44630789fc61d21ddfcb\
+                  \d4d43652bf05c40c346fa794871423b65052d7614c1b0000001748472188021a0001ffb80\
+                  \3198d11a1008182582043ea6d45e9abe6e30faff4a9b675abdc49534a6eda9ba96f9368d1\
+                  \2d879dfc6758409b898ca143e1b245c9c745c690b8137b724fc63f8a3b852bcd2234cee4e\
+                  \68c25cd333e845a224b9cb4600f271d545e35a41d17a16c046aea66ed34a536559f0df6"
+                , "83a400818258200eaa33be8780935ca5a7c1e628a2d54402446f96236ca8f1770e07fa22b\
+                  \a86481301828258390118b8c2b229e68b21c54c68d91944fead4c043e8348368b1ac551c9\
+                  \00c93e3edd82798a526ccf85b2a42e04037349ffe185e26a16356dfce61a002dc6c082583\
+                  \90110a9b4666ba80e4878491d1ac20465c9893a8df5581dc705770626203d4d23fe6a7acd\
+                  \da5a1b41f56100f02bfa270a3c560c4e55cf8312331b0000001748472188021a0001ffb80\
+                  \3198d4fa10081825820fc2f860286fc72c1c1e29f1c0a23e9e11771f60e1d26799f71846c\
+                  \89f5aa91315840e4dec970d40b749d9bc77996c2f102bd056b5f9ba3fd13745f410d8fc96\
+                  \e0aaca4a4b4e1d52d6ce1d92b0d79412e542f2bebfa29f991c09c131b1dfeb2832300f6"
+                , "83a40081825820c03484e3bf981bec7cc5cf4da1a3d9fe4eab83b3f5f7574752a2b8a9b24\
+                  \09b2f0001828258390154fe81cb1633e9f2f4446b78f67f00ac19abc4351be6548719118b\
+                  \f8c93e3edd82798a526ccf85b2a42e04037349ffe185e26a16356dfce61a000f424082583\
+                  \90184f41fa42d8ab05639aeb780ff4b3fe290f11d3439b04303fdfa9488af33d417814e6f\
+                  \a7953195797d73f9b5fb511854b4b0d8b2023959951a001c84c8021a0001ffb803198d88a\
+                  \10081825820931c2a7343df63fb785aec4b2de688b8290cf634f638f647f22c2e68256919\
+                  \6a5840c6e88b52c406131a7b004b76fe24f611b1f5d19964ee2ce3144fff391a725be7a5a\
+                  \b3f27389eb75dbe354026d5822f7b71f9deb84cff0126e809bd5690409f00f6"
+                , "83a400818258200eaa33be8780935ca5a7c1e628a2d54402446f96236ca8f1770e07fa22b\
+                  \a8648000184825839014067fb21919c12519843c07d09b4c548e34f7e7c473b352f2751bd\
+                  \a42387e650558a9026a0b9623adc92aa411f8fa598ee901db296a51bf51a000f424082583\
+                  \90132a432e6d711312ba6c390725ee81cd525c9b5ec5e8bf99772062d6d2387e650558a90\
+                  \26a0b9623adc92aa411f8fa598ee901db296a51bf51a000f4240825839011a2f2f103b895\
+                  \dbe7388acc9cc10f90dc4ada53f46c841d2ac44630789fc61d21ddfcbd4d43652bf05c40c\
+                  \346fa794871423b65052d7614c1b0000000ba42b175482583901c59701fee28ad31559870\
+                  \ecd6ea92b143b1ce1b68ccb62f8e8437b3089fc61d21ddfcbd4d43652bf05c40c346fa794\
+                  \871423b65052d7614c1b0000000ba42b1754021a000234d803198d16a10081825820c15b9\
+                  \90344122b12494a5edd1020d9eb32e34b0f82691f8e31645ddab712ff2b58408e6a29053f\
+                  \9f7f04f3de256cc4b30f24b2d5ffe4927c86e9d6310b224afb94f4e5b8eea6573e6fa1404\
+                  \07153c12fdf8cf619edff0c7c27aa91ae3acb56041a00f6"
+                ]
   where
     toByteString txt =
         let (Right bs) = fromHex $ T.encodeUtf8 txt
-        in bs
+         in bs
 
 genWits :: Gen ByteString
 genWits = BS.pack <$> Test.QuickCheck.scale (min 32) (listOf arbitrary)
@@ -2397,9 +2731,10 @@ instance Arbitrary SerialisedTx where
     arbitrary = SerialisedTx <$> selectFromPreparedBinaries
 
 instance Arbitrary SerialisedTxParts where
-    arbitrary = SerialisedTxParts
-        <$> selectFromPreparedBinaries
-        <*> listOf genWits
+    arbitrary =
+        SerialisedTxParts
+            <$> selectFromPreparedBinaries
+            <*> listOf genWits
 
 instance Arbitrary TxMetadata where
     arbitrary = genNestedTxMetadata
@@ -2460,9 +2795,10 @@ instance Arbitrary TxScriptValidity where
     shrink = shrinkTxScriptValidity
 
 instance Arbitrary (ApiWithdrawal (t :: NetworkDiscriminant)) where
-    arbitrary = ApiWithdrawal
-        <$> fmap (, Proxy @t) arbitrary
-        <*> arbitrary
+    arbitrary =
+        ApiWithdrawal
+            <$> fmap (,Proxy @t) arbitrary
+            <*> arbitrary
 
 instance Arbitrary RewardAccount where
     arbitrary = RewardAccount . BS.pack <$> vector 28
@@ -2475,9 +2811,10 @@ instance Arbitrary UTxO where
     shrink (UTxO utxo) = UTxO <$> shrink utxo
     arbitrary = do
         n <- choose (0, 10)
-        utxo <- zip
-            <$> vector n
-            <*> vector n
+        utxo <-
+            zip
+                <$> vector n
+                <*> vector n
         return $ UTxO $ Map.fromList utxo
 
 instance Arbitrary TokenBundle where
@@ -2495,16 +2832,17 @@ instance Arbitrary TxOut where
 
 instance Arbitrary TxIn where
     -- No Shrinking
-    arbitrary = TxIn
-        <$> arbitrary
-        -- NOTE: No need for a crazy high indexes
-        <*> Test.QuickCheck.scale (`mod` 3) arbitrary
+    arbitrary =
+        TxIn
+            <$> arbitrary
+            -- NOTE: No need for a crazy high indexes
+            <*> Test.QuickCheck.scale (`mod` 3) arbitrary
 
 instance Arbitrary ApiWalletUtxoSnapshot where
     arbitrary = do
         entryCount <- choose (0, 4)
         entries <- replicateM entryCount genEntry
-        pure $ ApiWalletUtxoSnapshot { entries }
+        pure $ ApiWalletUtxoSnapshot {entries}
       where
         genEntry :: Gen ApiWalletUtxoSnapshotEntry
         genEntry = do
@@ -2515,11 +2853,12 @@ instance Arbitrary ApiWalletUtxoSnapshot where
             let ada = Api.coinToQuantity $ max adaValue1 adaValue2
             let adaMinimum = Api.coinToQuantity $ min adaValue1 adaValue2
             assets <- ApiT <$> genTokenMapSmallRange
-            pure ApiWalletUtxoSnapshotEntry
-                { ada
-                , adaMinimum
-                , assets
-                }
+            pure
+                ApiWalletUtxoSnapshotEntry
+                    { ada
+                    , adaMinimum
+                    , assets
+                    }
 
 instance Arbitrary ApiUtxoStatistics where
     arbitrary = do
@@ -2527,11 +2866,12 @@ instance Arbitrary ApiUtxoStatistics where
         let (UTxOStatistics histoBars stakes bType) =
                 computeUtxoStatistics log10 utxos
         let boundCountMap =
-                Map.fromList $ map (\(HistogramBar k v)-> (k,v)) histoBars
-        return $ ApiUtxoStatistics
-            (Quantity $ fromIntegral stakes)
-            (ApiT bType)
-            boundCountMap
+                Map.fromList $ map (\(HistogramBar k v) -> (k, v)) histoBars
+        return $
+            ApiUtxoStatistics
+                (Quantity $ fromIntegral stakes)
+                (ApiT bType)
+                boundCountMap
 
 instance Arbitrary (ApiTxInput n) where
     shrink _ = []
@@ -2569,12 +2909,14 @@ instance Arbitrary ApiPostRandomAddressData where
 
 instance Arbitrary ApiAddressInspect where
     arbitrary = do
-        style <- elements [ "Byron", "Icarus", "Shelley" ]
-        stake <- elements [ "none", "by value", "by pointer" ]
-        pure $ ApiAddressInspect $ Aeson.object
-            [ "address_style" .= Aeson.String style
-            , "stake_reference" .= Aeson.String stake
-            ]
+        style <- elements ["Byron", "Icarus", "Shelley"]
+        stake <- elements ["none", "by value", "by pointer"]
+        pure $
+            ApiAddressInspect $
+                Aeson.object
+                    [ "address_style" .= Aeson.String style
+                    , "stake_reference" .= Aeson.String stake
+                    ]
 
 instance Arbitrary HealthCheckSMASH where
     arbitrary = genericArbitrary
@@ -2606,17 +2948,21 @@ instance Arbitrary ApiAccountKey where
     arbitrary = do
         xpubKey <- BS.pack <$> replicateM 64 arbitrary
         pubKey <- BS.pack <$> replicateM 32 arbitrary
-        oneof [ pure $ ApiAccountKey pubKey NonExtended purposeCIP1852
-              , pure $ ApiAccountKey xpubKey Extended purposeCIP1852
-              , pure $ ApiAccountKey pubKey NonExtended purposeCIP1854
-              , pure $ ApiAccountKey xpubKey Extended purposeCIP1854]
+        oneof
+            [ pure $ ApiAccountKey pubKey NonExtended purposeCIP1852
+            , pure $ ApiAccountKey xpubKey Extended purposeCIP1852
+            , pure $ ApiAccountKey pubKey NonExtended purposeCIP1854
+            , pure $ ApiAccountKey xpubKey Extended purposeCIP1854
+            ]
 
 instance Arbitrary ApiAccountKeyShared where
     arbitrary = do
         xpubKey <- BS.pack <$> replicateM 64 arbitrary
         pubKey <- BS.pack <$> replicateM 32 arbitrary
-        oneof [ pure $ ApiAccountKeyShared pubKey NonExtended purposeCIP1854
-              , pure $ ApiAccountKeyShared xpubKey Extended purposeCIP1854 ]
+        oneof
+            [ pure $ ApiAccountKeyShared pubKey NonExtended purposeCIP1854
+            , pure $ ApiAccountKeyShared xpubKey Extended purposeCIP1854
+            ]
 
 instance Arbitrary Natural where
     shrink = shrinkIntegral
@@ -2680,12 +3026,12 @@ specification :: Aeson.Value
 specification =
     unsafeDecode bytes
   where
-    bytes = $(
-        let swaggerYaml = "./specifications/api/swagger.yaml"
-        in liftIO (lookupEnv "SWAGGER_YAML") >>=
-        maybe (makeRelativeToProject swaggerYaml) pure >>=
-        embedFile
-        )
+    bytes =
+        $( let swaggerYaml = "./specifications/api/swagger.yaml"
+            in liftIO (lookupEnv "SWAGGER_YAML")
+                >>= maybe (makeRelativeToProject swaggerYaml) pure
+                >>= embedFile
+         )
     unsafeDecode =
         either (error . (msg <>) . show) Prelude.id . Yaml.decodeEither'
     msg = "Whoops! Failed to parse or find the api specification document: "
@@ -2777,7 +3123,7 @@ instance ToSchema (ByronWalletPostData '[12]) where
 instance ToSchema (ByronWalletPostData '[15]) where
     declareNamedSchema _ = declareSchemaForDefinition "ApiByronWalletIcarusPostData"
 
-instance ToSchema (ByronWalletPostData '[12,15,18,21,24]) where
+instance ToSchema (ByronWalletPostData '[12, 15, 18, 21, 24]) where
     -- NOTE ApiByronWalletLedgerPostData works too. Only the description differs.
     declareNamedSchema _ = declareSchemaForDefinition "ApiByronWalletTrezorPostData"
 
@@ -2966,7 +3312,7 @@ instance Typeable n => ToSchema (ApiForeignStakeKey n) where
 instance ToSchema ApiNullStakeKey where
     declareNamedSchema _ = declareSchemaForDefinition "ApiNullStakeKey"
 
-instance ToSchema ApiAssetMintBurn  where
+instance ToSchema ApiAssetMintBurn where
     declareNamedSchema _ = do
         addDefinition =<< declareSchemaForDefinition "ScriptValue"
         declareSchemaForDefinition "ApiAssetMintBurn"
@@ -3004,21 +3350,24 @@ instance Typeable n => ToSchema (ApiDecodedTransaction n) where
         addDefinition =<< declareSchemaForDefinition "ScriptValue"
         declareSchemaForDefinition "ApiDecodedTransaction"
 
--- | Utility function to provide an ad-hoc 'ToSchema' instance for a definition:
--- we simply look it up within the Swagger specification.
+{- | Utility function to provide an ad-hoc 'ToSchema' instance for a definition:
+ we simply look it up within the Swagger specification.
+-}
 declareSchemaForDefinition :: Text -> Declare (Definitions Schema) NamedSchema
 declareSchemaForDefinition ref = do
-    let json = foldl' unsafeLookupKey specification ["components","schemas",ref]
+    let json = foldl' unsafeLookupKey specification ["components", "schemas", ref]
     case Aeson.eitherDecode' $ Aeson.encode json of
-        Left err -> error $
-            "unable to decode schema for definition '" <> T.unpack ref <> "': " <> show err
+        Left err ->
+            error $
+                "unable to decode schema for definition '" <> T.unpack ref <> "': " <> show err
         Right schema ->
             return $ NamedSchema (Just ref) schema
 
--- | Add a known definition to the set of definitions, this may be necessary
--- when we can't inline a definition because it is recursive or, when a
--- definition is only used in an existing schema but has no top-level type for
--- which to define a 'ToSchema' instance.
+{- | Add a known definition to the set of definitions, this may be necessary
+ when we can't inline a definition because it is recursive or, when a
+ definition is only used in an existing schema but has no top-level type for
+ which to define a 'ToSchema' instance.
+-}
 addDefinition :: NamedSchema -> Declare (Definitions Schema) ()
 addDefinition (NamedSchema Nothing _) =
     error "Trying to add definition for an unnamed NamedSchema!"
@@ -3047,7 +3396,7 @@ instance {-# OVERLAPS #-} HasPath a => ValidateEveryPath a where
         it (verbStr <> " " <> path <> " exists in specification") $ do
             case foldl' unsafeLookupKey specification ["paths", T.pack path] of
                 Aeson.Object m -> case HM.lookup (T.pack verbStr) m of
-                    Just{}  -> return @IO ()
+                    Just {} -> return @IO ()
                     Nothing -> fail "couldn't find path in specification"
                 _ -> fail "couldn't find path in specification"
 
@@ -3069,15 +3418,14 @@ instance (Method m) => HasPath (NoContentVerb m) where
 instance (KnownSymbol path, HasPath sub) => HasPath (path :> sub) where
     getPath _ =
         let (verb, sub) = getPath (Proxy @sub)
-        in (verb, "/" <> symbolVal (Proxy :: Proxy path) <> sub)
+         in (verb, "/" <> symbolVal (Proxy :: Proxy path) <> sub)
 
-instance (KnownSymbol param, HasPath sub) => HasPath (Capture param t :> sub)
-  where
+instance (KnownSymbol param, HasPath sub) => HasPath (Capture param t :> sub) where
     getPath _ =
         let (verb, sub) = getPath (Proxy @sub)
-        in case symbolVal (Proxy :: Proxy param) of
-            sym | sym == "*" -> (verb, "/" <> sym <> sub)
-            sym -> (verb, "/{" <> sym <> "}" <> sub)
+         in case symbolVal (Proxy :: Proxy param) of
+                sym | sym == "*" -> (verb, "/" <> sym <> sub)
+                sym -> (verb, "/{" <> sym <> "}" <> sub)
 
 instance HasPath sub => HasPath (ReqBody a b :> sub) where
     getPath _ = getPath (Proxy @sub)

@@ -1,16 +1,20 @@
-module Cardano.Wallet.Primitive.Types.RewardAccount.Gen
-    ( coarbitraryRewardAccount
-    , genRewardAccount
-    , shrinkRewardAccount
-    )
-    where
+module Cardano.Wallet.Primitive.Types.RewardAccount.Gen (
+    coarbitraryRewardAccount,
+    genRewardAccount,
+    shrinkRewardAccount,
+) where
 
 import Prelude
 
-import Cardano.Wallet.Primitive.Types.RewardAccount
-    ( RewardAccount (..) )
-import Test.QuickCheck
-    ( Gen, coarbitrary, elements, sized )
+import Cardano.Wallet.Primitive.Types.RewardAccount (
+    RewardAccount (..),
+ )
+import Test.QuickCheck (
+    Gen,
+    coarbitrary,
+    elements,
+    sized,
+ )
 
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Char8 as B8

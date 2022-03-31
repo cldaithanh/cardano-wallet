@@ -3,83 +3,99 @@
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE TypeFamilies #-}
 
--- |
--- Copyright: © 2018-2020 IOHK
--- License: Apache-2.0
---
--- Dummy implementation of the database-layer, using 'MVar'. This may be good
--- for testing to compare with an implementation on a real data store, or to use
--- when compiling the wallet for targets which don't have SQLite.
+{- |
+ Copyright: © 2018-2020 IOHK
+ License: Apache-2.0
 
-module Cardano.Pool.DB.MVar
-    ( newDBLayer
-    ) where
+ Dummy implementation of the database-layer, using 'MVar'. This may be good
+ for testing to compare with an implementation on a real data store, or to use
+ when compiling the wallet for targets which don't have SQLite.
+-}
+module Cardano.Pool.DB.MVar (
+    newDBLayer,
+) where
 
 import Prelude
 
-import Cardano.Pool.DB
-    ( DBLayer (..), ErrPointAlreadyExists (..) )
-import Cardano.Pool.DB.Model
-    ( ModelOp
-    , PoolDatabase
-    , PoolErr (..)
-    , emptyPoolDatabase
-    , mCleanDatabase
-    , mCleanPoolMetadata
-    , mListHeaders
-    , mListPoolLifeCycleData
-    , mListRegisteredPools
-    , mListRetiredPools
-    , mPutDelistedPools
-    , mPutFetchAttempt
-    , mPutHeader
-    , mPutLastMetadataGC
-    , mPutPoolMetadata
-    , mPutPoolProduction
-    , mPutPoolRegistration
-    , mPutPoolRetirement
-    , mPutSettings
-    , mPutStakeDistribution
-    , mReadCursor
-    , mReadDelistedPools
-    , mReadLastMetadataGC
-    , mReadPoolLifeCycleStatus
-    , mReadPoolMetadata
-    , mReadPoolProduction
-    , mReadPoolRegistration
-    , mReadPoolRetirement
-    , mReadSettings
-    , mReadStakeDistribution
-    , mReadSystemSeed
-    , mReadTotalProduction
-    , mRemovePools
-    , mRemoveRetiredPools
-    , mRollbackTo
-    , mUnfetchedPoolMetadataRefs
-    )
-import Cardano.Wallet.Primitive.Slotting
-    ( TimeInterpreter )
-import Control.DeepSeq
-    ( deepseq )
-import Control.Monad
-    ( void )
-import Control.Monad.Trans.Except
-    ( ExceptT (..) )
-import Control.Monad.Trans.State.Strict
-    ( runStateT )
-import Data.Either
-    ( fromRight )
-import Data.Functor.Identity
-    ( Identity )
-import Data.Tuple
-    ( swap )
-import UnliftIO.Exception
-    ( Exception, throwIO )
-import UnliftIO.MVar
-    ( MVar, modifyMVar, newMVar )
+import Cardano.Pool.DB (
+    DBLayer (..),
+    ErrPointAlreadyExists (..),
+ )
+import Cardano.Pool.DB.Model (
+    ModelOp,
+    PoolDatabase,
+    PoolErr (..),
+    emptyPoolDatabase,
+    mCleanDatabase,
+    mCleanPoolMetadata,
+    mListHeaders,
+    mListPoolLifeCycleData,
+    mListRegisteredPools,
+    mListRetiredPools,
+    mPutDelistedPools,
+    mPutFetchAttempt,
+    mPutHeader,
+    mPutLastMetadataGC,
+    mPutPoolMetadata,
+    mPutPoolProduction,
+    mPutPoolRegistration,
+    mPutPoolRetirement,
+    mPutSettings,
+    mPutStakeDistribution,
+    mReadCursor,
+    mReadDelistedPools,
+    mReadLastMetadataGC,
+    mReadPoolLifeCycleStatus,
+    mReadPoolMetadata,
+    mReadPoolProduction,
+    mReadPoolRegistration,
+    mReadPoolRetirement,
+    mReadSettings,
+    mReadStakeDistribution,
+    mReadSystemSeed,
+    mReadTotalProduction,
+    mRemovePools,
+    mRemoveRetiredPools,
+    mRollbackTo,
+    mUnfetchedPoolMetadataRefs,
+ )
+import Cardano.Wallet.Primitive.Slotting (
+    TimeInterpreter,
+ )
+import Control.DeepSeq (
+    deepseq,
+ )
+import Control.Monad (
+    void,
+ )
+import Control.Monad.Trans.Except (
+    ExceptT (..),
+ )
+import Control.Monad.Trans.State.Strict (
+    runStateT,
+ )
+import Data.Either (
+    fromRight,
+ )
+import Data.Functor.Identity (
+    Identity,
+ )
+import Data.Tuple (
+    swap,
+ )
+import UnliftIO.Exception (
+    Exception,
+    throwIO,
+ )
+import UnliftIO.MVar (
+    MVar,
+    modifyMVar,
+    newMVar,
+ )
 
--- | Instantiate a new in-memory "database" layer that simply stores data in
--- a local MVar. Data vanishes if the software is shut down.
+{- | Instantiate a new in-memory "database" layer that simply stores data in
+ a local MVar. Data vanishes if the software is shut down.
+-}
 newDBLayer :: TimeInterpreter Identity -> IO (DBLayer IO)
 newDBLayer timeInterpreter = do
     db <- newMVar emptyPoolDatabase
@@ -93,9 +109,10 @@ newDBLayer timeInterpreter = do
         readPoolRetirement =
             readPoolDB db . mReadPoolRetirement
 
-        putPoolProduction sl pool = ExceptT $
-            pool `deepseq`
-                alterPoolDB errPointAlreadyExists db (mPutPoolProduction sl pool)
+        putPoolProduction sl pool =
+            ExceptT $
+                pool
+                    `deepseq` alterPoolDB errPointAlreadyExists db (mPutPoolProduction sl pool)
 
         readPoolProduction =
             readPoolDB db . mReadPoolProduction timeInterpreter
@@ -112,16 +129,18 @@ newDBLayer timeInterpreter = do
         readPoolProductionCursor =
             readPoolDB db . mReadCursor
 
-        putPoolRegistration cpt cert = void
-              $ alterPoolDB (const Nothing) db
-              $ mPutPoolRegistration cpt cert
+        putPoolRegistration cpt cert =
+            void $
+                alterPoolDB (const Nothing) db $
+                    mPutPoolRegistration cpt cert
 
         readPoolLifeCycleStatus =
             readPoolDB db . mReadPoolLifeCycleStatus
 
-        putPoolRetirement cpt cert = void
-            $ alterPoolDB (const Nothing) db
-            $ mPutPoolRetirement cpt cert
+        putPoolRetirement cpt cert =
+            void $
+                alterPoolDB (const Nothing) db $
+                    mPutPoolRetirement cpt cert
 
         unfetchedPoolMetadataRefs =
             readPoolDB db . mUnfetchedPoolMetadataRefs
@@ -187,14 +206,14 @@ newDBLayer timeInterpreter = do
 
         atomically = id
 
-alterPoolDB
-    :: (PoolErr -> Maybe err)
-    -- ^ Error type converter
-    -> MVar PoolDatabase
-    -- ^ The database variable
-    -> ModelOp a
-    -- ^ Operation to run on the database
-    -> IO (Either err a)
+alterPoolDB ::
+    -- | Error type converter
+    (PoolErr -> Maybe err) ->
+    -- | The database variable
+    MVar PoolDatabase ->
+    -- | Operation to run on the database
+    ModelOp a ->
+    IO (Either err a)
 alterPoolDB convertErr dbVar op =
     modifyMVar dbVar $ \db ->
         case runStateT op db of
@@ -204,18 +223,18 @@ alterPoolDB convertErr dbVar op =
             Right (result, dbUpdated) ->
                 pure (dbUpdated, Right result)
 
-readPoolDB
-    :: MVar PoolDatabase
-    -- ^ The database variable
-    -> ModelOp a
-    -- ^ Operation to run on the database
-    -> IO a
+readPoolDB ::
+    -- | The database variable
+    MVar PoolDatabase ->
+    -- | Operation to run on the database
+    ModelOp a ->
+    IO a
 readPoolDB db op =
     alterPoolDB Just db op >>= either (throwIO . MVarPoolDBError) pure
 
-errPointAlreadyExists
-    :: PoolErr
-    -> Maybe ErrPointAlreadyExists
+errPointAlreadyExists ::
+    PoolErr ->
+    Maybe ErrPointAlreadyExists
 errPointAlreadyExists (PointAlreadyExists slotid) =
     Just (ErrPointAlreadyExists slotid)
 

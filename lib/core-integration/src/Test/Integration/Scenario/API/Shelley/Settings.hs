@@ -7,87 +7,118 @@
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE TypeFamilies #-}
 
-module Test.Integration.Scenario.API.Shelley.Settings
-    ( spec
-    ) where
+module Test.Integration.Scenario.API.Shelley.Settings (
+    spec,
+) where
 
 import Prelude
 
-import Cardano.Wallet.Api.Types
-    ( ApiStakePool
-    , ApiT (..)
-    , DecodeAddress
-    , DecodeStakeAddress
-    , EncodeAddress (..)
-    )
-import Cardano.Wallet.Primitive.AddressDerivation
-    ( PaymentAddress )
-import Cardano.Wallet.Primitive.AddressDerivation.Byron
-    ( ByronKey )
-import Cardano.Wallet.Primitive.AddressDerivation.Icarus
-    ( IcarusKey )
-import Cardano.Wallet.Primitive.AddressDerivation.Shelley
-    ( ShelleyKey )
-import Cardano.Wallet.Primitive.Types
-    ( PoolMetadataSource (..), Settings )
-import Cardano.Wallet.Primitive.Types.Coin
-    ( Coin (..) )
-import Data.Either
-    ( fromRight )
-import Data.Generics.Internal.VL.Lens
-    ( view )
-import Data.Maybe
-    ( isJust, isNothing )
-import Data.Text.Class
-    ( fromText )
-import Test.Hspec
-    ( SpecWith, describe, shouldBe, shouldSatisfy )
-import Test.Hspec.Extra
-    ( it )
-import Test.Integration.Framework.DSL
-    ( Context (..)
-    , Headers (..)
-    , Payload (..)
-    , eventually
-    , eventuallyUsingDelay
-    , expectField
-    , expectResponseCode
-    , request
-    , unsafeRequest
-    , updateMetadataSource
-    , verify
-    , verifyMetadataSource
-    )
+import Cardano.Wallet.Api.Types (
+    ApiStakePool,
+    ApiT (..),
+    DecodeAddress,
+    DecodeStakeAddress,
+    EncodeAddress (..),
+ )
+import Cardano.Wallet.Primitive.AddressDerivation (
+    PaymentAddress,
+ )
+import Cardano.Wallet.Primitive.AddressDerivation.Byron (
+    ByronKey,
+ )
+import Cardano.Wallet.Primitive.AddressDerivation.Icarus (
+    IcarusKey,
+ )
+import Cardano.Wallet.Primitive.AddressDerivation.Shelley (
+    ShelleyKey,
+ )
+import Cardano.Wallet.Primitive.Types (
+    PoolMetadataSource (..),
+    Settings,
+ )
+import Cardano.Wallet.Primitive.Types.Coin (
+    Coin (..),
+ )
+import Data.Either (
+    fromRight,
+ )
+import Data.Generics.Internal.VL.Lens (
+    view,
+ )
+import Data.Maybe (
+    isJust,
+    isNothing,
+ )
+import Data.Text.Class (
+    fromText,
+ )
+import Test.Hspec (
+    SpecWith,
+    describe,
+    shouldBe,
+    shouldSatisfy,
+ )
+import Test.Hspec.Extra (
+    it,
+ )
+import Test.Integration.Framework.DSL (
+    Context (..),
+    Headers (..),
+    Payload (..),
+    eventually,
+    eventuallyUsingDelay,
+    expectField,
+    expectResponseCode,
+    request,
+    unsafeRequest,
+    updateMetadataSource,
+    verify,
+    verifyMetadataSource,
+ )
 
 import qualified Cardano.Wallet.Api.Link as Link
 import qualified Network.HTTP.Types.Status as HTTP
 
-spec :: forall n.
+spec ::
+    forall n.
     ( DecodeAddress n
     , DecodeStakeAddress n
     , EncodeAddress n
     , PaymentAddress n ShelleyKey
     , PaymentAddress n IcarusKey
     , PaymentAddress n ByronKey
-    ) => SpecWith Context
+    ) =>
+    SpecWith Context
 spec = describe "SHELLEY_SETTINGS" $ do
     it "SETTINGS_01 - Can put and read settings" $ \ctx -> do
         let uri = "http://smash.it"
         updateMetadataSource ctx uri
         eventually "The settings are applied" $ do
             r2 <- request @(ApiT Settings) ctx Link.getSettings Default Empty
-            verify r2
+            verify
+                r2
                 [ expectResponseCode HTTP.status200
-                , expectField (#getApiT . #poolMetadataSource)
-                    (`shouldBe` (fromRight (error "no") $ fromText
-                        @PoolMetadataSource uri))
+                , expectField
+                    (#getApiT . #poolMetadataSource)
+                    ( `shouldBe`
+                        ( fromRight (error "no") $
+                            fromText
+                                @PoolMetadataSource
+                                uri
+                        )
+                    )
                 ]
 
     it "SETTINGS_02 - Changing pool_metadata_source re-syncs metadata" $ \ctx -> do
         let toNone = "none"
             toDirect = "direct"
-            getMetadata = fmap (view #metadata) . snd <$> unsafeRequest
-                @[ApiStakePool] ctx (Link.listStakePools arbitraryStake) Empty
+            getMetadata =
+                fmap (view #metadata) . snd
+                    <$> unsafeRequest
+                        @[ApiStakePool]
+                        ctx
+                        (Link.listStakePools arbitraryStake)
+                        Empty
             delay = 500 * 1000
             timeout = 120
 
@@ -108,4 +139,5 @@ spec = describe "SHELLEY_SETTINGS" $ do
 
 arbitraryStake :: Maybe Coin
 arbitraryStake = Just $ ada 10_000
-  where ada = Coin . (1000*1000*)
+  where
+    ada = Coin . (1000 * 1000 *)

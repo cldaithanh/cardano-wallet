@@ -1,28 +1,42 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 
-module Cardano.Wallet.Primitive.Types.UTxOIndex.Gen
-    ( genUTxOIndex
-    , genUTxOIndexLarge
-    , genUTxOIndexLargeN
-    , shrinkUTxOIndex
-    ) where
+module Cardano.Wallet.Primitive.Types.UTxOIndex.Gen (
+    genUTxOIndex,
+    genUTxOIndexLarge,
+    genUTxOIndexLargeN,
+    shrinkUTxOIndex,
+) where
 
 import Prelude
 
-import Cardano.Wallet.Primitive.Types.TokenBundle
-    ( TokenBundle )
-import Cardano.Wallet.Primitive.Types.TokenBundle.Gen
-    ( genTokenBundleSmallRangePositive, shrinkTokenBundleSmallRangePositive )
-import Cardano.Wallet.Primitive.Types.UTxOIndex
-    ( UTxOIndex )
-import Control.Monad
-    ( replicateM )
-import Generics.SOP
-    ( NP (..) )
-import Test.QuickCheck
-    ( Gen, choose, listOf, shrinkList, shrinkMapBy )
-import Test.QuickCheck.Extra
-    ( genericRoundRobinShrink, (<:>), (<@>) )
+import Cardano.Wallet.Primitive.Types.TokenBundle (
+    TokenBundle,
+ )
+import Cardano.Wallet.Primitive.Types.TokenBundle.Gen (
+    genTokenBundleSmallRangePositive,
+    shrinkTokenBundleSmallRangePositive,
+ )
+import Cardano.Wallet.Primitive.Types.UTxOIndex (
+    UTxOIndex,
+ )
+import Control.Monad (
+    replicateM,
+ )
+import Generics.SOP (
+    NP (..),
+ )
+import Test.QuickCheck (
+    Gen,
+    choose,
+    listOf,
+    shrinkList,
+    shrinkMapBy,
+ )
+import Test.QuickCheck.Extra (
+    genericRoundRobinShrink,
+    (<:>),
+    (<@>),
+ )
 
 import qualified Cardano.Wallet.Primitive.Types.UTxOIndex as UTxOIndex
 
@@ -41,10 +55,11 @@ shrinkUTxOIndex shrinkUTxO =
     shrinkMapBy UTxOIndex.fromSequence UTxOIndex.toList (shrinkList shrinkEntry)
   where
     shrinkEntry :: (u, TokenBundle) -> [(u, TokenBundle)]
-    shrinkEntry = genericRoundRobinShrink
-        <@> shrinkUTxO
-        <:> shrinkTokenBundleSmallRangePositive
-        <:> Nil
+    shrinkEntry =
+        genericRoundRobinShrink
+            <@> shrinkUTxO
+            <:> shrinkTokenBundleSmallRangePositive
+            <:> Nil
 
 --------------------------------------------------------------------------------
 -- Large indices

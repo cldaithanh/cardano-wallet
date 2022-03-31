@@ -1,32 +1,38 @@
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE LambdaCase #-}
 
--- |
--- Copyright: © 2018-2021 IOHK
--- License: Apache-2.0
---
--- Types and functions relating to Plutus script redeemers
---
+{- |
+ Copyright: © 2018-2021 IOHK
+ License: Apache-2.0
 
-module Cardano.Wallet.Primitive.Types.Redeemer
-    ( Redeemer (..)
-    , redeemerData
-    ) where
+ Types and functions relating to Plutus script redeemers
+-}
+module Cardano.Wallet.Primitive.Types.Redeemer (
+    Redeemer (..),
+    redeemerData,
+) where
 
 import Prelude
 
-import Cardano.Api
-    ( StakeAddress, serialiseToBech32 )
-import Cardano.Wallet.Primitive.Types.TokenPolicy
-    ( TokenPolicyId )
-import Cardano.Wallet.Primitive.Types.Tx
-    ( TxIn )
-import Data.ByteString
-    ( ByteString )
-import Fmt
-    ( Buildable (..) )
-import GHC.Generics
-    ( Generic )
+import Cardano.Api (
+    StakeAddress,
+    serialiseToBech32,
+ )
+import Cardano.Wallet.Primitive.Types.TokenPolicy (
+    TokenPolicyId,
+ )
+import Cardano.Wallet.Primitive.Types.Tx (
+    TxIn,
+ )
+import Data.ByteString (
+    ByteString,
+ )
+import Fmt (
+    Buildable (..),
+ )
+import GHC.Generics (
+    Generic,
+ )
 
 data Redeemer
     = RedeemerSpending ByteString TxIn
@@ -45,6 +51,6 @@ instance Buildable Redeemer where
 
 redeemerData :: Redeemer -> ByteString
 redeemerData = \case
-    RedeemerSpending  bytes _ -> bytes
-    RedeemerMinting   bytes _ -> bytes
+    RedeemerSpending bytes _ -> bytes
+    RedeemerMinting bytes _ -> bytes
     RedeemerRewarding bytes _ -> bytes

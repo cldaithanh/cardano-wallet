@@ -7,80 +7,108 @@
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE TypeFamilies #-}
 
-module Cardano.Wallet.Registry
-    ( -- * Worker Registry
-      WorkerRegistry
-    , empty
-    , lookup
-    , register
-    , unregister
+module Cardano.Wallet.Registry (
+    -- * Worker Registry
+    WorkerRegistry,
+    empty,
+    lookup,
+    register,
+    unregister,
 
-      -- * Worker
-    , Worker
-    , MkWorker(..)
-    , defaultWorkerAfter
-    , workerThread
-    , workerId
-    , workerResource
+    -- * Worker
+    Worker,
+    MkWorker (..),
+    defaultWorkerAfter,
+    workerThread,
+    workerId,
+    workerResource,
 
-      -- * Context
-    , HasWorkerCtx (..)
+    -- * Context
+    HasWorkerCtx (..),
 
-      -- * Logging
-    , WorkerLog (..)
-    , AfterThreadLog (..)
-    , traceAfterThread
-    ) where
+    -- * Logging
+    WorkerLog (..),
+    AfterThreadLog (..),
+    traceAfterThread,
+) where
 
-import Prelude hiding
-    ( log, lookup )
+import Prelude hiding (
+    log,
+    lookup,
+ )
 
-import Cardano.BM.Data.Severity
-    ( Severity (..) )
-import Cardano.BM.Data.Tracer
-    ( HasPrivacyAnnotation (..), HasSeverityAnnotation (..) )
-import Cardano.Wallet
-    ( HasLogger, logger )
-import Cardano.Wallet.Logging
-    ( LoggedException (..) )
-import Control.Monad
-    ( void )
-import Control.Monad.IO.Class
-    ( MonadIO, liftIO )
-import Control.Tracer
-    ( Tracer, contramap, traceWith )
-import Data.Foldable
-    ( traverse_ )
-import Data.Generics.Internal.VL.Lens
-    ( (^.) )
-import Data.Generics.Labels
-    ()
-import Data.Generics.Product.Typed
-    ( HasType )
-import Data.Kind
-    ( Type )
-import Data.Map.Strict
-    ( Map )
+import Cardano.BM.Data.Severity (
+    Severity (..),
+ )
+import Cardano.BM.Data.Tracer (
+    HasPrivacyAnnotation (..),
+    HasSeverityAnnotation (..),
+ )
+import Cardano.Wallet (
+    HasLogger,
+    logger,
+ )
+import Cardano.Wallet.Logging (
+    LoggedException (..),
+ )
+import Control.Monad (
+    void,
+ )
+import Control.Monad.IO.Class (
+    MonadIO,
+    liftIO,
+ )
+import Control.Tracer (
+    Tracer,
+    contramap,
+    traceWith,
+ )
+import Data.Foldable (
+    traverse_,
+ )
+import Data.Generics.Internal.VL.Lens (
+    (^.),
+ )
+import Data.Generics.Labels (
+
+ )
+import Data.Generics.Product.Typed (
+    HasType,
+ )
+import Data.Kind (
+    Type,
+ )
+import Data.Map.Strict (
+    Map,
+ )
 import qualified Data.Map.Strict as Map
 import qualified Data.Text as T
-import Data.Text.Class
-    ( ToText (..) )
-import GHC.Generics
-    ( Generic )
-import UnliftIO.Concurrent
-    ( ThreadId, forkFinally, killThread )
-import UnliftIO.Exception
-    ( SomeException, isSyncException, withException )
-import UnliftIO.MVar
-    ( MVar
-    , modifyMVar_
-    , newEmptyMVar
-    , newMVar
-    , putMVar
-    , readMVar
-    , takeMVar
-    , tryPutMVar
-    )
+import Data.Text.Class (
+    ToText (..),
+ )
+import GHC.Generics (
+    Generic,
+ )
+import UnliftIO.Concurrent (
+    ThreadId,
+    forkFinally,
+    killThread,
+ )
+import UnliftIO.Exception (
+    SomeException,
+    isSyncException,
+    withException,
+ )
+import UnliftIO.MVar (
+    MVar,
+    modifyMVar_,
+    newEmptyMVar,
+    newMVar,
+    putMVar,
+    readMVar,
+    takeMVar,
+    tryPutMVar,
+ )
 
 {-------------------------------------------------------------------------------
                                 Worker Context
@@ -91,63 +119,61 @@ class HasType resource (WorkerCtx ctx) => HasWorkerCtx resource ctx where
     type WorkerCtx ctx :: Type
     type WorkerMsg ctx :: Type
     type WorkerKey ctx :: Type
-    hoistResource
-        :: resource
-        -> (WorkerMsg ctx -> WorkerLog (WorkerKey ctx) (WorkerMsg ctx))
-        -> ctx
-        -> WorkerCtx ctx
+    hoistResource ::
+        resource ->
+        (WorkerMsg ctx -> WorkerLog (WorkerKey ctx) (WorkerMsg ctx)) ->
+        ctx ->
+        WorkerCtx ctx
 
 {-------------------------------------------------------------------------------
                                 Worker Registry
 -------------------------------------------------------------------------------}
 
 -- | A registry to keep track of worker threads and acquired resources.
-newtype WorkerRegistry key resource =
-    WorkerRegistry (MVar (Map key (Worker key resource)))
+newtype WorkerRegistry key resource
+    = WorkerRegistry (MVar (Map key (Worker key resource)))
 
 -- | Construct a new empty registry
-empty
-    :: Ord key => IO (WorkerRegistry key resource)
+empty ::
+    Ord key => IO (WorkerRegistry key resource)
 empty =
     WorkerRegistry <$> newMVar mempty
 
 -- | Lookup the registry for a given worker
-lookup
-    :: (MonadIO m, Ord key)
-    => WorkerRegistry key resource
-    -> key
-    -> m (Maybe (Worker key resource))
+lookup ::
+    (MonadIO m, Ord key) =>
+    WorkerRegistry key resource ->
+    key ->
+    m (Maybe (Worker key resource))
 lookup (WorkerRegistry mvar) k =
     liftIO (Map.lookup k <$> readMVar mvar)
 
 -- | Register a new worker
-insert
-    :: Ord key
-    => WorkerRegistry key resource
-    -> Worker key resource
-    -> IO ()
+insert ::
+    Ord key =>
+    WorkerRegistry key resource ->
+    Worker key resource ->
+    IO ()
 insert (WorkerRegistry mvar) wrk =
     modifyMVar_ mvar (pure . Map.insert (workerId wrk) wrk)
 
 -- | Delete a worker from the registry, but don't cancel the running task.
---
-delete
-    :: Ord key
-    => WorkerRegistry key resource
-    -> key
-    -> IO (Maybe (Worker key resource))
+delete ::
+    Ord key =>
+    WorkerRegistry key resource ->
+    key ->
+    IO (Maybe (Worker key resource))
 delete (WorkerRegistry mvar) k = do
     mWorker <- Map.lookup k <$> readMVar mvar
     modifyMVar_ mvar (pure . Map.delete k)
     pure mWorker
 
 -- | Unregister a worker from the registry, terminating the running task.
---
-unregister
-    :: Ord key
-    => WorkerRegistry key resource
-    -> key
-    -> IO ()
+unregister ::
+    Ord key =>
+    WorkerRegistry key resource ->
+    key ->
+    IO ()
 unregister registry k =
     delete registry k >>= traverse_ (killThread . workerThread)
 
@@ -155,60 +181,64 @@ unregister registry k =
                                     Worker
 -------------------------------------------------------------------------------}
 
--- | A worker which holds and manipulate a particular acquired resource. That
--- resource can be, for example, a handle to a database connection.
+{- | A worker which holds and manipulate a particular acquired resource. That
+ resource can be, for example, a handle to a database connection.
+-}
 data Worker key resource = Worker
     { workerId :: key
     , workerThread :: ThreadId
     , workerResource :: resource
-    } deriving (Generic)
+    }
+    deriving (Generic)
 
 -- | See 'register'
 data MkWorker key resource msg ctx = MkWorker
-    { workerBefore :: WorkerCtx ctx -> key -> IO ()
-        -- ^ A task to execute before the main worker's task. When creating a
-        -- worker, this task is guaranteed to have terminated once 'register'
-        -- returns.
-    , workerMain :: WorkerCtx ctx -> key -> IO ()
-        -- ^ A task for the worker, possibly infinite
-    , workerAfter
-        :: Tracer IO (WorkerLog key msg) -> Either SomeException () -> IO ()
-        -- ^ Action to run when the worker exits. It will be run
-        --   * when the 'workerMain' action exits (successfully or not)
-        --   * if 'workerAcquire' fails
-        --   * or if the 'workerBefore' action throws an exception.
-    , workerAcquire :: (resource -> IO ()) -> IO ()
-        -- ^ A bracket-style factory to acquire a resource
+    { -- | A task to execute before the main worker's task. When creating a
+      -- worker, this task is guaranteed to have terminated once 'register'
+      -- returns.
+      workerBefore :: WorkerCtx ctx -> key -> IO ()
+    , -- | A task for the worker, possibly infinite
+      workerMain :: WorkerCtx ctx -> key -> IO ()
+    , -- | Action to run when the worker exits. It will be run
+      --   * when the 'workerMain' action exits (successfully or not)
+      --   * if 'workerAcquire' fails
+      --   * or if the 'workerBefore' action throws an exception.
+      workerAfter ::
+        Tracer IO (WorkerLog key msg) ->
+        Either SomeException () ->
+        IO ()
+    , -- | A bracket-style factory to acquire a resource
+      workerAcquire :: (resource -> IO ()) -> IO ()
     }
 
-defaultWorkerAfter
-    :: Tracer IO (WorkerLog key msg)
-    -> Either SomeException a
-    -> IO ()
+defaultWorkerAfter ::
+    Tracer IO (WorkerLog key msg) ->
+    Either SomeException a ->
+    IO ()
 defaultWorkerAfter tr = traceAfterThread (contramap MsgThreadAfter tr)
 
--- | Register a new worker for a given key.
---
--- A worker maintains an acquired resource. It expects a task as an argument
--- and will terminate as soon as its task is over. In practice, we provide a
--- never-ending task that keeps the worker alive forever.
---
--- Returns 'Nothing' if the worker fails to acquire the necessary resource or
--- terminates unexpectedly before entering its 'main' action.
---
-register
-    :: forall resource ctx key msg.
-        ( Ord key
-        , key ~ WorkerKey ctx
-        , msg ~ WorkerMsg ctx
-        , HasLogger IO (WorkerLog key msg) ctx
-        , HasWorkerCtx resource ctx
-        )
-    => WorkerRegistry key resource
-    -> ctx
-    -> key
-    -> MkWorker key resource msg ctx
-    -> IO (Maybe (Worker key resource))
+{- | Register a new worker for a given key.
+
+ A worker maintains an acquired resource. It expects a task as an argument
+ and will terminate as soon as its task is over. In practice, we provide a
+ never-ending task that keeps the worker alive forever.
+
+ Returns 'Nothing' if the worker fails to acquire the necessary resource or
+ terminates unexpectedly before entering its 'main' action.
+-}
+register ::
+    forall resource ctx key msg.
+    ( Ord key
+    , key ~ WorkerKey ctx
+    , msg ~ WorkerMsg ctx
+    , HasLogger IO (WorkerLog key msg) ctx
+    , HasWorkerCtx resource ctx
+    ) =>
+    WorkerRegistry key resource ->
+    ctx ->
+    key ->
+    MkWorker key resource msg ctx ->
+    IO (Maybe (Worker key resource))
 register registry ctx k (MkWorker before main after acquire) = do
     resourceVar <- newEmptyMVar
     let work = acquire $ \resource -> do
@@ -221,11 +251,12 @@ register registry ctx k (MkWorker before main after acquire) = do
   where
     tr = ctx ^. logger @IO @(WorkerLog key msg)
     create threadId resource = do
-        let worker = Worker
-                { workerId = k
-                , workerThread = threadId
-                , workerResource = resource
-                }
+        let worker =
+                Worker
+                    { workerId = k
+                    , workerThread = threadId
+                    , workerResource = resource
+                    }
         registry `insert` worker
         return worker
     cleanup resourceVar result = do
@@ -278,12 +309,14 @@ instance HasSeverityAnnotation AfterThreadLog where
         MsgUnhandledException _ -> Error
 
 -- | Trace an 'AfterThreadLog' message from a caught exception.
-traceAfterThread
-    :: Tracer m AfterThreadLog
-    -> Either SomeException a
-    -> m ()
-traceAfterThread tr = traceWith tr . \case
-    Right _ -> MsgThreadFinished
-    Left e -> if isSyncException e
-        then MsgUnhandledException $ LoggedException e
-        else MsgThreadCancelled
+traceAfterThread ::
+    Tracer m AfterThreadLog ->
+    Either SomeException a ->
+    m ()
+traceAfterThread tr =
+    traceWith tr . \case
+        Right _ -> MsgThreadFinished
+        Left e ->
+            if isSyncException e
+                then MsgUnhandledException $ LoggedException e
+                else MsgThreadCancelled

@@ -1,8 +1,8 @@
 {-# LANGUAGE BangPatterns #-}
 
-module Data.Function.Utils
-    ( applyN
-    ) where
+module Data.Function.Utils (
+    applyN,
+) where
 
 import Prelude
 

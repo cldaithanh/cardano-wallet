@@ -1,26 +1,39 @@
-module Cardano.Wallet.CoinSelection.Gen
-    ( coarbitraryWalletUTxO
-    , genWalletUTxO
-    , genWalletUTxOFunction
-    , genWalletUTxOLargeRange
-    , shrinkWalletUTxO
-    )
-    where
+module Cardano.Wallet.CoinSelection.Gen (
+    coarbitraryWalletUTxO,
+    genWalletUTxO,
+    genWalletUTxOFunction,
+    genWalletUTxOLargeRange,
+    shrinkWalletUTxO,
+) where
 
 import Prelude
 
-import Cardano.Wallet.CoinSelection
-    ( WalletUTxO (..) )
-import Cardano.Wallet.Primitive.Types.Address.Gen
-    ( genAddress, shrinkAddress )
-import Cardano.Wallet.Primitive.Types.Tx.Gen
-    ( genTxIn, genTxInLargeRange, shrinkTxIn )
-import Generics.SOP
-    ( NP (..) )
-import Test.QuickCheck
-    ( Gen, coarbitrary )
-import Test.QuickCheck.Extra
-    ( genFunction, genSized2, genericRoundRobinShrink, (<:>), (<@>) )
+import Cardano.Wallet.CoinSelection (
+    WalletUTxO (..),
+ )
+import Cardano.Wallet.Primitive.Types.Address.Gen (
+    genAddress,
+    shrinkAddress,
+ )
+import Cardano.Wallet.Primitive.Types.Tx.Gen (
+    genTxIn,
+    genTxInLargeRange,
+    shrinkTxIn,
+ )
+import Generics.SOP (
+    NP (..),
+ )
+import Test.QuickCheck (
+    Gen,
+    coarbitrary,
+ )
+import Test.QuickCheck.Extra (
+    genFunction,
+    genSized2,
+    genericRoundRobinShrink,
+    (<:>),
+    (<@>),
+ )
 
 --------------------------------------------------------------------------------
 -- Wallet UTxO identifiers chosen according to the size parameter
@@ -33,10 +46,11 @@ genWalletUTxO :: Gen WalletUTxO
 genWalletUTxO = uncurry WalletUTxO <$> genSized2 genTxIn genAddress
 
 shrinkWalletUTxO :: WalletUTxO -> [WalletUTxO]
-shrinkWalletUTxO = genericRoundRobinShrink
-    <@> shrinkTxIn
-    <:> shrinkAddress
-    <:> Nil
+shrinkWalletUTxO =
+    genericRoundRobinShrink
+        <@> shrinkTxIn
+        <:> shrinkAddress
+        <:> Nil
 
 genWalletUTxOFunction :: Gen a -> Gen (WalletUTxO -> a)
 genWalletUTxOFunction = genFunction coarbitraryWalletUTxO

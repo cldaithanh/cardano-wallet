@@ -1,18 +1,28 @@
-module Test.Utils.Startup
-    ( withLineBuffering
-    , withNoBuffering
-    ) where
+module Test.Utils.Startup (
+    withLineBuffering,
+    withNoBuffering,
+) where
 
 import Prelude
 
-import Control.Monad
-    ( void )
-import Control.Monad.IO.Unlift
-    ( MonadUnliftIO )
-import UnliftIO.Exception
-    ( IOException, bracket, tryJust )
-import UnliftIO.IO
-    ( BufferMode (..), hGetBuffering, hSetBuffering, stderr, stdout )
+import Control.Monad (
+    void,
+ )
+import Control.Monad.IO.Unlift (
+    MonadUnliftIO,
+ )
+import UnliftIO.Exception (
+    IOException,
+    bracket,
+    tryJust,
+ )
+import UnliftIO.IO (
+    BufferMode (..),
+    hGetBuffering,
+    hSetBuffering,
+    stderr,
+    stdout,
+ )
 
 withLineBuffering, withNoBuffering :: MonadUnliftIO m => m a -> m a
 withLineBuffering = withBuffering LineBuffering

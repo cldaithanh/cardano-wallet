@@ -4,45 +4,75 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeFamilies #-}
 
-module Cardano.Wallet.LatencyBenchShared
-  ( -- * Measuring traces
-    withLatencyLogging
-  , measureApiLogs
-  , LogCaptureFunc
+module Cardano.Wallet.LatencyBenchShared (
+    -- * Measuring traces
+    withLatencyLogging,
+    measureApiLogs,
+    LogCaptureFunc,
 
     -- * Formatting results
-  , fmtResult
-  , fmtTitle
-  ) where
+    fmtResult,
+    fmtTitle,
+) where
 
 import Prelude
 
-import Cardano.BM.Backend.Switchboard
-    ( effectuate )
-import Cardano.BM.Configuration.Static
-    ( defaultConfigStdout )
-import Cardano.BM.Data.LogItem
-    ( LOContent (..), LOMeta (..), LogObject (..) )
-import Cardano.BM.Data.Severity
-    ( Severity (..) )
-import Cardano.BM.Setup
-    ( setupTrace_, shutdown )
-import Control.Monad
-    ( replicateM_ )
-import Data.Maybe
-    ( mapMaybe )
-import Data.Time
-    ( NominalDiffTime )
-import Data.Time.Clock
-    ( diffUTCTime )
-import Fmt
-    ( Builder, build, fixedF, fmt, fmtLn, indentF, padLeftF, (+|), (|+) )
-import Network.Wai.Middleware.Logging
-    ( ApiLog (..), HandlerLog (..) )
-import UnliftIO.Exception
-    ( bracket, onException )
-import UnliftIO.STM
-    ( TVar, atomically, newTVarIO, readTVarIO, writeTVar )
+import Cardano.BM.Backend.Switchboard (
+    effectuate,
+ )
+import Cardano.BM.Configuration.Static (
+    defaultConfigStdout,
+ )
+import Cardano.BM.Data.LogItem (
+    LOContent (..),
+    LOMeta (..),
+    LogObject (..),
+ )
+import Cardano.BM.Data.Severity (
+    Severity (..),
+ )
+import Cardano.BM.Setup (
+    setupTrace_,
+    shutdown,
+ )
+import Control.Monad (
+    replicateM_,
+ )
+import Data.Maybe (
+    mapMaybe,
+ )
+import Data.Time (
+    NominalDiffTime,
+ )
+import Data.Time.Clock (
+    diffUTCTime,
+ )
+import Fmt (
+    Builder,
+    build,
+    fixedF,
+    fmt,
+    fmtLn,
+    indentF,
+    padLeftF,
+    (+|),
+    (|+),
+ )
+import Network.Wai.Middleware.Logging (
+    ApiLog (..),
+    HandlerLog (..),
+ )
+import UnliftIO.Exception (
+    bracket,
+    onException,
+ )
+import UnliftIO.STM (
+    TVar,
+    atomically,
+    newTVarIO,
+    readTVarIO,
+    writeTVar,
+ )
 
 import qualified Cardano.BM.Configuration.Model as CM
 
@@ -58,9 +88,9 @@ fmtTitle title = fmt (indentF 4 title)
 
 fmtResult :: String -> [NominalDiffTime] -> IO ()
 fmtResult title ts =
-    let titleExt = title|+" - " :: String
+    let titleExt = title |+ " - " :: String
         titleF = padLeftF 30 ' ' titleExt
-    in fmtLn (titleF+|buildResult ts|+" ms")
+     in fmtLn (titleF +| buildResult ts |+ " ms")
 
 isLogRequestStart :: ApiLog -> Bool
 isLogRequestStart = \case
@@ -79,29 +109,38 @@ measureApiLogs = measureLatency isLogRequestStart isLogRequestFinish
 sampleNTimes :: Int
 sampleNTimes = 10
 
--- | Measure how long an action takes based on trace points and taking an
--- average of results over a short time period.
-measureLatency
-    :: (msg -> Bool) -- ^ Predicate for start message
-    -> (msg -> Bool) -- ^ Predicate for end message
-    -> LogCaptureFunc msg () -- ^ Log capture function.
-    -> IO a -- ^ Action to run
-    -> IO [NominalDiffTime]
+{- | Measure how long an action takes based on trace points and taking an
+ average of results over a short time period.
+-}
+measureLatency ::
+    -- | Predicate for start message
+    (msg -> Bool) ->
+    -- | Predicate for end message
+    (msg -> Bool) ->
+    -- | Log capture function.
+    LogCaptureFunc msg () ->
+    -- | Action to run
+    IO a ->
+    IO [NominalDiffTime]
 measureLatency start finish capture action = do
     (logs, ()) <- capture $ replicateM_ sampleNTimes action
     pure $ extractTimings start finish logs
 
--- | Scan through iohk-monitoring logs and extract time differences between
--- start and end messages.
-extractTimings
-    :: (a -> Bool) -- ^ Predicate for start message
-    -> (a -> Bool) -- ^ Predicate for end message
-    -> [LogObject a] -- ^ Log messages
-    -> [NominalDiffTime]
+{- | Scan through iohk-monitoring logs and extract time differences between
+ start and end messages.
+-}
+extractTimings ::
+    -- | Predicate for start message
+    (a -> Bool) ->
+    -- | Predicate for end message
+    (a -> Bool) ->
+    -- | Log messages
+    [LogObject a] ->
+    [NominalDiffTime]
 extractTimings isStart isFinish msgs = map2 mkDiff filtered
   where
     map2 _ [] = []
-    map2 f (a:b:xs) = (f a b:map2 f xs)
+    map2 f (a : b : xs) = (f a b : map2 f xs)
     map2 _ _ = error "start trace without matching finish trace"
 
     mkDiff (False, start) (True, finish) = diffUTCTime finish start
@@ -115,13 +154,12 @@ extractTimings isStart isFinish msgs = map2 mkDiff filtered
         _ -> Nothing
     getTimestamp = tstamp . loMeta
 
-
 type LogCaptureFunc msg b = IO b -> IO ([LogObject msg], b)
 
-withLatencyLogging
-    :: (TVar [LogObject ApiLog] -> tracers)
-    -> (tracers -> LogCaptureFunc ApiLog b -> IO a)
-    -> IO a
+withLatencyLogging ::
+    (TVar [LogObject ApiLog] -> tracers) ->
+    (tracers -> LogCaptureFunc ApiLog b -> IO a) ->
+    IO a
 withLatencyLogging setupTracers action = do
     tvar <- newTVarIO []
     cfg <- defaultConfigStdout
@@ -133,7 +171,7 @@ withLatencyLogging setupTracers action = do
 
 logCaptureFunc :: TVar [LogObject ApiLog] -> LogCaptureFunc ApiLog b
 logCaptureFunc tvar action = do
-  atomically $ writeTVar tvar []
-  res <- action
-  logs <- readTVarIO tvar
-  pure (reverse logs, res)
+    atomically $ writeTVar tvar []
+    res <- action
+    logs <- readTVarIO tvar
+    pure (reverse logs, res)

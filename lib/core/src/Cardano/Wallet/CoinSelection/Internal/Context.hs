@@ -2,27 +2,25 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE TypeFamilies #-}
 
--- |
--- Copyright: © 2022 IOHK
--- License: Apache-2.0
---
--- This module provides the 'SelectionContext' class, which provides a shared
--- context for types used by coin selection.
---
-module Cardano.Wallet.CoinSelection.Internal.Context
-    (
+{- |
+ Copyright: © 2022 IOHK
+ License: Apache-2.0
+
+ This module provides the 'SelectionContext' class, which provides a shared
+ context for types used by coin selection.
+-}
+module Cardano.Wallet.CoinSelection.Internal.Context (
     -- * Selection contexts
-      SelectionContext (..)
-    )
-    where
+    SelectionContext (..),
+) where
 
 import Prelude
 
-import Fmt
-    ( Buildable )
+import Fmt (
+    Buildable,
+ )
 
 -- | Provides a shared context for types used by coin selection.
---
 class
     ( Buildable (Address c)
     , Buildable (UTxO c)
@@ -32,8 +30,7 @@ class
     , Show (UTxO c)
     ) =>
     SelectionContext c
-  where
-
+    where
     -- | A target address to which payments can be made.
     type Address c
 

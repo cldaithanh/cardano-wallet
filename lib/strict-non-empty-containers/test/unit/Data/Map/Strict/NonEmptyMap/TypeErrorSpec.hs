@@ -4,24 +4,31 @@
 {-# OPTIONS_GHC -fno-warn-dodgy-imports #-}
 {-# OPTIONS_GHC -fno-warn-unused-imports #-}
 
-module Data.Map.Strict.NonEmptyMap.TypeErrorSpec
-    ( spec
-    ) where
+module Data.Map.Strict.NonEmptyMap.TypeErrorSpec (
+    spec,
+) where
 
 import Prelude
 
-import Data.Map.Strict.NonEmptyMap.Internal
-    ( NonEmptyMap (..) )
-import Test.Hspec
-    ( Expectation, Spec, describe, it )
-import Test.ShouldNotTypecheck
-    ( shouldNotTypecheck )
+import Data.Map.Strict.NonEmptyMap.Internal (
+    NonEmptyMap (..),
+ )
+import Test.Hspec (
+    Expectation,
+    Spec,
+    describe,
+    it,
+ )
+import Test.ShouldNotTypecheck (
+    shouldNotTypecheck,
+ )
 
 spec :: Spec
-spec = describe "Strict non-empty map type error tests" $
-
-    it "Default data constructor is not exported"
-        testDefaultDataConstructorNotExported
+spec =
+    describe "Strict non-empty map type error tests" $
+        it
+            "Default data constructor is not exported"
+            testDefaultDataConstructorNotExported
 
 -- Test that the default data constructor for 'NonEmptyMap' is not exported.
 --

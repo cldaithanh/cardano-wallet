@@ -1,18 +1,23 @@
-module Cardano.Wallet.Primitive.Types.Coin.Gen
-    ( genCoin
-    , genCoinPositive
-    , shrinkCoin
-    , shrinkCoinPositive
-    ) where
+module Cardano.Wallet.Primitive.Types.Coin.Gen (
+    genCoin,
+    genCoinPositive,
+    shrinkCoin,
+    shrinkCoinPositive,
+) where
 
 import Prelude
 
-import Cardano.Wallet.Primitive.Types.Coin
-    ( Coin (..) )
-import Test.QuickCheck
-    ( Gen, choose, sized )
-import Test.QuickCheck.Extra
-    ( shrinkNatural )
+import Cardano.Wallet.Primitive.Types.Coin (
+    Coin (..),
+ )
+import Test.QuickCheck (
+    Gen,
+    choose,
+    sized,
+ )
+import Test.QuickCheck.Extra (
+    shrinkNatural,
+ )
 
 --------------------------------------------------------------------------------
 -- Coins chosen according to the size parameter.

@@ -7,56 +7,73 @@
 {-# LANGUAGE TypeFamilies #-}
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 
-module Cardano.Wallet.Primitive.AddressDiscoverySpec
-    ( spec
-    ) where
+module Cardano.Wallet.Primitive.AddressDiscoverySpec (
+    spec,
+) where
 
 import Prelude
 
-import Cardano.Address.Derivation
-    ( XPrv )
-import Cardano.Mnemonic
-    ( SomeMnemonic (..) )
-import Cardano.Wallet.Gen
-    ( genMnemonic )
-import Cardano.Wallet.Primitive.AddressDerivation
-    ( Depth (AccountK, AddressK, RootK)
-    , DerivationType (..)
-    , Index
-    , NetworkDiscriminant (..)
-    , Passphrase (..)
-    , PaymentAddress (..)
-    , passphraseMaxLength
-    , passphraseMinLength
-    , publicKey
-    )
-import Cardano.Wallet.Primitive.AddressDerivation.Byron
-    ( ByronKey, generateKeyFromSeed, unsafeGenerateKeyFromSeed )
-import Cardano.Wallet.Primitive.AddressDiscovery
-    ( IsOurs (..), knownAddresses )
-import Cardano.Wallet.Primitive.AddressDiscovery.Random
-    ( mkRndState )
-import Control.Monad
-    ( replicateM )
-import Data.Maybe
-    ( isJust, isNothing )
-import Data.Proxy
-    ( Proxy (..) )
-import Test.Hspec
-    ( Spec, describe, it )
-import Test.Hspec.Extra
-    ( parallel )
-import Test.QuickCheck
-    ( Arbitrary (..)
-    , Gen
-    , InfiniteList (..)
-    , Property
-    , arbitraryBoundedEnum
-    , arbitraryPrintableChar
-    , choose
-    , property
-    , (.&&.)
-    )
+import Cardano.Address.Derivation (
+    XPrv,
+ )
+import Cardano.Mnemonic (
+    SomeMnemonic (..),
+ )
+import Cardano.Wallet.Gen (
+    genMnemonic,
+ )
+import Cardano.Wallet.Primitive.AddressDerivation (
+    Depth (AccountK, AddressK, RootK),
+    DerivationType (..),
+    Index,
+    NetworkDiscriminant (..),
+    Passphrase (..),
+    PaymentAddress (..),
+    passphraseMaxLength,
+    passphraseMinLength,
+    publicKey,
+ )
+import Cardano.Wallet.Primitive.AddressDerivation.Byron (
+    ByronKey,
+    generateKeyFromSeed,
+    unsafeGenerateKeyFromSeed,
+ )
+import Cardano.Wallet.Primitive.AddressDiscovery (
+    IsOurs (..),
+    knownAddresses,
+ )
+import Cardano.Wallet.Primitive.AddressDiscovery.Random (
+    mkRndState,
+ )
+import Control.Monad (
+    replicateM,
+ )
+import Data.Maybe (
+    isJust,
+    isNothing,
+ )
+import Data.Proxy (
+    Proxy (..),
+ )
+import Test.Hspec (
+    Spec,
+    describe,
+    it,
+ )
+import Test.Hspec.Extra (
+    parallel,
+ )
+import Test.QuickCheck (
+    Arbitrary (..),
+    Gen,
+    InfiniteList (..),
+    Property,
+    arbitraryBoundedEnum,
+    arbitraryPrintableChar,
+    choose,
+    property,
+    (.&&.),
+ )
 
 import qualified Cardano.Crypto.Wallet as CC
 import qualified Data.ByteArray as BA
@@ -66,29 +83,32 @@ import qualified Data.Text.Encoding as T
 
 spec :: Spec
 spec = do
-    parallel $ describe "Random Address Discovery Properties" $ do
-        it "isOurs works as expected during key derivation in testnet" $ do
-            property (prop_derivedKeysAreOurs @('Testnet 0))
-        it "isOurs works as expected during key derivation in mainnet" $ do
-            property (prop_derivedKeysAreOurs @'Mainnet)
+    parallel $
+        describe "Random Address Discovery Properties" $ do
+            it "isOurs works as expected during key derivation in testnet" $ do
+                property (prop_derivedKeysAreOurs @( 'Testnet 0))
+            it "isOurs works as expected during key derivation in mainnet" $ do
+                property (prop_derivedKeysAreOurs @ 'Mainnet)
 
 {-------------------------------------------------------------------------------
                                Properties
 -------------------------------------------------------------------------------}
 
-prop_derivedKeysAreOurs
-    :: forall (n :: NetworkDiscriminant). (PaymentAddress n ByronKey)
-    => SomeMnemonic
-    -> Passphrase "encryption"
-    -> Index 'WholeDomain 'AccountK
-    -> Index 'WholeDomain 'AddressK
-    -> ByronKey 'RootK XPrv
-    -> Property
+prop_derivedKeysAreOurs ::
+    forall (n :: NetworkDiscriminant).
+    (PaymentAddress n ByronKey) =>
+    SomeMnemonic ->
+    Passphrase "encryption" ->
+    Index 'WholeDomain 'AccountK ->
+    Index 'WholeDomain 'AddressK ->
+    ByronKey 'RootK XPrv ->
+    Property
 prop_derivedKeysAreOurs seed encPwd accIx addrIx rk' =
-    isJust resPos .&&. addr `elem` (fst' <$> knownAddresses stPos') .&&.
-    isNothing resNeg .&&. addr `notElem` (fst' <$> knownAddresses stNeg')
+    isJust resPos .&&. addr `elem` (fst' <$> knownAddresses stPos')
+        .&&. isNothing resNeg
+        .&&. addr `notElem` (fst' <$> knownAddresses stNeg')
   where
-    fst' (a,_,_) = a
+    fst' (a, _, _) = a
     (resPos, stPos') = isOurs addr (mkRndState @n rootXPrv 0)
     (resNeg, stNeg') = isOurs addr (mkRndState @n rk' 0)
     key = publicKey $ unsafeGenerateKeyFromSeed (accIx, addrIx) seed encPwd

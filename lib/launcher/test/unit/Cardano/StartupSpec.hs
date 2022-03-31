@@ -1,46 +1,78 @@
 {-# LANGUAGE CPP #-}
 {-# LANGUAGE FlexibleContexts #-}
 
--- |
--- Copyright: © 2018-2020 IOHK
--- License: Apache-2.0
---
--- Unit tests for 'withShutdownHandler' using pipes within a single process.
+{- |
+ Copyright: © 2018-2020 IOHK
+ License: Apache-2.0
 
-module Cardano.StartupSpec
-    ( spec
-    ) where
+ Unit tests for 'withShutdownHandler' using pipes within a single process.
+-}
+module Cardano.StartupSpec (
+    spec,
+) where
 
 import Prelude
 
-import Cardano.Startup
-    ( ShutdownHandlerLog (..), withShutdownHandler' )
-import Control.Monad
-    ( unless )
-import Control.Tracer
-    ( Tracer, nullTracer )
-import System.IO
-    ( Handle, IOMode (..), hClose, hWaitForInput, stdin, withFile )
-import System.IO.Error
-    ( isUserError )
-import Test.Hspec
-    ( Spec, describe, it, shouldBe, shouldContain, shouldReturn, shouldThrow )
-import Test.Hspec.Core.Spec
-    ( ResultStatus (..) )
-import Test.Hspec.Expectations
-    ( Expectation, HasCallStack )
-import Test.Utils.Platform
-    ( nullFileName, pendingOnWindows )
-import Test.Utils.Trace
-    ( captureLogging )
-import UnliftIO.Async
-    ( race )
-import UnliftIO.Concurrent
-    ( threadDelay )
-import UnliftIO.Exception
-    ( IOException, bracket, catch, throwIO )
-import UnliftIO.Process
-    ( createPipe )
+import Cardano.Startup (
+    ShutdownHandlerLog (..),
+    withShutdownHandler',
+ )
+import Control.Monad (
+    unless,
+ )
+import Control.Tracer (
+    Tracer,
+    nullTracer,
+ )
+import System.IO (
+    Handle,
+    IOMode (..),
+    hClose,
+    hWaitForInput,
+    stdin,
+    withFile,
+ )
+import System.IO.Error (
+    isUserError,
+ )
+import Test.Hspec (
+    Spec,
+    describe,
+    it,
+    shouldBe,
+    shouldContain,
+    shouldReturn,
+    shouldThrow,
+ )
+import Test.Hspec.Core.Spec (
+    ResultStatus (..),
+ )
+import Test.Hspec.Expectations (
+    Expectation,
+    HasCallStack,
+ )
+import Test.Utils.Platform (
+    nullFileName,
+    pendingOnWindows,
+ )
+import Test.Utils.Trace (
+    captureLogging,
+ )
+import UnliftIO.Async (
+    race,
+ )
+import UnliftIO.Concurrent (
+    threadDelay,
+ )
+import UnliftIO.Exception (
+    IOException,
+    bracket,
+    catch,
+    throwIO,
+ )
+import UnliftIO.Process (
+    createPipe,
+ )
 
 #if defined(WINDOWS)
 import UnliftIO.Concurrent
@@ -69,9 +101,10 @@ spec = describe "withShutdownHandler" $ do
             res <- race (wrapIO $ hWait stdin) (threadDelay decisecond)
             res `shouldBe` Right ()
 
-        it "race hWaitForInput pipe" $ withPipe $ \(a, _) -> do
-            res <- race (wrapIO $ hWait a) (threadDelay decisecond)
-            res `shouldBe` Right ()
+        it "race hWaitForInput pipe" $
+            withPipe $ \(a, _) -> do
+                res <- race (wrapIO $ hWait a) (threadDelay decisecond)
+                res `shouldBe` Right ()
 
         it "race hGet stdin" $ do
             pendingOnWindows "deadlocks on windows"
@@ -79,55 +112,62 @@ spec = describe "withShutdownHandler" $ do
             res <- race (getChunk stdin) (threadDelay decisecond)
             res `shouldBe` Right ()
 
-        it "race hGet pipe" $ withPipe $ \(a, _) -> do
-            pendingOnWindows "deadlocks on windows"
-            res <- race (getChunk a) (threadDelay decisecond)
-            res `shouldBe` Right ()
+        it "race hGet pipe" $
+            withPipe $ \(a, _) -> do
+                pendingOnWindows "deadlocks on windows"
+                res <- race (getChunk a) (threadDelay decisecond)
+                res `shouldBe` Right ()
 
         it "race hGet stdin wrapped" $ do
             skipWhenNullStdin
             res <- race (wrapIO $ getChunk stdin) (threadDelay decisecond)
             res `shouldBe` Right ()
 
-        it "race hGet pipe wrapped" $ withPipe $ \(a, _) -> do
-            res <- race (wrapIO $ getChunk a) (threadDelay decisecond)
-            res `shouldBe` Right ()
+        it "race hGet pipe wrapped" $
+            withPipe $ \(a, _) -> do
+                res <- race (wrapIO $ getChunk a) (threadDelay decisecond)
+                res `shouldBe` Right ()
 
-    it "action completes immediately" $ withPipe $ \(a, _) -> do
-        logs <- captureLogging' $ \tr -> do
-            withShutdownHandler' tr a (pure ())
-                `shouldReturn` Just ()
-        logs `shouldContain` [MsgShutdownHandler True]
+    it "action completes immediately" $
+        withPipe $ \(a, _) -> do
+            logs <- captureLogging' $ \tr -> do
+                withShutdownHandler' tr a (pure ())
+                    `shouldReturn` Just ()
+            logs `shouldContain` [MsgShutdownHandler True]
 
-    it "action completes with delay" $ withPipe $ \(a, _) -> do
-        res <- withShutdownHandler' nullTracer a $ do
-            threadDelay decisecond
-            pure ()
-        res `shouldBe` Just ()
+    it "action completes with delay" $
+        withPipe $ \(a, _) -> do
+            res <- withShutdownHandler' nullTracer a $ do
+                threadDelay decisecond
+                pure ()
+            res `shouldBe` Just ()
 
-    it "handle is closed immediately" $ withPipe $ \(a, b) -> do
-        logs <- captureLogging' $ \tr -> do
-            res <- withShutdownHandler' tr a $ do
+    it "handle is closed immediately" $
+        withPipe $ \(a, b) -> do
+            logs <- captureLogging' $ \tr -> do
+                res <- withShutdownHandler' tr a $ do
+                    hClose b
+                    threadDelay decisecond -- give handler a chance to run
+                    pure ()
+                res `shouldBe` Nothing
+            logs `shouldContain` [MsgShutdownEOF]
+
+    it "handle is closed with delay" $
+        withPipe $ \(a, b) -> do
+            res <- withShutdownHandler' nullTracer a $ do
+                threadDelay decisecond
                 hClose b
                 threadDelay decisecond -- give handler a chance to run
                 pure ()
             res `shouldBe` Nothing
-        logs `shouldContain` [MsgShutdownEOF]
 
-    it "handle is closed with delay" $ withPipe $ \(a, b) -> do
-        res <- withShutdownHandler' nullTracer a $ do
-            threadDelay decisecond
-            hClose b
-            threadDelay decisecond -- give handler a chance to run
-            pure ()
-        res `shouldBe` Nothing
-
-    it "action throws exception" $ withPipe $ \(a, _) -> do
-        let bomb = userError "bomb"
-        logs <- captureLogging' $ \tr -> do
-            withShutdownHandler' tr a (throwIO bomb)
-                `shouldThrow` isUserError
-        logs `shouldBe` [MsgShutdownHandler True]
+    it "action throws exception" $
+        withPipe $ \(a, _) -> do
+            let bomb = userError "bomb"
+            logs <- captureLogging' $ \tr -> do
+                withShutdownHandler' tr a (throwIO bomb)
+                    `shouldThrow` isUserError
+            logs `shouldBe` [MsgShutdownHandler True]
 
     it ("handle is " ++ nullFileName ++ " (immediate EOF)") $ do
         pendingOnWindows $ "Can't open " ++ nullFileName ++ " for reading"
@@ -139,30 +179,34 @@ spec = describe "withShutdownHandler" $ do
                 res `shouldBe` Nothing
         logs `shouldContain` [MsgShutdownEOF]
 
-    it "handle is already closed" $ withPipe $ \(a, b) -> do
-        hClose a
-        hClose b
-        logs <- captureLogging' $ \tr -> do
-            res <- withShutdownHandler' tr a $ do
-                threadDelay decisecond
-                hClose b
-                threadDelay decisecond -- give handler a chance to run
-                pure ()
-            res `shouldBe` Just ()
-        logs `shouldContain` [MsgShutdownHandler False]
+    it "handle is already closed" $
+        withPipe $ \(a, b) -> do
+            hClose a
+            hClose b
+            logs <- captureLogging' $ \tr -> do
+                res <- withShutdownHandler' tr a $ do
+                    threadDelay decisecond
+                    hClose b
+                    threadDelay decisecond -- give handler a chance to run
+                    pure ()
+                res `shouldBe` Just ()
+            logs `shouldContain` [MsgShutdownHandler False]
 
 withPipe :: ((Handle, Handle) -> IO a) -> IO a
 withPipe = bracket createPipe closePipe
-    where closePipe (a, b) = hClose b >> hClose a
+  where
+    closePipe (a, b) = hClose b >> hClose a
 
 captureLogging' :: (Tracer IO msg -> IO a) -> IO [msg]
 captureLogging' = fmap fst . captureLogging
 
--- | Run an IO action allowing interruptions on windows.
--- Any 'IOException's are rethrown.
--- The action should not throw any exception other than 'IOException'.
--- Example: https://github.com/input-output-hk/ouroboros-network/blob/69d62063e59f966dc90bda5b4d0ac0a11efd3657/Win32-network/src/System/Win32/Async/Socket.hs#L46-L59
+{- | Run an IO action allowing interruptions on windows.
+ Any 'IOException's are rethrown.
+ The action should not throw any exception other than 'IOException'.
+ Example: https://github.com/input-output-hk/ouroboros-network/blob/69d62063e59f966dc90bda5b4d0ac0a11efd3657/Win32-network/src/System/Win32/Async/Socket.hs#L46-L59
+-}
 wrapIO :: IO a -> IO a
+
 #if defined(WINDOWS)
 wrapIO action = do
     v <- newEmptyMVar :: IO (MVar (Either IOException a))

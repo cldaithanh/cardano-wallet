@@ -1,33 +1,46 @@
 module Light.StakePools where
 
-import Data.Map
-    ( Map )
+import Data.Map (
+    Map,
+ )
 import Light.Types
 
 -- | Summary of stake distribution and stake pools obtained from network
 data StakePoolsSummary = StakePoolsSummary
-    { rewardParams :: RewardParams -- ^ implementable, see 'RewardParams'
-    , pools :: Map PoolId RewardInfoPool -- ^ implementable, See 'RewardInfoPool'
+    { -- | implementable, see 'RewardParams'
+      rewardParams :: RewardParams
+    , -- | implementable, See 'RewardInfoPool'
+      pools :: Map PoolId RewardInfoPool
     }
 
 -- | Global parameters used for computing rewards
 data RewardParams = RewardParams
-    { nOpt :: Int -- ^ yes, '_protocolParamsNOpt'
-    , a0   :: Rational -- ^ yes, '_protocolParamsA0'
-    , r    :: Coin
-    -- ^ implementable, '_epochInfoFees', '_accountInfoReservesSum'?
-    , totalStake :: Coin -- ^ yes, '_genesisMaxLovelaceSupply'
+    { -- | yes, '_protocolParamsNOpt'
+      nOpt :: Int
+    , -- | yes, '_protocolParamsA0'
+      a0 :: Rational
+    , -- | implementable, '_epochInfoFees', '_accountInfoReservesSum'?
+      r :: Coin
+    , -- | yes, '_genesisMaxLovelaceSupply'
+      totalStake :: Coin
     }
 
--- | Information need for the computation of rewards, such as the'
--- stake currently delegated to a pool, or the pool cost and margin.'
+{- | Information need for the computation of rewards, such as the'
+ stake currently delegated to a pool, or the pool cost and margin.'
+-}
 data RewardInfoPool = RewardInfoPool
-    { stakeRelative :: Rational -- ^ yes, '_poolStakeDistributionAmount'
-    , ownerPledge :: Coin -- ^ yes, '_poolInfoDeclaredPledge'
-    , ownerStake :: Coin -- ^ yes (?), '_poolInfoLivePledge'
-    , ownerStakeRelative :: Rational -- ^ yes, redundant
-    , cost :: Coin -- ^ yes, '_poolInfoFixedCost'
-    , margin :: Rational -- ^ yes, '_poolInfoMarginCost'
-    , performanceEstimate :: Double
-    -- ^ implementable, 'getPoolHistory', 'PoolHistory', '_poolHistoryBlocks'
+    { -- | yes, '_poolStakeDistributionAmount'
+      stakeRelative :: Rational
+    , -- | yes, '_poolInfoDeclaredPledge'
+      ownerPledge :: Coin
+    , -- | yes (?), '_poolInfoLivePledge'
+      ownerStake :: Coin
+    , -- | yes, redundant
+      ownerStakeRelative :: Rational
+    , -- | yes, '_poolInfoFixedCost'
+      cost :: Coin
+    , -- | yes, '_poolInfoMarginCost'
+      margin :: Rational
+    , -- | implementable, 'getPoolHistory', 'PoolHistory', '_poolHistoryBlocks'
+      performanceEstimate :: Double
     }

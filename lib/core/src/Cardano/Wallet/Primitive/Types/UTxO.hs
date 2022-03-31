@@ -8,83 +8,104 @@
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE TypeFamilies #-}
 
--- |
--- Copyright: © 2018-2020 IOHK
--- License: Apache-2.0
---
--- This module provides the main 'UTxO' data type used by the wallet.
---
-module Cardano.Wallet.Primitive.Types.UTxO
-    (
-    -- * UTxO
-      UTxO (..)
+{- |
+ Copyright: © 2018-2020 IOHK
+ License: Apache-2.0
 
-    , dom
-    , null
-    , size
-    , balance
-    , isSubsetOf
-    , empty
-    , disjoint
-    , excluding
-    , restrictedBy
-    , restrictedTo
-    , difference
-    , partition
-    , lookup
-    , filter
-    , filterByAddressM
-    , filterByAddress
-    , toList
+ This module provides the main 'UTxO' data type used by the wallet.
+-}
+module Cardano.Wallet.Primitive.Types.UTxO (
+    -- * UTxO
+    UTxO (..),
+    dom,
+    null,
+    size,
+    balance,
+    isSubsetOf,
+    empty,
+    disjoint,
+    excluding,
+    restrictedBy,
+    restrictedTo,
+    difference,
+    partition,
+    lookup,
+    filter,
+    filterByAddressM,
+    filterByAddress,
+    toList,
 
     -- * UTxO delta encoding
-    , DeltaUTxO
-    , excluded
-    , received
-    , excludingD
-    , receiveD
+    DeltaUTxO,
+    excluded,
+    received,
+    excludingD,
+    receiveD,
 
     -- * UTxO Statistics
-    , UTxOStatistics (..)
-    , BoundType
-    , HistogramBar (..)
+    UTxOStatistics (..),
+    BoundType,
+    HistogramBar (..),
+    computeStatistics,
+    computeUtxoStatistics,
+    log10,
+) where
 
-    , computeStatistics
-    , computeUtxoStatistics
-    , log10
-    ) where
+import Prelude hiding (
+    filter,
+    lookup,
+    null,
+ )
 
-import Prelude hiding
-    ( filter, lookup, null )
-
-import Cardano.Wallet.Primitive.Types.Address
-    ( Address )
-import Cardano.Wallet.Primitive.Types.TokenBundle
-    ( TokenBundle )
-import Cardano.Wallet.Primitive.Types.Tx
-    ( TxIn, TxOut (..), txOutCoin )
-import Control.DeepSeq
-    ( NFData (..) )
-import Data.Bifunctor
-    ( bimap, first )
-import Data.Delta
-    ( Delta (..) )
-import Data.Functor.Identity
-    ( runIdentity )
-import Data.Generics.Internal.VL.Lens
-    ( view )
-import Data.List.NonEmpty
-    ( NonEmpty (..) )
-import Data.Map.Strict
-    ( Map )
-import Data.Set
-    ( Set )
-import Data.Word
-    ( Word64 )
-import Fmt
-    ( Buildable (..), blockListF', blockMapF, padRightF, tupleF )
-import GHC.Generics
-    ( Generic )
+import Cardano.Wallet.Primitive.Types.Address (
+    Address,
+ )
+import Cardano.Wallet.Primitive.Types.TokenBundle (
+    TokenBundle,
+ )
+import Cardano.Wallet.Primitive.Types.Tx (
+    TxIn,
+    TxOut (..),
+    txOutCoin,
+ )
+import Control.DeepSeq (
+    NFData (..),
+ )
+import Data.Bifunctor (
+    bimap,
+    first,
+ )
+import Data.Delta (
+    Delta (..),
+ )
+import Data.Functor.Identity (
+    runIdentity,
+ )
+import Data.Generics.Internal.VL.Lens (
+    view,
+ )
+import Data.List.NonEmpty (
+    NonEmpty (..),
+ )
+import Data.Map.Strict (
+    Map,
+ )
+import Data.Set (
+    Set,
+ )
+import Data.Word (
+    Word64,
+ )
+import Fmt (
+    Buildable (..),
+    blockListF',
+    blockMapF,
+    padRightF,
+    tupleF,
+ )
+import GHC.Generics (
+    Generic,
+ )
 
 import qualified Cardano.Wallet.Primitive.Types.Coin as Coin
 import qualified Cardano.Wallet.Primitive.Types.TokenBundle as TB
@@ -98,7 +119,7 @@ import qualified Data.Set as Set
 -- UTxO
 --------------------------------------------------------------------------------
 
-newtype UTxO = UTxO { unUTxO :: Map TxIn TxOut }
+newtype UTxO = UTxO {unUTxO :: Map TxIn TxOut}
     deriving stock (Show, Generic, Eq, Ord)
     deriving newtype (Semigroup, Monoid)
 
@@ -108,12 +129,17 @@ instance Buildable UTxO where
     build (UTxO utxo) =
         blockListF' "-" utxoF (Map.toList utxo)
       where
-        utxoF (inp, out) = buildMap
-            [ ("input"
-              , build inp)
-            , ("output"
-              , build out)
-            ]
+        utxoF (inp, out) =
+            buildMap
+                [
+                    ( "input"
+                    , build inp
+                    )
+                ,
+                    ( "output"
+                    , build out
+                    )
+                ]
         buildMap = blockMapF . fmap (first $ id @String)
 
 -- | Domain of a 'UTxO' = the set of /inputs/ of the /utxo/.
@@ -132,12 +158,11 @@ difference :: UTxO -> UTxO -> UTxO
 difference a b = a `excluding` Map.keysSet (unUTxO b)
 
 -- | Indicates whether a pair of UTxO sets are disjoint.
---
 disjoint :: UTxO -> UTxO -> Bool
 disjoint u1 u2 = unUTxO u1 `Map.disjoint` unUTxO u2
 
 -- | ins⋪ u
-excluding :: UTxO -> Set TxIn ->  UTxO
+excluding :: UTxO -> Set TxIn -> UTxO
 excluding (UTxO utxo) =
     UTxO . Map.withoutKeys utxo
 
@@ -173,10 +198,11 @@ filter f (UTxO u) = UTxO $ Map.filterWithKey (const . f) u
 lookup :: TxIn -> UTxO -> Maybe TxOut
 lookup i (UTxO u) = Map.lookup i u
 
--- | Filters a 'UTxO' set with an indicator function on 'Address' values.
---
--- Returns the subset of UTxO entries that have addresses for which the given
--- indicator function returns 'True'.
+{- | Filters a 'UTxO' set with an indicator function on 'Address' values.
+
+ Returns the subset of UTxO entries that have addresses for which the given
+ indicator function returns 'True'.
+-}
 filterByAddressM :: forall f. Monad f => (Address -> f Bool) -> UTxO -> f UTxO
 filterByAddressM isOursF (UTxO m) =
     UTxO <$> Map.traverseMaybeWithKey filterFunc m
@@ -186,39 +212,44 @@ filterByAddressM isOursF (UTxO m) =
         ours <- isOursF $ view #address txout
         pure $ if ours then Just txout else Nothing
 
--- | Filters a 'UTxO' set with an indicator function on 'Address' values.
---
--- Returns the subset of UTxO entries that have addresses for which the given
--- indicator function returns 'True'.
---
--- filterByAddress f u = runIdentity $ filterByAddressM (pure . f) u
--- filterByAddress (const True) u = u
--- filterByAddress (const False) u = mempty
--- filterByAddress f mempty = mempty
--- filterByAddress f u `isSubsetOf` u
+{- | Filters a 'UTxO' set with an indicator function on 'Address' values.
+
+ Returns the subset of UTxO entries that have addresses for which the given
+ indicator function returns 'True'.
+
+ filterByAddress f u = runIdentity $ filterByAddressM (pure . f) u
+ filterByAddress (const True) u = u
+ filterByAddress (const False) u = mempty
+ filterByAddress f mempty = mempty
+ filterByAddress f u `isSubsetOf` u
+-}
 filterByAddress :: (Address -> Bool) -> UTxO -> UTxO
 filterByAddress f = runIdentity . filterByAddressM (pure . f)
 
--- | Partitions a UTxO set according to a condition.
---
--- > filter p a == a && filter (not . p) b == b
--- >   where (a,b) = partition p utxo
+{- | Partitions a UTxO set according to a condition.
+
+ > filter p a == a && filter (not . p) b == b
+ >   where (a,b) = partition p utxo
+-}
 partition :: (TxIn -> Bool) -> UTxO -> (UTxO, UTxO)
 partition f (UTxO u) = bimap UTxO UTxO $ Map.partitionWithKey (const . f) u
 
 -- | Converts a UTxO set into a list of UTxO elements.
---
 toList :: UTxO -> [(TxIn, TxOut)]
 toList = Map.toList . unUTxO
 
 {-------------------------------------------------------------------------------
     Delta encodings of UTxO
 -------------------------------------------------------------------------------}
+
 -- | Efficient delta encoding for 'UTxO'.
 data DeltaUTxO = DeltaUTxO
-    { excluded :: !(Set TxIn) -- ^ First exclude these inputs
-    , received :: !UTxO       -- ^ Then receive these additional outputs.
-    } deriving (Generic, Eq, Show)
+    { -- | First exclude these inputs
+      excluded :: !(Set TxIn)
+    , -- | Then receive these additional outputs.
+      received :: !UTxO
+    }
+    deriving (Generic, Eq, Show)
 
 instance Delta DeltaUTxO where
     type Base DeltaUTxO = UTxO
@@ -226,16 +257,17 @@ instance Delta DeltaUTxO where
 
 -- | Left argument is applied /after/ right argument.
 instance Semigroup DeltaUTxO where
-    db <> da = DeltaUTxO
-        { excluded = excluded da <> excluded'db
-        , received = received'da <> received db
-        }
+    db <> da =
+        DeltaUTxO
+            { excluded = excluded da <> excluded'db
+            , received = received'da <> received db
+            }
       where
         received'da = received da `excluding` excluded db
         excluded'db = excluded db `excludingS` received da
 
 -- | Exclude the inputs of a 'UTxO' from a 'Set' of inputs.
-excludingS :: Set TxIn -> UTxO -> Set TxIn 
+excludingS :: Set TxIn -> UTxO -> Set TxIn
 excludingS a (UTxO b) = Set.filter (not . (`Map.member` b)) a
 
 -- | Restrict a 'Set' of inputs by the inputs of a 'UTxO'.
@@ -243,19 +275,20 @@ restrictedByS :: Set TxIn -> UTxO -> Set TxIn
 restrictedByS a (UTxO b) = Set.filter (`Map.member` b) a
 
 instance Monoid DeltaUTxO where
-    mempty = DeltaUTxO { excluded = mempty, received = mempty }
+    mempty = DeltaUTxO {excluded = mempty, received = mempty}
 
 -- | Exclude a set of transaction inputs, typically because we spend them.
 excludingD :: UTxO -> Set TxIn -> (DeltaUTxO, UTxO)
 excludingD u ins = (du, u `excluding` spent)
   where
     spent = ins `restrictedByS` u
-    du = DeltaUTxO { excluded = spent, received = mempty }
+    du = DeltaUTxO {excluded = spent, received = mempty}
 
 -- | Receive additional 'UTxO' / union.
 receiveD :: UTxO -> UTxO -> (DeltaUTxO, UTxO)
 receiveD a b = (da, a <> b)
-  where da = DeltaUTxO { excluded = mempty, received = b }
+  where
+    da = DeltaUTxO {excluded = mempty, received = b}
 
 --------------------------------------------------------------------------------
 -- UTxO Statistics
@@ -265,7 +298,8 @@ data UTxOStatistics = UTxOStatistics
     { histogram :: ![HistogramBar]
     , allStakes :: !Word64
     , boundType :: BoundType
-    } deriving (Show, Generic, Ord)
+    }
+    deriving (Show, Generic, Ord)
 
 instance NFData UTxOStatistics
 
@@ -292,15 +326,16 @@ instance NFData UTxOStatistics
 --     ... 45000000000000000 0
 --  @
 instance Buildable UTxOStatistics where
-    build (UTxOStatistics hist val _) = mconcat
-        [ "= Total value of "
-        , build val
-        , " lovelace across "
-        , wordF $ sum $ map bucketCount hist
-        , " UTxOs"
-        , "\n"
-        , blockListF' "" buildBar hist
-        ]
+    build (UTxOStatistics hist val _) =
+        mconcat
+            [ "= Total value of "
+            , build val
+            , " lovelace across "
+            , wordF $ sum $ map bucketCount hist
+            , " UTxOs"
+            , "\n"
+            , blockListF' "" buildBar hist
+            ]
       where
         buildBar (HistogramBar b c) =
             -- NOTE: Picked to fit well with the max value of Lovelace.
@@ -321,8 +356,9 @@ instance Eq UTxOStatistics where
 -- the bucket upper bound, and its corresponding distribution (on the y-axis).
 data HistogramBar = HistogramBar
     { bucketUpperBound :: !Word64
-    , bucketCount      :: !Word64
-    } deriving (Show, Eq, Ord, Generic)
+    , bucketCount :: !Word64
+    }
+    deriving (Show, Eq, Ord, Generic)
 
 instance NFData HistogramBar
 
@@ -341,41 +377,41 @@ log10 = Log10
 
 -- | Compute UtxoStatistics from UTxOs
 computeUtxoStatistics :: BoundType -> UTxO -> UTxOStatistics
-computeUtxoStatistics btype
-    = computeStatistics (pure . Coin.unsafeToWord64 . txOutCoin) btype
-    . Map.elems
-    . unUTxO
+computeUtxoStatistics btype =
+    computeStatistics (pure . Coin.unsafeToWord64 . txOutCoin) btype
+        . Map.elems
+        . unUTxO
 
--- | A more generic function for computing UTxO statistics on some other type of
--- data that maps to UTxO's values.
+{- | A more generic function for computing UTxO statistics on some other type of
+ data that maps to UTxO's values.
+-}
 computeStatistics :: (a -> [Word64]) -> BoundType -> [a] -> UTxOStatistics
 computeStatistics getCoins btype utxos =
     (F.fold foldStatistics (mconcat $ getCoins <$> utxos)) btype
   where
     foldStatistics :: F.Fold Word64 (BoundType -> UTxOStatistics)
-    foldStatistics = UTxOStatistics
-        <$> foldBuckets (generateBounds btype)
-        <*> F.sum
+    foldStatistics =
+        UTxOStatistics
+            <$> foldBuckets (generateBounds btype)
+            <*> F.sum
 
     foldBuckets :: NonEmpty Word64 -> F.Fold Word64 [HistogramBar]
     foldBuckets bounds =
-        let
-            step :: Map Word64 Word64 -> Word64 -> Map Word64 Word64
+        let step :: Map Word64 Word64 -> Word64 -> Map Word64 Word64
             step x a = case Map.lookupGE a x of
-                Just (k, v) -> Map.insert k (v+1) x
-                Nothing -> Map.adjust (+1) (NE.head bounds) x
+                Just (k, v) -> Map.insert k (v + 1) x
+                Nothing -> Map.adjust (+ 1) (NE.head bounds) x
             initial :: Map Word64 Word64
             initial =
                 Map.fromList $ zip (NE.toList bounds) (repeat 0)
             extract :: Map Word64 Word64 -> [HistogramBar]
             extract =
                 map (uncurry HistogramBar) . Map.toList
-        in
-            F.Fold step initial extract
+         in F.Fold step initial extract
 
     generateBounds :: BoundType -> NonEmpty Word64
     generateBounds = \case
-        Log10 -> NE.fromList $ map (10 ^!) [1..16] ++ [45 * (10 ^! 15)]
+        Log10 -> NE.fromList $ map (10 ^!) [1 .. 16] ++ [45 * (10 ^! 15)]
 
     (^!) :: Word64 -> Word64 -> Word64
     (^!) = (^)

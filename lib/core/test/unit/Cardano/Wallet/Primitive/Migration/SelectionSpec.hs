@@ -9,99 +9,130 @@
 {-# LANGUAGE TypeApplications #-}
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 
-module Cardano.Wallet.Primitive.Migration.SelectionSpec
-    where
+module Cardano.Wallet.Primitive.Migration.SelectionSpec where
 
 import Prelude
 
-import Cardano.Wallet.Primitive.Migration.Selection
-    ( RewardWithdrawal (..)
-    , Selection (..)
-    , SelectionCorrectness (..)
-    , SelectionError (..)
-    , SelectionFullError (..)
-    , addValueToOutputs
-    , create
-    , extend
-    , minimizeFee
-    , minimizeFeeStep
-    )
-import Cardano.Wallet.Primitive.Types.Coin
-    ( Coin (..) )
-import Cardano.Wallet.Primitive.Types.Hash
-    ( Hash (..) )
-import Cardano.Wallet.Primitive.Types.TokenBundle
-    ( Flat (..), TokenBundle (..) )
-import Cardano.Wallet.Primitive.Types.TokenMap
-    ( AssetId (..), TokenMap )
-import Cardano.Wallet.Primitive.Types.TokenPolicy
-    ( TokenName (..), TokenPolicyId (..) )
-import Cardano.Wallet.Primitive.Types.TokenQuantity
-    ( TokenQuantity (..) )
-import Cardano.Wallet.Primitive.Types.Tx
-    ( TxConstraints (..)
-    , TxSize (..)
-    , txOutMaxCoin
-    , txOutputCoinCost
-    , txOutputCoinMinimum
-    , txOutputCoinSize
-    , txOutputHasValidSize
-    , txOutputHasValidTokenQuantities
-    , txSizeDistance
-    )
-import Control.Monad
-    ( replicateM )
-import Data.ByteArray.Encoding
-    ( Base (Base16), convertToBase )
-import Data.ByteString
-    ( ByteString )
-import Data.Either
-    ( isRight )
-import Data.Either.Extra
-    ( eitherToMaybe )
-import Data.Functor
-    ( (<&>) )
-import Data.Generics.Internal.VL.Lens
-    ( view )
-import Data.Generics.Labels
-    ()
-import Data.List.NonEmpty
-    ( NonEmpty (..) )
-import Data.Semigroup
-    ( mtimesDefault, stimes )
-import Data.Word
-    ( Word8 )
-import Fmt
-    ( pretty )
-import Numeric.Natural
-    ( Natural )
-import Test.Hspec
-    ( Spec, describe, it )
-import Test.Hspec.Core.QuickCheck
-    ( modifyMaxSuccess )
-import Test.Hspec.Extra
-    ( parallel )
-import Test.QuickCheck
-    ( Arbitrary (..)
-    , Blind (..)
-    , Gen
-    , Property
-    , checkCoverage
-    , choose
-    , cover
-    , elements
-    , forAllBlind
-    , frequency
-    , genericShrink
-    , oneof
-    , property
-    , suchThat
-    , suchThatMap
-    , vectorOf
-    , withMaxSuccess
-    )
-import Test.QuickCheck.Extra
-    ( chooseNatural, report, verify )
+import Cardano.Wallet.Primitive.Migration.Selection (
+    RewardWithdrawal (..),
+    Selection (..),
+    SelectionCorrectness (..),
+    SelectionError (..),
+    SelectionFullError (..),
+    addValueToOutputs,
+    create,
+    extend,
+    minimizeFee,
+    minimizeFeeStep,
+ )
+import Cardano.Wallet.Primitive.Types.Coin (
+    Coin (..),
+ )
+import Cardano.Wallet.Primitive.Types.Hash (
+    Hash (..),
+ )
+import Cardano.Wallet.Primitive.Types.TokenBundle (
+    Flat (..),
+    TokenBundle (..),
+ )
+import Cardano.Wallet.Primitive.Types.TokenMap (
+    AssetId (..),
+    TokenMap,
+ )
+import Cardano.Wallet.Primitive.Types.TokenPolicy (
+    TokenName (..),
+    TokenPolicyId (..),
+ )
+import Cardano.Wallet.Primitive.Types.TokenQuantity (
+    TokenQuantity (..),
+ )
+import Cardano.Wallet.Primitive.Types.Tx (
+    TxConstraints (..),
+    TxSize (..),
+    txOutMaxCoin,
+    txOutputCoinCost,
+    txOutputCoinMinimum,
+    txOutputCoinSize,
+    txOutputHasValidSize,
+    txOutputHasValidTokenQuantities,
+    txSizeDistance,
+ )
+import Control.Monad (
+    replicateM,
+ )
+import Data.ByteArray.Encoding (
+    Base (Base16),
+    convertToBase,
+ )
+import Data.ByteString (
+    ByteString,
+ )
+import Data.Either (
+    isRight,
+ )
+import Data.Either.Extra (
+    eitherToMaybe,
+ )
+import Data.Functor (
+    (<&>),
+ )
+import Data.Generics.Internal.VL.Lens (
+    view,
+ )
+import Data.Generics.Labels (
+
+ )
+import Data.List.NonEmpty (
+    NonEmpty (..),
+ )
+import Data.Semigroup (
+    mtimesDefault,
+    stimes,
+ )
+import Data.Word (
+    Word8,
+ )
+import Fmt (
+    pretty,
+ )
+import Numeric.Natural (
+    Natural,
+ )
+import Test.Hspec (
+    Spec,
+    describe,
+    it,
+ )
+import Test.Hspec.Core.QuickCheck (
+    modifyMaxSuccess,
+ )
+import Test.Hspec.Extra (
+    parallel,
+ )
+import Test.QuickCheck (
+    Arbitrary (..),
+    Blind (..),
+    Gen,
+    Property,
+    checkCoverage,
+    choose,
+    cover,
+    elements,
+    forAllBlind,
+    frequency,
+    genericShrink,
+    oneof,
+    property,
+    suchThat,
+    suchThatMap,
+    vectorOf,
+    withMaxSuccess,
+ )
+import Test.QuickCheck.Extra (
+    chooseNatural,
+    report,
+    verify,
+ )
 
 import qualified Cardano.Wallet.Primitive.Migration.Selection as Selection
 import qualified Cardano.Wallet.Primitive.Types.Coin as Coin
@@ -115,37 +146,35 @@ import qualified Data.Text.Encoding as T
 
 spec :: Spec
 spec = describe "Cardano.Wallet.Primitive.Migration.SelectionSpec" $
-
     modifyMaxSuccess (const 1000) $ do
+        parallel $
+            describe "Creating selections" $ do
+                it "prop_create" $
+                    property prop_create
 
-    parallel $ describe "Creating selections" $ do
+        parallel $
+            describe "Extending selections" $ do
+                it "prop_extend" $
+                    property prop_extend
 
-        it "prop_create" $
-            property prop_create
+        parallel $
+            describe "Adding value to outputs" $ do
+                it "prop_addValueToOutputs" $
+                    property prop_addValueToOutputs
 
-    parallel $ describe "Extending selections" $ do
+        parallel $
+            describe "Minimizing fees" $ do
+                it "prop_minimizeFee" $
+                    property prop_minimizeFee
+                it "prop_minimizeFeeStep" $
+                    property prop_minimizeFeeStep
 
-        it "prop_extend" $
-            property prop_extend
-
-    parallel $ describe "Adding value to outputs" $ do
-
-        it "prop_addValueToOutputs" $
-            property prop_addValueToOutputs
-
-    parallel $ describe "Minimizing fees" $ do
-
-        it "prop_minimizeFee" $
-            property prop_minimizeFee
-        it "prop_minimizeFeeStep" $
-            property prop_minimizeFeeStep
-
-    parallel $ describe "Constraint calculations" $ do
-
-        it "prop_txOutputCost" $
-            property prop_txOutputCost
-        it "prop_txOutputSize" $
-            property prop_txOutputSize
+        parallel $
+            describe "Constraint calculations" $ do
+                it "prop_txOutputCost" $
+                    property prop_txOutputCost
+                it "prop_txOutputSize" $
+                    property prop_txOutputSize
 
 --------------------------------------------------------------------------------
 -- Creating a selection
@@ -158,8 +187,8 @@ type MockSelectionResult = Either MockSelectionError MockSelection
 prop_create :: Blind MockTxConstraints -> Property
 prop_create (Blind mockConstraints) =
     forAllBlind genInputs $ \inputs ->
-    forAllBlind genRewardWithdrawal $ \reward ->
-    prop_create_inner mockConstraints inputs reward
+        forAllBlind genRewardWithdrawal $ \reward ->
+            prop_create_inner mockConstraints inputs reward
   where
     genInputs :: Gen (NonEmpty (MockInputId, TokenBundle))
     genInputs = do
@@ -168,47 +197,61 @@ prop_create (Blind mockConstraints) =
             <$> genMockInput mockConstraints
             <*> replicateM (inputCount - 1) (genMockInput mockConstraints)
 
-prop_create_inner
-    :: MockTxConstraints
-    -> NonEmpty (MockInputId, TokenBundle)
-    -> RewardWithdrawal
-    -> Property
+prop_create_inner ::
+    MockTxConstraints ->
+    NonEmpty (MockInputId, TokenBundle) ->
+    RewardWithdrawal ->
+    Property
 prop_create_inner mockConstraints inputs reward =
     checkCoverage $
-    cover 50 (resultIsSelection result)
-        "Success" $
-    cover 50 (resultHasZeroFeeExcess result)
-        "Success with zero fee excess" $
-    cover 1 (resultHasInsufficientAda result)
-        "Failure due to insufficient ada" $
-    cover 1 (resultIsFull result)
-        "Failure due to oversized selection" $
-    report mockConstraints
-        "mockConstraints" $
-    case result of
-        Left SelectionAdaInsufficient ->
-            property True
-        Left (SelectionFull e) ->
-            property (selectionSizeMaximum e < selectionSizeRequired e)
-        Right selection -> makeReports $ testAll
-            $ verify
-                (correctness == SelectionCorrect)
-                "correctness == SelectionCorrect"
-            . verify
-                (feeExcess selection == feeExcessExpected)
-                "feeExcess selection == feeExcessExpected"
-          where
-            makeReports
-                = report correctness
-                    "correctness"
-                . report (feeExcess selection)
-                    "feeExcess"
-                . report feeExcessExpected
-                    "feeExcessExpected"
-            correctness =
-                Selection.verify constraints selection
-            (feeExcessExpected, _) =
-                minimizeFee constraints (feeExcess selection, outputs selection)
+        cover
+            50
+            (resultIsSelection result)
+            "Success"
+            $ cover
+                50
+                (resultHasZeroFeeExcess result)
+                "Success with zero fee excess"
+                $ cover
+                    1
+                    (resultHasInsufficientAda result)
+                    "Failure due to insufficient ada"
+                    $ cover
+                        1
+                        (resultIsFull result)
+                        "Failure due to oversized selection"
+                        $ report
+                            mockConstraints
+                            "mockConstraints"
+                            $ case result of
+                                Left SelectionAdaInsufficient ->
+                                    property True
+                                Left (SelectionFull e) ->
+                                    property (selectionSizeMaximum e < selectionSizeRequired e)
+                                Right selection ->
+                                    makeReports $
+                                        testAll $
+                                            verify
+                                                (correctness == SelectionCorrect)
+                                                "correctness == SelectionCorrect"
+                                                . verify
+                                                    (feeExcess selection == feeExcessExpected)
+                                                    "feeExcess selection == feeExcessExpected"
+                                  where
+                                    makeReports =
+                                        report
+                                            correctness
+                                            "correctness"
+                                            . report
+                                                (feeExcess selection)
+                                                "feeExcess"
+                                            . report
+                                                feeExcessExpected
+                                                "feeExcessExpected"
+                                    correctness =
+                                        Selection.verify constraints selection
+                                    (feeExcessExpected, _) =
+                                        minimizeFee constraints (feeExcess selection, outputs selection)
   where
     constraints = unMockTxConstraints mockConstraints
     result = create constraints reward inputs
@@ -237,8 +280,8 @@ resultIsFull = matchLeft $ \case
 prop_extend :: Blind MockTxConstraints -> Property
 prop_extend (Blind mockConstraints) =
     forAllBlind genSelection $ \selection ->
-    forAllBlind genExtraInput $ \input ->
-    prop_extend_inner mockConstraints selection input
+        forAllBlind genExtraInput $ \input ->
+            prop_extend_inner mockConstraints selection input
   where
     genSelection :: Gen MockSelection
     genSelection = genSelectionMaybe `suchThatMap` eitherToMaybe
@@ -257,58 +300,73 @@ prop_extend (Blind mockConstraints) =
                 <*> replicateM (inputCount - 1) (genMockInput mockConstraints)
 
     genExtraInput :: Gen (MockInputId, TokenBundle)
-    genExtraInput = (,)
-        <$> genMockInputId
-        <*> oneof
-            [ genTokenBundleMixed mockConstraints
-              -- In order to increase coverage of error conditions,
-              -- deliberately include some large bundles whose ada
-              -- quantities are below the minimum:
-            , TokenBundle (Coin 0) . F.fold <$>
-                replicateM 4 (genTokenMap mockConstraints)
-            ]
+    genExtraInput =
+        (,)
+            <$> genMockInputId
+            <*> oneof
+                [ genTokenBundleMixed mockConstraints
+                , -- In order to increase coverage of error conditions,
+                  -- deliberately include some large bundles whose ada
+                  -- quantities are below the minimum:
+                  TokenBundle (Coin 0) . F.fold
+                    <$> replicateM 4 (genTokenMap mockConstraints)
+                ]
 
-prop_extend_inner
-    :: MockTxConstraints
-    -> MockSelection
-    -> (MockInputId, TokenBundle)
-    -> Property
+prop_extend_inner ::
+    MockTxConstraints ->
+    MockSelection ->
+    (MockInputId, TokenBundle) ->
+    Property
 prop_extend_inner mockConstraints selectionOriginal input =
     checkCoverage $
-    cover 40 (resultIsSelection result)
-        "Success" $
-    cover 10 (resultHasZeroFeeExcess result)
-        "Success with zero fee excess" $
-    cover 0.1 (resultHasInsufficientAda result)
-        "Failure due to insufficient ada" $
-    cover 0.1 (resultIsFull result)
-        "Failure due to oversized selection" $
-    report mockConstraints
-        "mockConstraints" $
-    case result of
-        Left SelectionAdaInsufficient ->
-            property True
-        Left (SelectionFull e) ->
-            property (selectionSizeMaximum e < selectionSizeRequired e)
-        Right selection -> makeReports $ testAll
-            $ verify
-                (correctness == SelectionCorrect)
-                "correctness == SelectionCorrect"
-            . verify
-                (feeExcess selection == feeExcessExpected)
-                "feeExcess selection == feeExcessExpected"
-          where
-            makeReports
-                = report correctness
-                    "correctness"
-                . report (feeExcess selection)
-                    "feeExcess"
-                . report feeExcessExpected
-                    "feeExcessExpected"
-            correctness =
-                Selection.verify constraints selection
-            (feeExcessExpected, _) =
-                minimizeFee constraints (feeExcess selection, outputs selection)
+        cover
+            40
+            (resultIsSelection result)
+            "Success"
+            $ cover
+                10
+                (resultHasZeroFeeExcess result)
+                "Success with zero fee excess"
+                $ cover
+                    0.1
+                    (resultHasInsufficientAda result)
+                    "Failure due to insufficient ada"
+                    $ cover
+                        0.1
+                        (resultIsFull result)
+                        "Failure due to oversized selection"
+                        $ report
+                            mockConstraints
+                            "mockConstraints"
+                            $ case result of
+                                Left SelectionAdaInsufficient ->
+                                    property True
+                                Left (SelectionFull e) ->
+                                    property (selectionSizeMaximum e < selectionSizeRequired e)
+                                Right selection ->
+                                    makeReports $
+                                        testAll $
+                                            verify
+                                                (correctness == SelectionCorrect)
+                                                "correctness == SelectionCorrect"
+                                                . verify
+                                                    (feeExcess selection == feeExcessExpected)
+                                                    "feeExcess selection == feeExcessExpected"
+                                  where
+                                    makeReports =
+                                        report
+                                            correctness
+                                            "correctness"
+                                            . report
+                                                (feeExcess selection)
+                                                "feeExcess"
+                                            . report
+                                                feeExcessExpected
+                                                "feeExcessExpected"
+                                    correctness =
+                                        Selection.verify constraints selection
+                                    (feeExcessExpected, _) =
+                                        minimizeFee constraints (feeExcess selection, outputs selection)
   where
     constraints = unMockTxConstraints mockConstraints
     result = extend constraints selectionOriginal input
@@ -320,7 +378,7 @@ prop_extend_inner mockConstraints selectionOriginal input =
 prop_addValueToOutputs :: Blind MockTxConstraints -> Property
 prop_addValueToOutputs (Blind mockConstraints) =
     forAllBlind genOutputs $ \outputs ->
-    prop_addValueToOutputs_inner mockConstraints outputs
+        prop_addValueToOutputs_inner mockConstraints outputs
   where
     genOutputs :: Gen (NonEmpty TokenMap)
     genOutputs = do
@@ -332,52 +390,62 @@ prop_addValueToOutputs (Blind mockConstraints) =
             <$> genTokenMap mockConstraints
             <*> replicateM (outputCount - 1) (genTokenMap mockConstraints)
 
-prop_addValueToOutputs_inner
-    :: MockTxConstraints
-    -> NonEmpty TokenMap
-    -> Property
+prop_addValueToOutputs_inner ::
+    MockTxConstraints ->
+    NonEmpty TokenMap ->
+    Property
 prop_addValueToOutputs_inner mockConstraints outputs =
     withMaxSuccess 100 $
-    checkCoverage $ makeCoverage $ makeReports $ testAll makeTests
+        checkCoverage $ makeCoverage $ makeReports $ testAll makeTests
   where
-    makeTests
-        = verify
+    makeTests =
+        verify
             (valueAfter == valueBefore)
             "Value is preserved"
-        . verify
-            (all (txOutputHasValidSizeWithMaxAda constraints) result)
-            "All outputs have valid sizes (if ada maximized)"
-        . verify
-            (all (txOutputHasValidTokenQuantities constraints) result)
-            "All outputs have valid token quantities"
-    makeCoverage
-        = cover 0.1 (length result == 1)
+            . verify
+                (all (txOutputHasValidSizeWithMaxAda constraints) result)
+                "All outputs have valid sizes (if ada maximized)"
+            . verify
+                (all (txOutputHasValidTokenQuantities constraints) result)
+                "All outputs have valid token quantities"
+    makeCoverage =
+        cover
+            0.1
+            (length result == 1)
             "length result == 1"
-        . cover 8.0 (length result >= 2)
-            "length result >= 2"
-    makeReports
-        = report mockConstraints
+            . cover
+                8.0
+                (length result >= 2)
+                "length result >= 2"
+    makeReports =
+        report
+            mockConstraints
             "mockConstraints"
-        . report valueBefore
-            "valueBefore"
-        . report valueAfter
-            "valueAfter"
-        . report (length outputs)
-            "length outputs"
-        . report (length result)
-            "length result"
+            . report
+                valueBefore
+                "valueBefore"
+            . report
+                valueAfter
+                "valueAfter"
+            . report
+                (length outputs)
+                "length outputs"
+            . report
+                (length result)
+                "length result"
 
     constraints = unMockTxConstraints mockConstraints
     result :: NonEmpty TokenMap
-    result = F.foldl'
-        (addValueToOutputs constraints . NE.toList)
-        (addValueToOutputs constraints [] (NE.head outputs))
-        (NE.tail outputs)
+    result =
+        F.foldl'
+            (addValueToOutputs constraints . NE.toList)
+            (addValueToOutputs constraints [] (NE.head outputs))
+            (NE.tail outputs)
 
-    valueBefore
-        = F.fold outputs
-    valueAfter
-        = F.fold result
+    valueBefore =
+        F.fold outputs
+    valueAfter =
+        F.fold result
 
 txOutputHasValidSizeWithMaxAda :: TxConstraints -> TokenMap -> Bool
 txOutputHasValidSizeWithMaxAda constraints b =
@@ -390,8 +458,8 @@ txOutputHasValidSizeWithMaxAda constraints b =
 prop_minimizeFee :: Blind MockTxConstraints -> Property
 prop_minimizeFee (Blind mockConstraints) =
     forAllBlind genFeeExcess $ \feeExcessToMinimize ->
-    forAllBlind genOutputs $ \outputs ->
-    prop_minimizeFee_inner mockConstraints feeExcessToMinimize outputs
+        forAllBlind genOutputs $ \outputs ->
+            prop_minimizeFee_inner mockConstraints feeExcessToMinimize outputs
   where
     genFeeExcess :: Gen Coin
     genFeeExcess = genCoinRange (Coin 0) (Coin 10_000)
@@ -405,49 +473,61 @@ prop_minimizeFee (Blind mockConstraints) =
                 (outputCount - 1)
                 (genTokenBundleMixed mockConstraints)
 
-prop_minimizeFee_inner
-    :: MockTxConstraints
-    -> Coin
-    -> NonEmpty TokenBundle
-    -> Property
+prop_minimizeFee_inner ::
+    MockTxConstraints ->
+    Coin ->
+    NonEmpty TokenBundle ->
+    Property
 prop_minimizeFee_inner mockConstraints feeExcessBefore outputsBefore =
     checkCoverage $ makeCoverage $ makeReports $ testAll makeTests
   where
-    makeTests
-        = verify
+    makeTests =
+        verify
             (feeExcessAfter <= feeExcessBefore)
             "feeExcessAfter <= feeExcessBefore"
-        . verify
-            (feeExcessReduction == feeExcessReductionExpected)
-            "feeExcessReduction == feeExcessReductionExpected"
-        . verify
-            (length outputsAfter == length outputsBefore)
-            "length outputsAfter == length outputsBefore"
-        . verify
-            (feeExcessAfter == feeExcessAfterSecondRun)
-            "feeExcessAfter == feeExcessAfterSecondRun (idempotency)"
-    makeCoverage
-        = cover 50 (feeExcessAfter == Coin 0)
+            . verify
+                (feeExcessReduction == feeExcessReductionExpected)
+                "feeExcessReduction == feeExcessReductionExpected"
+            . verify
+                (length outputsAfter == length outputsBefore)
+                "length outputsAfter == length outputsBefore"
+            . verify
+                (feeExcessAfter == feeExcessAfterSecondRun)
+                "feeExcessAfter == feeExcessAfterSecondRun (idempotency)"
+    makeCoverage =
+        cover
+            50
+            (feeExcessAfter == Coin 0)
             "feeExcessAfter == 0"
-        . cover 50 (totalOutputCostIncrease > Coin 0)
-            "totalOutputCostIncrease > 0"
-    makeReports
-        = report mockConstraints
+            . cover
+                50
+                (totalOutputCostIncrease > Coin 0)
+                "totalOutputCostIncrease > 0"
+    makeReports =
+        report
+            mockConstraints
             "mockConstraints"
-        . report feeExcessBefore
-            "feeExcessBefore"
-        . report feeExcessAfter
-            "feeExcessAfter"
-        . report feeExcessAfterSecondRun
-            "feeExcessAfterSecondRun"
-        . report feeExcessReduction
-            "feeExcessReduction"
-        . report feeExcessReductionExpected
-            "feeExcessReductionExpected"
-        . report (length outputsBefore)
-            "length outputsBefore"
-        . report (length outputsAfter)
-            "length outputsAfter"
+            . report
+                feeExcessBefore
+                "feeExcessBefore"
+            . report
+                feeExcessAfter
+                "feeExcessAfter"
+            . report
+                feeExcessAfterSecondRun
+                "feeExcessAfterSecondRun"
+            . report
+                feeExcessReduction
+                "feeExcessReduction"
+            . report
+                feeExcessReductionExpected
+                "feeExcessReductionExpected"
+            . report
+                (length outputsBefore)
+                "length outputsBefore"
+            . report
+                (length outputsAfter)
+                "length outputsAfter"
 
     constraints = unMockTxConstraints mockConstraints
 
@@ -482,8 +562,8 @@ prop_minimizeFee_inner mockConstraints feeExcessBefore outputsBefore =
 prop_minimizeFeeStep :: Blind MockTxConstraints -> Property
 prop_minimizeFeeStep (Blind mockConstraints) =
     forAllBlind genFeeExcess $ \feeExcessToMinimize ->
-    forAllBlind genOutput $ \output ->
-    prop_minimizeFeeStep_inner mockConstraints feeExcessToMinimize output
+        forAllBlind genOutput $ \output ->
+            prop_minimizeFeeStep_inner mockConstraints feeExcessToMinimize output
   where
     genFeeExcess :: Gen Coin
     genFeeExcess = genCoinRange (Coin 0) (Coin 10_000)
@@ -491,74 +571,94 @@ prop_minimizeFeeStep (Blind mockConstraints) =
     genOutput :: Gen TokenBundle
     genOutput = genTokenBundleMixed mockConstraints
 
-prop_minimizeFeeStep_inner
-    :: MockTxConstraints
-    -> Coin
-    -> TokenBundle
-    -> Property
+prop_minimizeFeeStep_inner ::
+    MockTxConstraints ->
+    Coin ->
+    TokenBundle ->
+    Property
 prop_minimizeFeeStep_inner mockConstraints feeExcessBefore outputBefore =
     checkCoverage $ makeCoverage $ makeReports $ testAll makeTests
   where
-    makeTests
-        = verify
+    makeTests =
+        verify
             (feeExcessAfter <= feeExcessBefore)
             "feeExcessAfter <= feeExcessBefore"
-        . verify
-            (outputCoinAfter >= outputCoinBefore)
-            "outputCoinAfter >= outputCoinBefore"
-        . verify
-            (outputCostAfter >= outputCostBefore)
-            "outputCostAfter >= outputCostBefore"
-        . verify
-            (feeExcessReduction <> feeExcessAfter == feeExcessBefore)
-            "feeExcessReduction <> feeExcessAfter == feeExcessBefore"
-        . verify
-            (costOfEliminatingFeeExcess >= gainOfEliminatingFeeExcess)
-            "costOfEliminatingFeeExcess >= gainOfEliminatingFeeExcess"
-    makeCoverage
-        = cover 50 (feeExcessAfter == Coin 0)
+            . verify
+                (outputCoinAfter >= outputCoinBefore)
+                "outputCoinAfter >= outputCoinBefore"
+            . verify
+                (outputCostAfter >= outputCostBefore)
+                "outputCostAfter >= outputCostBefore"
+            . verify
+                (feeExcessReduction <> feeExcessAfter == feeExcessBefore)
+                "feeExcessReduction <> feeExcessAfter == feeExcessBefore"
+            . verify
+                (costOfEliminatingFeeExcess >= gainOfEliminatingFeeExcess)
+                "costOfEliminatingFeeExcess >= gainOfEliminatingFeeExcess"
+    makeCoverage =
+        cover
+            50
+            (feeExcessAfter == Coin 0)
             "feeExcessAfter == 0"
-        . cover 0.01 (feeExcessAfter /= Coin 0)
-            "feeExcessAfter /= 0"
-        . cover 1 (outputCostIncrease > Coin 0)
-            "outputCostIncrease > 0"
-    makeReports
-        = report mockConstraints
+            . cover
+                0.01
+                (feeExcessAfter /= Coin 0)
+                "feeExcessAfter /= 0"
+            . cover
+                1
+                (outputCostIncrease > Coin 0)
+                "outputCostIncrease > 0"
+    makeReports =
+        report
+            mockConstraints
             "mockConstraints"
-        . report feeExcessBefore
-            "feeExcessBefore"
-        . report feeExcessAfter
-            "feeExcessAfter"
-        . report feeExcessReduction
-            "feeExcessReduction"
-        . report costOfEliminatingFeeExcess
-            "costOfEliminatingFeeExcess"
-        . report gainOfEliminatingFeeExcess
-            "gainOfEliminatingFeeExcess"
-        . report outputCoinBefore
-            "outputCoinBefore"
-        . report outputCoinAfter
-            "outputCoinAfter"
-        . report outputCoinIncrease
-            "outputCoinIncrease"
-        . report outputCostBefore
-            "outputCostBefore"
-        . report outputCostAfter
-            "outputCostAfter"
-        . report outputCostIncrease
-            "outputCostIncrease"
+            . report
+                feeExcessBefore
+                "feeExcessBefore"
+            . report
+                feeExcessAfter
+                "feeExcessAfter"
+            . report
+                feeExcessReduction
+                "feeExcessReduction"
+            . report
+                costOfEliminatingFeeExcess
+                "costOfEliminatingFeeExcess"
+            . report
+                gainOfEliminatingFeeExcess
+                "gainOfEliminatingFeeExcess"
+            . report
+                outputCoinBefore
+                "outputCoinBefore"
+            . report
+                outputCoinAfter
+                "outputCoinAfter"
+            . report
+                outputCoinIncrease
+                "outputCoinIncrease"
+            . report
+                outputCostBefore
+                "outputCostBefore"
+            . report
+                outputCostAfter
+                "outputCostAfter"
+            . report
+                outputCostIncrease
+                "outputCostIncrease"
 
     constraints = unMockTxConstraints mockConstraints
 
     (feeExcessAfter, outputAfter) =
         minimizeFeeStep constraints (feeExcessBefore, outputBefore)
 
-    costOfEliminatingFeeExcess = Coin.distance
-        (txOutputCoinCost constraints outputCoinAfter)
-        (txOutputCoinCost constraints (outputCoinAfter <> feeExcessAfter))
-    gainOfEliminatingFeeExcess = Coin.difference
-        feeExcessAfter
-        costOfEliminatingFeeExcess
+    costOfEliminatingFeeExcess =
+        Coin.distance
+            (txOutputCoinCost constraints outputCoinAfter)
+            (txOutputCoinCost constraints (outputCoinAfter <> feeExcessAfter))
+    gainOfEliminatingFeeExcess =
+        Coin.difference
+            feeExcessAfter
+            costOfEliminatingFeeExcess
 
     feeExcessReduction =
         Coin.distance feeExcessBefore feeExcessAfter
@@ -583,7 +683,7 @@ prop_minimizeFeeStep_inner mockConstraints feeExcessBefore outputBefore =
 prop_txOutputCost :: Blind MockTxConstraints -> Property
 prop_txOutputCost (Blind mockConstraints) =
     forAllBlind genOutput $ \output ->
-    prop_txOutputCost_inner mockConstraints output
+        prop_txOutputCost_inner mockConstraints output
   where
     genOutput :: Gen TokenBundle
     genOutput = genTokenBundleMixed mockConstraints
@@ -592,42 +692,51 @@ prop_txOutputCost_inner :: MockTxConstraints -> TokenBundle -> Property
 prop_txOutputCost_inner mockConstraints output =
     makeReports $ testAll makeTests
   where
-    makeTests
-        = verify
-            ( txOutputCost constraints output <
-              txOutputCost constraints outputWithLargerCoin )
+    makeTests =
+        verify
+            ( txOutputCost constraints output
+                < txOutputCost constraints outputWithLargerCoin
+            )
             "multiplying a coin by a factor of 10 increases its cost"
-        . verify
-            ( txOutputCost constraints output <
-              txOutputCost constraints outputWithMaxCoin )
-            "all coins cost less than the maximum ada quantity"
-        . verify
-            ( txOutputCostDifference     output outputWithLargerCoin ==
-              txOutputCoinCostDifference output outputWithLargerCoin )
-            "cost difference is independent of whether bundles are considered"
-    makeReports
-        = report mockConstraints
+            . verify
+                ( txOutputCost constraints output
+                    < txOutputCost constraints outputWithMaxCoin
+                )
+                "all coins cost less than the maximum ada quantity"
+            . verify
+                ( txOutputCostDifference output outputWithLargerCoin
+                    == txOutputCoinCostDifference output outputWithLargerCoin
+                )
+                "cost difference is independent of whether bundles are considered"
+    makeReports =
+        report
+            mockConstraints
             "mockConstraints"
-        . report output
-            "output"
-        . report outputWithLargerCoin
-            "outputWithLargerCoin"
+            . report
+                output
+                "output"
+            . report
+                outputWithLargerCoin
+                "outputWithLargerCoin"
 
     txOutputCostDifference :: TokenBundle -> TokenBundle -> Coin
-    txOutputCostDifference out1 out2 = Coin.distance
-        (txOutputCost constraints out1)
-        (txOutputCost constraints out2)
+    txOutputCostDifference out1 out2 =
+        Coin.distance
+            (txOutputCost constraints out1)
+            (txOutputCost constraints out2)
 
     txOutputCoinCostDifference :: TokenBundle -> TokenBundle -> Coin
-    txOutputCoinCostDifference out1 out2 = Coin.distance
-        (txOutputCoinCost constraints (view #coin out1))
-        (txOutputCoinCost constraints (view #coin out2))
+    txOutputCoinCostDifference out1 out2 =
+        Coin.distance
+            (txOutputCoinCost constraints (view #coin out1))
+            (txOutputCoinCost constraints (view #coin out2))
 
     constraints =
         unMockTxConstraints mockConstraints
-    outputWithLargerCoin = TokenBundle.setCoin output
-        $ multiplyCoinByTen
-        $ TokenBundle.getCoin output
+    outputWithLargerCoin =
+        TokenBundle.setCoin output $
+            multiplyCoinByTen $
+                TokenBundle.getCoin output
     outputWithMaxCoin =
         TokenBundle.setCoin output txOutMaxCoin
     multiplyCoinByTen (Coin n) = Coin $ 10 * n
@@ -639,7 +748,7 @@ prop_txOutputCost_inner mockConstraints output =
 prop_txOutputSize :: Blind MockTxConstraints -> Property
 prop_txOutputSize (Blind mockConstraints) =
     forAllBlind genOutput $ \output ->
-    prop_txOutputSize_inner mockConstraints output
+        prop_txOutputSize_inner mockConstraints output
   where
     genOutput :: Gen TokenBundle
     genOutput = genTokenBundleMixed mockConstraints
@@ -648,42 +757,51 @@ prop_txOutputSize_inner :: MockTxConstraints -> TokenBundle -> Property
 prop_txOutputSize_inner mockConstraints output =
     makeReports $ testAll makeTests
   where
-    makeTests
-        = verify
-            ( txOutputSize constraints output <
-              txOutputSize constraints outputWithLargerCoin )
+    makeTests =
+        verify
+            ( txOutputSize constraints output
+                < txOutputSize constraints outputWithLargerCoin
+            )
             "multiplying a coin by a factor of 10 increases its size"
-        . verify
-            ( txOutputSize constraints output <
-              txOutputSize constraints outputWithMaxCoin )
-            "all coins have a smaller size than the maximum ada quantity"
-        . verify
-            ( txOutputSizeDifference     output outputWithLargerCoin ==
-              txOutputCoinSizeDifference output outputWithLargerCoin )
-            "size difference is independent of whether bundles are considered"
-    makeReports
-        = report mockConstraints
+            . verify
+                ( txOutputSize constraints output
+                    < txOutputSize constraints outputWithMaxCoin
+                )
+                "all coins have a smaller size than the maximum ada quantity"
+            . verify
+                ( txOutputSizeDifference output outputWithLargerCoin
+                    == txOutputCoinSizeDifference output outputWithLargerCoin
+                )
+                "size difference is independent of whether bundles are considered"
+    makeReports =
+        report
+            mockConstraints
             "mockConstraints"
-        . report output
-            "output"
-        . report outputWithLargerCoin
-            "outputWithLargerCoin"
+            . report
+                output
+                "output"
+            . report
+                outputWithLargerCoin
+                "outputWithLargerCoin"
 
     txOutputSizeDifference :: TokenBundle -> TokenBundle -> TxSize
-    txOutputSizeDifference out1 out2 = txSizeDistance
-        (txOutputSize constraints out1)
-        (txOutputSize constraints out2)
+    txOutputSizeDifference out1 out2 =
+        txSizeDistance
+            (txOutputSize constraints out1)
+            (txOutputSize constraints out2)
 
     txOutputCoinSizeDifference :: TokenBundle -> TokenBundle -> TxSize
-    txOutputCoinSizeDifference out1 out2 = txSizeDistance
-        (txOutputCoinSize constraints (view #coin out1))
-        (txOutputCoinSize constraints (view #coin out2))
+    txOutputCoinSizeDifference out1 out2 =
+        txSizeDistance
+            (txOutputCoinSize constraints (view #coin out1))
+            (txOutputCoinSize constraints (view #coin out2))
 
     constraints =
         unMockTxConstraints mockConstraints
-    outputWithLargerCoin = TokenBundle.setCoin output
-        $ multiplyCoinByTen
-        $ TokenBundle.getCoin output
+    outputWithLargerCoin =
+        TokenBundle.setCoin output $
+            multiplyCoinByTen $
+                TokenBundle.getCoin output
     outputWithMaxCoin =
         TokenBundle.setCoin output txOutMaxCoin
     multiplyCoinByTen (Coin n) = Coin $ 10 * n
@@ -693,20 +811,20 @@ prop_txOutputSize_inner mockConstraints output =
 --------------------------------------------------------------------------------
 
 data MockTxConstraints = MockTxConstraints
-    { mockTxCostFunction
-        :: MockTxCostFunction
-    , mockTxBaseSize
-        :: MockTxBaseSize
-    , mockTxInputSize
-        :: MockTxInputSize
-    , mockTxOutputMaximumSize
-        :: MockTxOutputMaximumSize
-    , mockTxOutputMaximumTokenQuantity
-        :: MockTxOutputMaximumTokenQuantity
-    , mockTxOutputMinimumAdaQuantity
-        :: MockTxOutputMinimumAdaQuantity
-    , mockTxMaximumSize
-        :: MockTxMaximumSize
+    { mockTxCostFunction ::
+        MockTxCostFunction
+    , mockTxBaseSize ::
+        MockTxBaseSize
+    , mockTxInputSize ::
+        MockTxInputSize
+    , mockTxOutputMaximumSize ::
+        MockTxOutputMaximumSize
+    , mockTxOutputMaximumTokenQuantity ::
+        MockTxOutputMaximumTokenQuantity
+    , mockTxOutputMinimumAdaQuantity ::
+        MockTxOutputMinimumAdaQuantity
+    , mockTxMaximumSize ::
+        MockTxMaximumSize
     }
     deriving (Eq, Show)
 
@@ -721,44 +839,47 @@ genMockTxConstraints = do
     mockTxOutputMaximumSize <- genMockTxOutputMaximumSize
     mockTxOutputMaximumTokenQuantity <- genMockTxOutputMaximumTokenQuantity
     mockTxOutputMinimumAdaQuantity <- genMockTxOutputMinimumAdaQuantity
-    mockTxMaximumSize <- genMockTxMaximumSize
-        mockTxBaseSize
-        mockTxInputSize
-        mockTxOutputMaximumSize
+    mockTxMaximumSize <-
+        genMockTxMaximumSize
+            mockTxBaseSize
+            mockTxInputSize
+            mockTxOutputMaximumSize
     pure MockTxConstraints {..}
 
 unMockTxConstraints :: MockTxConstraints -> TxConstraints
-unMockTxConstraints MockTxConstraints {..} = TxConstraints
-    { txBaseCost =
-        baseCost mockTxCostFunction
-    , txBaseSize =
-        unMockTxBaseSize mockTxBaseSize
-    , txInputCost =
-        mockSizeToCost $ unMockTxInputSize mockTxInputSize
-    , txInputSize =
-        unMockTxInputSize mockTxInputSize
-    , txOutputCost =
-        mockSizeToCost . mockOutputSize
-    , txOutputSize =
-        mockOutputSize
-    , txOutputMaximumSize =
-        unMockTxOutputMaximumSize mockTxOutputMaximumSize
-    , txOutputMaximumTokenQuantity =
-        unMockTxOutputMaximumTokenQuantity mockTxOutputMaximumTokenQuantity
-    , txOutputMinimumAdaQuantity =
-        unMockTxOutputMinimumAdaQuantity mockTxOutputMinimumAdaQuantity
-    , txRewardWithdrawalCost =
-        mockSizeToCost . mockRewardWithdrawalSize
-    , txRewardWithdrawalSize =
-        mockRewardWithdrawalSize
-    , txMaximumSize =
-        unMockTxMaximumSize mockTxMaximumSize
-    }
+unMockTxConstraints MockTxConstraints {..} =
+    TxConstraints
+        { txBaseCost =
+            baseCost mockTxCostFunction
+        , txBaseSize =
+            unMockTxBaseSize mockTxBaseSize
+        , txInputCost =
+            mockSizeToCost $ unMockTxInputSize mockTxInputSize
+        , txInputSize =
+            unMockTxInputSize mockTxInputSize
+        , txOutputCost =
+            mockSizeToCost . mockOutputSize
+        , txOutputSize =
+            mockOutputSize
+        , txOutputMaximumSize =
+            unMockTxOutputMaximumSize mockTxOutputMaximumSize
+        , txOutputMaximumTokenQuantity =
+            unMockTxOutputMaximumTokenQuantity mockTxOutputMaximumTokenQuantity
+        , txOutputMinimumAdaQuantity =
+            unMockTxOutputMinimumAdaQuantity mockTxOutputMinimumAdaQuantity
+        , txRewardWithdrawalCost =
+            mockSizeToCost . mockRewardWithdrawalSize
+        , txRewardWithdrawalSize =
+            mockRewardWithdrawalSize
+        , txMaximumSize =
+            unMockTxMaximumSize mockTxMaximumSize
+        }
   where
     mockOutputSize :: TokenBundle -> TxSize
-    mockOutputSize (TokenBundle c m) = (<>)
-        (TxSize $ fromIntegral $ BS.length $ pretty $ Flat m)
-        (mockCoinSize c)
+    mockOutputSize (TokenBundle c m) =
+        (<>)
+            (TxSize $ fromIntegral $ BS.length $ pretty $ Flat m)
+            (mockCoinSize c)
 
     mockRewardWithdrawalSize :: Coin -> TxSize
     mockRewardWithdrawalSize = \case
@@ -785,18 +906,19 @@ data MockTxCostFunction = MockTxCostFunction
     deriving stock (Eq, Show)
 
 genMockTxCostFunction :: Gen MockTxCostFunction
-genMockTxCostFunction = MockTxCostFunction
-    <$> genCoinRange (Coin 0) (Coin 1000)
-    <*> genCoinRange (Coin 1) (Coin 4)
+genMockTxCostFunction =
+    MockTxCostFunction
+        <$> genCoinRange (Coin 0) (Coin 1000)
+        <*> genCoinRange (Coin 1) (Coin 4)
 
 --------------------------------------------------------------------------------
 -- Mock base transaction sizes
 --------------------------------------------------------------------------------
 
 newtype MockTxBaseSize = MockTxBaseSize
-    { unMockTxBaseSize :: TxSize }
-    deriving stock Eq
-    deriving Show via Natural
+    {unMockTxBaseSize :: TxSize}
+    deriving stock (Eq)
+    deriving (Show) via Natural
 
 genMockTxBaseSize :: Gen MockTxBaseSize
 genMockTxBaseSize = MockTxBaseSize <$> genTxSizeRange 0 1000
@@ -806,9 +928,9 @@ genMockTxBaseSize = MockTxBaseSize <$> genTxSizeRange 0 1000
 --------------------------------------------------------------------------------
 
 newtype MockTxInputSize = MockTxInputSize
-    { unMockTxInputSize :: TxSize }
-    deriving stock Eq
-    deriving Show via Natural
+    {unMockTxInputSize :: TxSize}
+    deriving stock (Eq)
+    deriving (Show) via Natural
 
 genMockTxInputSize :: Gen MockTxInputSize
 genMockTxInputSize = MockTxInputSize <$> genTxSizeRange 2 4
@@ -818,9 +940,9 @@ genMockTxInputSize = MockTxInputSize <$> genTxSizeRange 2 4
 --------------------------------------------------------------------------------
 
 newtype MockTxOutputMaximumSize = MockTxOutputMaximumSize
-    { unMockTxOutputMaximumSize :: TxSize }
-    deriving stock Eq
-    deriving Show via Natural
+    {unMockTxOutputMaximumSize :: TxSize}
+    deriving stock (Eq)
+    deriving (Show) via Natural
 
 genMockTxOutputMaximumSize :: Gen MockTxOutputMaximumSize
 genMockTxOutputMaximumSize =
@@ -833,13 +955,14 @@ genMockTxOutputMaximumSize =
 --------------------------------------------------------------------------------
 
 newtype MockTxOutputMaximumTokenQuantity = MockTxOutputMaximumTokenQuantity
-    { unMockTxOutputMaximumTokenQuantity :: TokenQuantity }
-    deriving stock Eq
-    deriving Show via Natural
+    {unMockTxOutputMaximumTokenQuantity :: TokenQuantity}
+    deriving stock (Eq)
+    deriving (Show) via Natural
 
 genMockTxOutputMaximumTokenQuantity :: Gen MockTxOutputMaximumTokenQuantity
-genMockTxOutputMaximumTokenQuantity = MockTxOutputMaximumTokenQuantity <$>
-    genTokenQuantityRange (TokenQuantity 500) (TokenQuantity 2000)
+genMockTxOutputMaximumTokenQuantity =
+    MockTxOutputMaximumTokenQuantity
+        <$> genTokenQuantityRange (TokenQuantity 500) (TokenQuantity 2000)
 
 --------------------------------------------------------------------------------
 -- Mock minimum ada quantities
@@ -851,71 +974,78 @@ data MockTxOutputMinimumAdaQuantity = MockTxOutputMinimumAdaQuantity
     }
     deriving (Eq, Show)
 
-unMockTxOutputMinimumAdaQuantity
-    :: MockTxOutputMinimumAdaQuantity
-    -> (TokenMap -> Coin)
+unMockTxOutputMinimumAdaQuantity ::
+    MockTxOutputMinimumAdaQuantity ->
+    (TokenMap -> Coin)
 unMockTxOutputMinimumAdaQuantity mock m =
-    let assetCount = TokenMap.size m in
-    perOutput mock
-        <> mtimesDefault assetCount (perOutputAsset mock)
+    let assetCount = TokenMap.size m
+     in perOutput mock
+            <> mtimesDefault assetCount (perOutputAsset mock)
 
 genMockTxOutputMinimumAdaQuantity :: Gen MockTxOutputMinimumAdaQuantity
-genMockTxOutputMinimumAdaQuantity = MockTxOutputMinimumAdaQuantity
-    <$> genCoinRange (Coin 4) (Coin 8)
-    <*> genCoinRange (Coin 1) (Coin 2)
+genMockTxOutputMinimumAdaQuantity =
+    MockTxOutputMinimumAdaQuantity
+        <$> genCoinRange (Coin 4) (Coin 8)
+        <*> genCoinRange (Coin 1) (Coin 2)
 
 --------------------------------------------------------------------------------
 -- Mock maximum transaction sizes
 --------------------------------------------------------------------------------
 
 newtype MockTxMaximumSize = MockTxMaximumSize
-    { unMockTxMaximumSize :: TxSize }
-    deriving stock Eq
-    deriving Show via Natural
+    {unMockTxMaximumSize :: TxSize}
+    deriving stock (Eq)
+    deriving (Show) via Natural
 
-genMockTxMaximumSize
-    :: MockTxBaseSize
-    -> MockTxInputSize
-    -> MockTxOutputMaximumSize
-    -> Gen MockTxMaximumSize
+genMockTxMaximumSize ::
+    MockTxBaseSize ->
+    MockTxInputSize ->
+    MockTxOutputMaximumSize ->
+    Gen MockTxMaximumSize
 genMockTxMaximumSize mockTxBaseSize mockTxInputSize mockTxOutputMaximumSize =
     pure $ genInner 4
   where
     genInner :: Int -> MockTxMaximumSize
-    genInner multiplier = MockTxMaximumSize $ mconcat
-        [ unMockTxBaseSize mockTxBaseSize
-        , stimes multiplier (unMockTxInputSize mockTxInputSize)
-        , stimes multiplier (unMockTxOutputMaximumSize mockTxOutputMaximumSize)
-        ]
+    genInner multiplier =
+        MockTxMaximumSize $
+            mconcat
+                [ unMockTxBaseSize mockTxBaseSize
+                , stimes multiplier (unMockTxInputSize mockTxInputSize)
+                , stimes multiplier (unMockTxOutputMaximumSize mockTxOutputMaximumSize)
+                ]
 
 --------------------------------------------------------------------------------
 -- Generating inputs
 --------------------------------------------------------------------------------
 
 newtype MockInputId = MockInputId
-    { unMockInputId :: ByteString }
+    {unMockInputId :: ByteString}
     deriving (Eq, Ord)
 
 instance Show MockInputId where
     show = show . T.decodeUtf8 . convertToBase Base16 . unMockInputId
 
 genMockInput :: MockTxConstraints -> Gen (MockInputId, TokenBundle)
-genMockInput mockConstraints = (,)
-    <$> genMockInputId
-    <*> genTokenBundleMixed mockConstraints
+genMockInput mockConstraints =
+    (,)
+        <$> genMockInputId
+        <*> genTokenBundleMixed mockConstraints
 
 shrinkMockInput :: (MockInputId, TokenBundle) -> [(MockInputId, TokenBundle)]
 shrinkMockInput (inputId, TokenBundle c m)
-    | c /= Coin 0, m /= mempty =
+    | c /= Coin 0
+      , m /= mempty =
         [(inputId, TokenBundle c mempty)]
-    | c /= Coin 0, m == mempty =
+    | c /= Coin 0
+      , m == mempty =
         [(inputId, TokenBundle (Coin 0) mempty)]
     | otherwise =
         []
 
 genMockInputId :: Gen MockInputId
-genMockInputId = MockInputId . BS.pack <$>
-    vectorOf 16 (choose (minBound @Word8, maxBound @Word8))
+genMockInputId =
+    MockInputId . BS.pack
+        <$> vectorOf 16 (choose (minBound @Word8, maxBound @Word8))
 
 --------------------------------------------------------------------------------
 -- Generating coins, token bundles, token maps, and token quantities
@@ -978,10 +1108,8 @@ genTokenBundleAboveMinimumAdaQuantity mockConstraints = do
 genTokenMap :: MockTxConstraints -> Gen TokenMap
 genTokenMap mockConstraints =
     genInner
-        `suchThat`
-            (txOutputHasValidSize constraints . (TokenBundle txOutMaxCoin))
-        `suchThat`
-            (txOutputHasValidTokenQuantities constraints)
+        `suchThat` (txOutputHasValidSize constraints . (TokenBundle txOutMaxCoin))
+        `suchThat` (txOutputHasValidTokenQuantities constraints)
   where
     constraints = unMockTxConstraints mockConstraints
 
@@ -991,11 +1119,12 @@ genTokenMap mockConstraints =
         TokenMap.fromFlatList <$> replicateM assetCount genAssetQuantity
 
     genAssetQuantity :: Gen (AssetId, TokenQuantity)
-    genAssetQuantity = (,)
-        <$> genAssetId
-        <*> genTokenQuantityRange
-            (TokenQuantity 1)
-            (txOutputMaximumTokenQuantity constraints)
+    genAssetQuantity =
+        (,)
+            <$> genAssetId
+            <*> genTokenQuantityRange
+                (TokenQuantity 1)
+                (txOutputMaximumTokenQuantity constraints)
 
     genAssetId :: Gen AssetId
     genAssetId = elements mockAssetIds
@@ -1017,10 +1146,12 @@ mockAssetIds =
 --------------------------------------------------------------------------------
 
 genRewardWithdrawal :: Gen RewardWithdrawal
-genRewardWithdrawal = RewardWithdrawal <$> oneof
-    [ pure (Coin 0)
-    , genCoinRange (Coin 1) (Coin 1_000_000)
-    ]
+genRewardWithdrawal =
+    RewardWithdrawal
+        <$> oneof
+            [ pure (Coin 0)
+            , genCoinRange (Coin 1) (Coin 1_000_000)
+            ]
 
 --------------------------------------------------------------------------------
 -- Generating transaction sizes
@@ -1028,8 +1159,8 @@ genRewardWithdrawal = RewardWithdrawal <$> oneof
 
 genTxSizeRange :: Natural -> Natural -> Gen TxSize
 genTxSizeRange minSize maxSize =
-    TxSize . fromIntegral @Integer @Natural <$>
-        choose (fromIntegral minSize, fromIntegral maxSize)
+    TxSize . fromIntegral @Integer @Natural
+        <$> choose (fromIntegral minSize, fromIntegral maxSize)
 
 --------------------------------------------------------------------------------
 -- Arbitrary instances
@@ -1043,12 +1174,12 @@ instance Arbitrary a => Arbitrary (NonEmpty a) where
 -- Internal types and functions
 --------------------------------------------------------------------------------
 
--- | Tests a collection of properties defined with 'verify'.
---
--- Example:
---
--- >>> testAll (verify c1 "cond1" . verify c2 "cond2" . verify c3 "cond3")
---
+{- | Tests a collection of properties defined with 'verify'.
+
+ Example:
+
+ >>> testAll (verify c1 "cond1" . verify c2 "cond2" . verify c3 "cond3")
+-}
 testAll :: (Property -> Property) -> Property
 testAll properties = properties $ property True
 

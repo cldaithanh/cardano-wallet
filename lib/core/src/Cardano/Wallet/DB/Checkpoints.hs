@@ -2,40 +2,48 @@
 {-# LANGUAGE OverloadedLabels #-}
 {-# LANGUAGE TypeFamilies #-}
 
--- |
--- Copyright: © 2021 IOHK
--- License: Apache-2.0
---
--- Data type that represents a collection of checkpoints.
--- Each checkpoints is associated with a 'Slot'.
+{- |
+ Copyright: © 2021 IOHK
+ License: Apache-2.0
 
-module Cardano.Wallet.DB.Checkpoints
-    ( -- * Checkpoints  
-      Checkpoints
-    , checkpoints
-    , loadCheckpoints
-    , fromGenesis
-    , getLatest
-    , findNearestPoint
-    
+ Data type that represents a collection of checkpoints.
+ Each checkpoints is associated with a 'Slot'.
+-}
+module Cardano.Wallet.DB.Checkpoints (
+    -- * Checkpoints
+    Checkpoints,
+    checkpoints,
+    loadCheckpoints,
+    fromGenesis,
+    getLatest,
+    findNearestPoint,
+
     -- * Delta types
-    , DeltaCheckpoints (..)
-    ) where
+    DeltaCheckpoints (..),
+) where
 
 import Prelude
 
-import Data.Delta
-    ( Delta (..) )
-import Data.Generics.Internal.VL.Lens
-    ( over, view )
-import Data.Map.Strict
-    ( Map )
-import Data.Maybe
-    ( fromMaybe )
-import Fmt
-    ( Buildable (..), listF )
-import GHC.Generics
-    ( Generic )
+import Data.Delta (
+    Delta (..),
+ )
+import Data.Generics.Internal.VL.Lens (
+    over,
+    view,
+ )
+import Data.Map.Strict (
+    Map,
+ )
+import Data.Maybe (
+    fromMaybe,
+ )
+import Fmt (
+    Buildable (..),
+    listF,
+ )
+import GHC.Generics (
+    Generic,
+ )
 
 import qualified Cardano.Wallet.Primitive.Types as W
 import qualified Data.Map.Strict as Map
@@ -76,21 +84,25 @@ is clear that the data cannot exist at the genesis point
 {-------------------------------------------------------------------------------
     Checkpoints
 -------------------------------------------------------------------------------}
+
 -- | Collection of checkpoints indexed by 'Slot'.
 newtype Checkpoints a = Checkpoints
-    { checkpoints :: Map W.Slot a
-    -- ^ Map of checkpoints. Always contains the genesis checkpoint.
-    } deriving (Eq,Show,Generic)
+    { -- | Map of checkpoints. Always contains the genesis checkpoint.
+      checkpoints :: Map W.Slot a
+    }
+    deriving (Eq, Show, Generic)
+
 -- FIXME LATER during ADP-1043:
 --  Use a more sophisticated 'Checkpoints' type that stores deltas.
 
--- | Turn the list of checkpoints into a map of checkpoints.
---
--- FIXME LATER during ADP-1043:
---   The database actually does not store the checkpoint at genesis,
---   but the checkpoint after that.
---   Hence, this function does not check whether the genesis checkpoint
---   is in the list of checkpoints.
+{- | Turn the list of checkpoints into a map of checkpoints.
+
+ FIXME LATER during ADP-1043:
+   The database actually does not store the checkpoint at genesis,
+   but the checkpoint after that.
+   Hence, this function does not check whether the genesis checkpoint
+   is in the list of checkpoints.
+-}
 loadCheckpoints :: [(W.Slot, a)] -> Checkpoints a
 loadCheckpoints = Checkpoints . Map.fromList
 
@@ -100,7 +112,7 @@ fromGenesis a = Checkpoints $ Map.singleton W.Origin a
 
 -- | Get the checkpoint with the largest 'SlotNo'.
 getLatest :: Checkpoints a -> (W.Slot, a)
-getLatest = from . Map.lookupMax . view #checkpoints 
+getLatest = from . Map.lookupMax . view #checkpoints
   where
     from = fromMaybe (error "getLatest: there should always be at least a genesis checkpoint")
 
@@ -114,19 +126,21 @@ findNearestPoint m key = fst <$> Map.lookupLE key (view #checkpoints m)
 data DeltaCheckpoints a
     = PutCheckpoint W.Slot a
     | RollbackTo W.Slot
-        -- Rolls back to the latest checkpoint at or before this slot.
-    | RestrictTo [W.Slot]
-        -- ^ Restrict to the intersection of this list with
-        -- the checkpoints that are already present.
-        -- The genesis checkpoint will always be present.
+    | -- Rolls back to the latest checkpoint at or before this slot.
+
+      -- | Restrict to the intersection of this list with
+      -- the checkpoints that are already present.
+      -- The genesis checkpoint will always be present.
+      RestrictTo [W.Slot]
 
 instance Delta (DeltaCheckpoints a) where
     type Base (DeltaCheckpoints a) = Checkpoints a
     apply (PutCheckpoint pt a) = over #checkpoints $ Map.insert pt a
-    apply (RollbackTo pt) = over #checkpoints $
-        Map.filterWithKey (\k _ -> k <= pt)
+    apply (RollbackTo pt) =
+        over #checkpoints $
+            Map.filterWithKey (\k _ -> k <= pt)
     apply (RestrictTo pts) = over #checkpoints $ \m ->
-        Map.restrictKeys m $ Set.fromList (W.Origin:pts)
+        Map.restrictKeys m $ Set.fromList (W.Origin : pts)
 
 instance Buildable (DeltaCheckpoints a) where
     build (PutCheckpoint slot _) = "PutCheckpoint " <> build slot

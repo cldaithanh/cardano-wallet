@@ -10,88 +10,105 @@
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# OPTIONS_GHC -Wno-orphans #-}
+
 module Cardano.Wallet.Primitive.Delegation.StateSpec where
 
 import Prelude
 
-import Cardano.Address.Derivation
-    ( XPub )
-import Cardano.Wallet.Primitive.AddressDerivation
-    ( Depth (..)
-    , DerivationType (..)
-    , HardDerivation (..)
-    , KeyFingerprint (..)
-    , MkKeyFingerprint (..)
-    , NetworkDiscriminant (..)
-    , PaymentAddress (..)
-    , RewardAccount (..)
-    , SoftDerivation (..)
-    , ToRewardAccount (..)
-    )
-import Cardano.Wallet.Primitive.Delegation.State
-    ( Cert (..)
-    , DelegationState (..)
-    , Key0Status (..)
-    , PointerUTxO (..)
-    , State (..)
-    , Tx (..)
-    , activeKeys
-    , applyTx
-    , initialDelegationState
-    , keyAtIx
-    , presentableKeys
-    , setPortfolioOf
-    , usableKeys
-    )
-import Cardano.Wallet.Primitive.Types.Address
-    ( Address (..) )
-import Cardano.Wallet.Primitive.Types.Coin
-    ( Coin (..) )
-import Cardano.Wallet.Primitive.Types.Hash
-    ( Hash (..) )
-import Cardano.Wallet.Primitive.Types.Tx
-    ( TxIn (..), TxOut (..) )
-import Control.Arrow
-    ( first )
-import Crypto.Hash.Utils
-    ( blake2b224 )
-import Data.Map
-    ( Map )
-import Data.Set
-    ( Set )
-import Fmt
-    ( Buildable (..)
-    , Builder
-    , blockListF
-    , blockListF'
-    , blockMapF
-    , fmt
-    , listF
-    , listF'
-    , mapF'
-    , pretty
-    )
-import GHC.Generics
-    ( Generic )
-import Test.Hspec
-    ( Spec, describe, it, shouldBe )
-import Test.QuickCheck
-    ( Arbitrary (..)
-    , NonNegative (..)
-    , Property
-    , conjoin
-    , counterexample
-    , forAllShow
-    , frequency
-    , genericShrink
-    , property
-    , sublistOf
-    , withMaxSuccess
-    , (.&&.)
-    , (===)
-    )
-import Test.QuickCheck.Arbitrary.Generic
-    ( genericArbitrary )
+import Cardano.Address.Derivation (
+    XPub,
+ )
+import Cardano.Wallet.Primitive.AddressDerivation (
+    Depth (..),
+    DerivationType (..),
+    HardDerivation (..),
+    KeyFingerprint (..),
+    MkKeyFingerprint (..),
+    NetworkDiscriminant (..),
+    PaymentAddress (..),
+    RewardAccount (..),
+    SoftDerivation (..),
+    ToRewardAccount (..),
+ )
+import Cardano.Wallet.Primitive.Delegation.State (
+    Cert (..),
+    DelegationState (..),
+    Key0Status (..),
+    PointerUTxO (..),
+    State (..),
+    Tx (..),
+    activeKeys,
+    applyTx,
+    initialDelegationState,
+    keyAtIx,
+    presentableKeys,
+    setPortfolioOf,
+    usableKeys,
+ )
+import Cardano.Wallet.Primitive.Types.Address (
+    Address (..),
+ )
+import Cardano.Wallet.Primitive.Types.Coin (
+    Coin (..),
+ )
+import Cardano.Wallet.Primitive.Types.Hash (
+    Hash (..),
+ )
+import Cardano.Wallet.Primitive.Types.Tx (
+    TxIn (..),
+    TxOut (..),
+ )
+import Control.Arrow (
+    first,
+ )
+import Crypto.Hash.Utils (
+    blake2b224,
+ )
+import Data.Map (
+    Map,
+ )
+import Data.Set (
+    Set,
+ )
+import Fmt (
+    Buildable (..),
+    Builder,
+    blockListF,
+    blockListF',
+    blockMapF,
+    fmt,
+    listF,
+    listF',
+    mapF',
+    pretty,
+ )
+import GHC.Generics (
+    Generic,
+ )
+import Test.Hspec (
+    Spec,
+    describe,
+    it,
+    shouldBe,
+ )
+import Test.QuickCheck (
+    Arbitrary (..),
+    NonNegative (..),
+    Property,
+    conjoin,
+    counterexample,
+    forAllShow,
+    frequency,
+    genericShrink,
+    property,
+    sublistOf,
+    withMaxSuccess,
+    (.&&.),
+    (===),
+ )
+import Test.QuickCheck.Arbitrary.Generic (
+    genericArbitrary,
+ )
 
 import qualified Cardano.Wallet.Primitive.Types.TokenBundle as TB
 import qualified Data.ByteString as BS
@@ -103,10 +120,16 @@ spec :: Spec
 spec = do
     describe "Goldens" $ do
         let acc = toRewardAccount @StakeKey' . toEnum
-        let regAndDeleg i = applyTx (Tx
-                [ RegisterKey $ acc i
-                , Delegate $ acc i
-                ] [] []) (error "hash not needed")
+        let regAndDeleg i =
+                applyTx
+                    ( Tx
+                        [ RegisterKey $ acc i
+                        , Delegate $ acc i
+                        ]
+                        []
+                        []
+                    )
+                    (error "hash not needed")
 
         let s0 = initialDelegationState accK
         describe "initialDelegationState" $ do
@@ -130,45 +153,57 @@ spec = do
                 usableKeys s2 `shouldBe` [toEnum 0, toEnum 1]
 
         let s3 = regAndDeleg 5 s2
-        describe "Impossible gaps in stake keys (shouldn't happen unless\
-            \ someone manually constructs txs to mess with the on-chain state)" $ do
-            it "presentableKeys == [0, 1, 2] (doesn't find 5)" $ do
-                (presentableKeys s3) `shouldBe`
-                    [toEnum 0, toEnum 1, toEnum 2]
-            it "usableKeys == [0, 1]" $ do
-                usableKeys s3 `shouldBe` [toEnum 0, toEnum 1]
+        describe
+            "Impossible gaps in stake keys (shouldn't happen unless\
+            \ someone manually constructs txs to mess with the on-chain state)"
+            $ do
+                it "presentableKeys == [0, 1, 2] (doesn't find 5)" $ do
+                    (presentableKeys s3)
+                        `shouldBe` [toEnum 0, toEnum 1, toEnum 2]
+                it "usableKeys == [0, 1]" $ do
+                    usableKeys s3 `shouldBe` [toEnum 0, toEnum 1]
 
-    it "(usableKeys s) are consecutive" $ property
-        $ prop_keysConsecutive usableKeys
+    it "(usableKeys s) are consecutive" $
+        property $
+            prop_keysConsecutive usableKeys
 
-    it "(presentableKeys s) are consecutive" $ property
-        $ prop_keysConsecutive presentableKeys
+    it "(presentableKeys s) are consecutive" $
+        property $
+            prop_keysConsecutive presentableKeys
 
-    it "(activeKeys s) are consecutive" $ property $
-        prop_keysConsecutive activeKeys
+    it "(activeKeys s) are consecutive" $
+        property $
+            prop_keysConsecutive activeKeys
 
-    it "pointer is only created and destroyed in specific cases" $ property
-        prop_pointerRules
+    it "pointer is only created and destroyed in specific cases" $
+        property
+            prop_pointerRules
 
-    it "adversaries can't affect usableKeys" $ property
-        prop_usableKeysAdversaries
+    it "adversaries can't affect usableKeys" $
+        property
+            prop_usableKeysAdversaries
 
-    it "adversaries can't affect pointer ix" $ property
-        prop_pointerAdversaries
+    it "adversaries can't affect pointer ix" $
+        property
+            prop_pointerAdversaries
 
-    it "(apply (cmds <> CmdSetPortfolioOf 0) s0) === s0" $ property
-        prop_canAlwaysGoTo0
+    it "(apply (cmds <> CmdSetPortfolioOf 0) s0) === s0" $
+        property
+            prop_canAlwaysGoTo0
 
-    it "no rejected txs, normally" $ property
-        prop_noRejectedTxs
+    it "no rejected txs, normally" $
+        property
+            prop_noRejectedTxs
 
     -- Lots of weird things can happen when we consider concurrent user-actions
     -- on multiple wallet versions and rollbacks.
     --
     -- Whatever happens, we should be able to recover using a single
     -- @CmdSetPortfolioOf n@, and be consistent with the ledger.
-    it "can recover from dropped transactions" $ withMaxSuccess 2000
-        prop_rollbacks
+    it "can recover from dropped transactions" $
+        withMaxSuccess
+            2000
+            prop_rollbacks
 
 --
 -- Properties
@@ -186,14 +221,13 @@ prop_pointerRules :: [Cmd] -> Property
 prop_pointerRules cmds = do
     let env = applyCmds env0 cmds
     forAllTxs env $ \case
-        Tx [] []    [_o] -> True -- Not the actual pointer
-        Tx cs []    [_o] -> Delegate (acct 1) `elem` cs
-        Tx cs [_i]  []   -> DeRegisterKey (acct 1) `elem` cs
-        Tx cs [_i]  [_o] -> any ((> 1) . ixFromCert) cs
-        Tx cs []    []   -> all ((< 1) . ixFromCert) $ filter notReg cs
-        _                -> False
+        Tx [] [] [_o] -> True -- Not the actual pointer
+        Tx cs [] [_o] -> Delegate (acct 1) `elem` cs
+        Tx cs [_i] [] -> DeRegisterKey (acct 1) `elem` cs
+        Tx cs [_i] [_o] -> any ((> 1) . ixFromCert) cs
+        Tx cs [] [] -> all ((< 1) . ixFromCert) $ filter notReg cs
+        _ -> False
   where
-
     ixFromCert :: Cert -> Int
     ixFromCert (DeRegisterKey a) = read . B8.unpack . unRewardAccount $ a
     ixFromCert (RegisterKey a) = read . B8.unpack . unRewardAccount $ a
@@ -206,11 +240,12 @@ prop_pointerRules cmds = do
 
     acct = toRewardAccount . StakeKey'
 
-    forAllTxs e prop = conjoin . flip map (txs e)
-        $ \tx -> counterexample (pretty tx) $ prop tx
+    forAllTxs e prop = conjoin . flip map (txs e) $
+        \tx -> counterexample (pretty tx) $ prop tx
 
--- | Tests that `isAdversarial` commands have no effect on the usableKeys of the
--- state.
+{- | Tests that `isAdversarial` commands have no effect on the usableKeys of the
+ state.
+-}
 prop_usableKeysAdversaries :: [Cmd] -> Property
 prop_usableKeysAdversaries cmds = do
     counterexample "\nstate /= state without adversarial cmds" $ do
@@ -244,8 +279,9 @@ prop_rollbacks (NonNegative n) cmds = do
     forAllSubchains (applyCmds env0 cmds) $ \env' -> do
         let env = applyCmds env' [CmdSetPortfolioOf n]
 
-        let isSubsetOf a b = counterexample (show a <> " ⊄ " <> show b)
-                $ a `Set.isSubsetOf` b
+        let isSubsetOf a b =
+                counterexample (show a <> " ⊄ " <> show b) $
+                    a `Set.isSubsetOf` b
 
         let allActiveKeysRegistered e =
                 Set.map toRewardAccount (Set.fromList (activeKeys $ wallet e))
@@ -254,16 +290,18 @@ prop_rollbacks (NonNegative n) cmds = do
         counterexample (pretty env) $
             length (activeKeys $ wallet env) === n
                 .&&. allActiveKeysRegistered env
+
 --
 -- Helpers
 --
 
--- | Take an arbitrary subset of the txs of an @Env@ to generate a new @Env@.
---
--- NOTE: Can drop txs, but not reorder them.
+{- | Take an arbitrary subset of the txs of an @Env@ to generate a new @Env@.
+
+ NOTE: Can drop txs, but not reorder them.
+-}
 forAllSubchains :: Env -> (Env -> Property) -> Property
-forAllSubchains env prop =  do
-    forAllShow (sublistOf (reverse $ txs env)) (fmt . blockListF) $ \subchain ->  do
+forAllSubchains env prop = do
+    forAllShow (sublistOf (reverse $ txs env)) (fmt . blockListF) $ \subchain -> do
         counterexample ("Txs before dropping some:\n" <> (fmt . blockListF $ reverse $ txs env)) $
             prop $ applyTxs env0 subchain
 
@@ -273,18 +311,18 @@ accK = StakeKey' 0
 isConsecutiveRange :: (Eq a, Num a) => [a] -> Bool
 isConsecutiveRange [_] = True
 isConsecutiveRange [] = True
-isConsecutiveRange (a:b:t)
-    | b == a + 1 = isConsecutiveRange (b:t)
-    | otherwise  = False
-
+isConsecutiveRange (a : b : t)
+    | b == a + 1 = isConsecutiveRange (b : t)
+    | otherwise = False
 
 --
 -- Mock Stake Keys
 --
 
--- | Mock key type for testing.
---
--- FIXME: We should do /some/ testing with @ShelleyKey@ though.
+{- | Mock key type for testing.
+
+ FIXME: We should do /some/ testing with @ShelleyKey@ though.
+-}
 newtype StakeKey' (depth :: Depth) key = StakeKey' Word
     deriving newtype (Eq, Enum, Ord, Show, Bounded)
 
@@ -334,18 +372,16 @@ instance Arbitrary (StakeKey' depth key) where
 --
 
 data Cmd
-    = CmdSetPortfolioOf Int
-    -- ^ Calls @setPortfolioOf@ which registers or de-registers keys to reach
-    -- the new target.
-    --
-    -- If the target is already met, the command has no effect.
-    --
-    -- Delegation certificates are /not/ generated for existing keys.
-    --
-    -- TODO: Also test arbitrary re-delegations.
-    | CmdOldWalletToggleFirstKey
-
-      -- ^ A wallet implementation without multi-stake-key support could decide
+    = -- | Calls @setPortfolioOf@ which registers or de-registers keys to reach
+      -- the new target.
+      --
+      -- If the target is already met, the command has no effect.
+      --
+      -- Delegation certificates are /not/ generated for existing keys.
+      --
+      -- TODO: Also test arbitrary re-delegations.
+      CmdSetPortfolioOf Int
+    | -- | A wallet implementation without multi-stake-key support could decide
       -- to either
       -- 1. register stake-key 0 without adding a pointer UTxO
       -- 2. de-register stake-key 0 despite despite e.g. key 1 being active
@@ -353,11 +389,12 @@ data Cmd
       --
       -- Having a "toggle"-command instead of two separate commands, makes
       -- generating valid arbitrary values easier.
-    | CmdAdversarialReg RewardAccount
-      -- ^ Someone could pay 2 ada to (re-)register your stake key. Your wallet
+      CmdOldWalletToggleFirstKey
+    | -- | Someone could pay 2 ada to (re-)register your stake key. Your wallet
       -- shouldn't be affected negatively from it.
-    | CmdMimicPointerOutput RewardAccount
-      -- ^ Someone could send funds to the same UTxO
+      CmdAdversarialReg RewardAccount
+    | -- | Someone could send funds to the same UTxO
+      CmdMimicPointerOutput RewardAccount
     deriving (Generic, Eq)
 
 isAdversarial :: Cmd -> Bool
@@ -386,11 +423,12 @@ instance Buildable (DelegationState StakeKey') where
     build ds = case state ds of
         Zero -> "Zero"
         One -> "One"
-        More ix p is0Reg -> blockMapF
-            [ ("nextKeyIx" :: String, build $ fromEnum ix)
-            , ("pointer", build p)
-            , ("key0", key0F is0Reg)
-            ]
+        More ix p is0Reg ->
+            blockMapF
+                [ ("nextKeyIx" :: String, build $ fromEnum ix)
+                , ("pointer", build p)
+                , ("key0", key0F is0Reg)
+                ]
       where
         key0F MissingKey0 = "missing"
         key0F ValidKey0 = "there"
@@ -399,19 +437,19 @@ instance Buildable PointerUTxO where
     build (PointerUTxO i _c) = "PointerUTxO " <> inF i
 
 instance Buildable Env where
-    build env = "Env:\n" <> blockMapF
-        [ ("wallet" :: String, build $ wallet env)
-        , ("txs", blockListF' "-" txF $ reverse $ txs env)
-        , ("rejected txs", blockListF' "-" build $ reverse $ rejectedTxs env)
-        , ("ledger", build $ ledger env)
-        ]
+    build env =
+        "Env:\n"
+            <> blockMapF
+                [ ("wallet" :: String, build $ wallet env)
+                , ("txs", blockListF' "-" txF $ reverse $ txs env)
+                , ("rejected txs", blockListF' "-" build $ reverse $ rejectedTxs env)
+                , ("ledger", build $ ledger env)
+                ]
       where
         txF tx = build (txid tx) <> ": " <> build tx
 
-
 rewardAccountF :: RewardAccount -> Builder
 rewardAccountF (RewardAccount a) = build (B8.unpack a)
-
 
 instance Buildable Cert where
     build (RegisterKey k) = "RegKey " <> rewardAccountF k
@@ -422,23 +460,25 @@ instance Arbitrary Cmd where
     -- We don't want to generate too many adversarial registrations (we don't
     -- expect them to happen in reality), but at least some, and enough to cause
     -- consistent failures if something is wrong.
-    arbitrary = frequency
-        [ (80, CmdSetPortfolioOf . getNonNegative <$> arbitrary)
-        , (5, CmdAdversarialReg <$> arbitrary)
-        , (10, pure CmdOldWalletToggleFirstKey)
-        , (5, CmdMimicPointerOutput <$> arbitrary)
-        ]
+    arbitrary =
+        frequency
+            [ (80, CmdSetPortfolioOf . getNonNegative <$> arbitrary)
+            , (5, CmdAdversarialReg <$> arbitrary)
+            , (10, pure CmdOldWalletToggleFirstKey)
+            , (5, CmdMimicPointerOutput <$> arbitrary)
+            ]
     shrink = genericShrink
 
 data Env = Env
     { wallet :: DelegationState StakeKey'
     , ledger :: Ledger
-    , txs :: [Tx]
-        -- ^ All accepted transactions so far in the chain. Newest first.
-    , rejectedTxs :: [String]
-        -- ^ User-generated txs that were rejected. I.e. not adversarial ones.
-        -- Newest first.
-    } deriving (Show, Eq)
+    , -- | All accepted transactions so far in the chain. Newest first.
+      txs :: [Tx]
+    , -- | User-generated txs that were rejected. I.e. not adversarial ones.
+      -- Newest first.
+      rejectedTxs :: [String]
+    }
+    deriving (Show, Eq)
 
 env0 :: Env
 env0 = Env (initialDelegationState accK) initialLedger [] []
@@ -451,37 +491,34 @@ stepCmd (CmdSetPortfolioOf n) env =
   where
     mkAddr k = Address $ "addr" <> unRewardAccount (toRewardAccount k)
     minUTxOVal = Coin 1
-
 stepCmd (CmdAdversarialReg k) env
-    | k `Set.member` regs (ledger env)
-        = env -- We don't want tx errors to appear in @rejectedTxs@.
-    | otherwise
-        = tryApplyTx (Tx [RegisterKey k] [] []) env
+    | k `Set.member` regs (ledger env) =
+        env -- We don't want tx errors to appear in @rejectedTxs@.
+    | otherwise =
+        tryApplyTx (Tx [RegisterKey k] [] []) env
 stepCmd CmdOldWalletToggleFirstKey env =
-            let
-                key0 = toRewardAccount (keyAtIx (wallet env) minBound)
-                isReg =  key0 `Set.member` (regs (ledger env))
-                tx = Tx [if isReg then DeRegisterKey key0 else RegisterKey key0] [] []
-            in tryApplyTx tx env
+    let key0 = toRewardAccount (keyAtIx (wallet env) minBound)
+        isReg = key0 `Set.member` (regs (ledger env))
+        tx = Tx [if isReg then DeRegisterKey key0 else RegisterKey key0] [] []
+     in tryApplyTx tx env
 stepCmd (CmdMimicPointerOutput (RewardAccount acc)) env =
-            let
-                addr = liftPaymentAddress @'Mainnet @StakeKey' $ KeyFingerprint acc
-                c = Coin 1
-                out = TxOut addr (TB.fromCoin c)
-                tx = Tx [] [] [out]
-            in tryApplyTx tx env
+    let addr = liftPaymentAddress @ 'Mainnet @StakeKey' $ KeyFingerprint acc
+        c = Coin 1
+        out = TxOut addr (TB.fromCoin c)
+        tx = Tx [] [] [out]
+     in tryApplyTx tx env
 
 tryApplyTx :: Tx -> Env -> Env
 tryApplyTx tx env = case ledgerApplyTx tx h (ledger env) of
-    Right l' -> env
-        { ledger = l'
-        , wallet = applyTx tx (txid tx) $ wallet env
-        , txs = tx : txs env
-        }
-    Left e -> env { rejectedTxs = e : rejectedTxs env }
+    Right l' ->
+        env
+            { ledger = l'
+            , wallet = applyTx tx (txid tx) $ wallet env
+            , txs = tx : txs env
+            }
+    Left e -> env {rejectedTxs = e : rejectedTxs env}
   where
     h = txid tx
-
 
 applyCmds :: Env -> [Cmd] -> Env
 applyCmds = foldl (flip stepCmd)
@@ -492,7 +529,6 @@ applyTxs = foldl (flip tryApplyTx)
 txid :: Tx -> Hash "Tx"
 txid = Hash . BS.take 4 . blake2b224 . B8.pack . show
 
-
 --
 -- Mock ledger
 --
@@ -500,13 +536,15 @@ txid = Hash . BS.take 4 . blake2b224 . B8.pack . show
 data Ledger = Ledger
     { regs :: Set RewardAccount
     , utxo :: Map TxIn TxOut
-    } deriving (Show, Eq)
+    }
+    deriving (Show, Eq)
 
 instance Buildable Ledger where
-    build l = blockMapF
-        [ ("regs" :: String, listF' rewardAccountF (regs l))
-        , ("utxo", mapF' inF outF (utxo l))
-        ]
+    build l =
+        blockMapF
+            [ ("regs" :: String, listF' rewardAccountF (regs l))
+            , ("utxo", mapF' inF outF (utxo l))
+            ]
 
 initialLedger :: Ledger
 initialLedger = Ledger Set.empty Map.empty
@@ -516,43 +554,40 @@ acctIsReg l a = a `Set.member` (regs l)
 
 ledgerApplyTx :: Tx -> (Hash "Tx") -> Ledger -> Either String Ledger
 ledgerApplyTx tx h l' =
-        (foldl (\x y -> x >>= ledgerApplyCert y) (Right l') (certs tx))
+    (foldl (\x y -> x >>= ledgerApplyCert y) (Right l') (certs tx))
         -- Can be commented out to see the effects of no pointer UTxO on
         -- the tests:
-            >>= ledgerApplyInsOus
-
+        >>= ledgerApplyInsOus
   where
     ledgerApplyInsOus :: Ledger -> Either String Ledger
     ledgerApplyInsOus (Ledger r u) =
-        let
-            -- TODO: There could be duplicates, which we should forbid
+        let -- TODO: There could be duplicates, which we should forbid
             ins = Set.fromList $ map fst $ inputs tx
-            newOuts = Map.fromList $
-                zipWith
-                    (curry $ first (TxIn h))
-                    [0 ..]
-                    (outputs tx)
+            newOuts =
+                Map.fromList $
+                    zipWith
+                        (curry $ first (TxIn h))
+                        [0 ..]
+                        (outputs tx)
 
             canSpend = ins `Set.isSubsetOf` Map.keysSet u
-
-        in
-            if canSpend
-            then Right $ Ledger r $ Map.union newOuts $ u `Map.withoutKeys` ins
-            else Left $ "invalid utxo spending in tx: " <> pretty tx
+         in if canSpend
+                then Right $ Ledger r $ Map.union newOuts $ u `Map.withoutKeys` ins
+                else Left $ "invalid utxo spending in tx: " <> pretty tx
 
     ledgerApplyCert :: Cert -> Ledger -> Either String Ledger
     ledgerApplyCert (Delegate k) l
-        | k `Set.member` (regs l)
-            = pure l
-        | otherwise
-            = Left $ "Can't delegate: " <> show k <> " not in " <> show l
+        | k `Set.member` (regs l) =
+            pure l
+        | otherwise =
+            Left $ "Can't delegate: " <> show k <> " not in " <> show l
     ledgerApplyCert (RegisterKey k) l
-        | k `Set.member` (regs l)
-            = Left $ "Can't register: " <> show k <> " already in: " <> show l
-        | otherwise
-            = pure $ l { regs = Set.insert k (regs l) }
+        | k `Set.member` (regs l) =
+            Left $ "Can't register: " <> show k <> " already in: " <> show l
+        | otherwise =
+            pure $ l {regs = Set.insert k (regs l)}
     ledgerApplyCert (DeRegisterKey k) l
-        | k `Set.member` (regs l)
-            = pure $ l { regs = Set.delete k (regs l) }
-        | otherwise
-            = Left $ "Can't deregister: " <> show k <> " not in " <> show l
+        | k `Set.member` (regs l) =
+            pure $ l {regs = Set.delete k (regs l)}
+        | otherwise =
+            Left $ "Can't deregister: " <> show k <> " not in " <> show l

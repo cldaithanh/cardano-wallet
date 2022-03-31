@@ -1,22 +1,29 @@
 {-# LANGUAGE TypeApplications #-}
 
-module Cardano.Wallet.Primitive.Types.TokenQuantity.Gen
-    ( genTokenQuantity
-    , genTokenQuantityPositive
-    , genTokenQuantityFullRange
-    , shrinkTokenQuantity
-    , shrinkTokenQuantityPositive
-    , shrinkTokenQuantityFullRange
-    ) where
+module Cardano.Wallet.Primitive.Types.TokenQuantity.Gen (
+    genTokenQuantity,
+    genTokenQuantityPositive,
+    genTokenQuantityFullRange,
+    shrinkTokenQuantity,
+    shrinkTokenQuantityPositive,
+    shrinkTokenQuantityFullRange,
+) where
 
 import Prelude
 
-import Cardano.Wallet.Primitive.Types.TokenQuantity
-    ( TokenQuantity (..) )
-import Data.Word
-    ( Word64 )
-import Test.QuickCheck
-    ( Gen, choose, frequency, shrink, sized )
+import Cardano.Wallet.Primitive.Types.TokenQuantity (
+    TokenQuantity (..),
+ )
+import Data.Word (
+    Word64,
+ )
+import Test.QuickCheck (
+    Gen,
+    choose,
+    frequency,
+    shrink,
+    sized,
+ )
 
 --------------------------------------------------------------------------------
 -- Token quantities chosen according to the size parameter.
@@ -37,34 +44,36 @@ genTokenQuantityPositive :: Gen TokenQuantity
 genTokenQuantityPositive = sized $ \n -> quantityFromInt <$> choose (1, max 1 n)
 
 shrinkTokenQuantityPositive :: TokenQuantity -> [TokenQuantity]
-shrinkTokenQuantityPositive
-    = fmap quantityFromInteger
-    . filter (> 0)
-    . shrink
-    . quantityToInteger
+shrinkTokenQuantityPositive =
+    fmap quantityFromInteger
+        . filter (> 0)
+        . shrink
+        . quantityToInteger
 
 --------------------------------------------------------------------------------
 -- Token quantities chosen from the full range available.
 --------------------------------------------------------------------------------
 
--- | Generates token quantities across the full range of what may be encoded
---   within a single on-chain token bundle.
---
--- This generator has a slight bias towards the limits of the range, but
--- otherwise generates values uniformly across the whole range.
---
--- This can be useful when testing roundtrip conversions between different
--- types.
---
+{- | Generates token quantities across the full range of what may be encoded
+   within a single on-chain token bundle.
+
+ This generator has a slight bias towards the limits of the range, but
+ otherwise generates values uniformly across the whole range.
+
+ This can be useful when testing roundtrip conversions between different
+ types.
+-}
 genTokenQuantityFullRange :: Gen TokenQuantity
-genTokenQuantityFullRange = frequency
-    [ ( 1, pure minTokenQuantity )
-    , ( 1, pure maxTokenQuantity )
-    , ( 8
-      , quantityFromInteger <$>
-        choose (1, quantityToInteger maxTokenQuantity - 1)
-      )
-    ]
+genTokenQuantityFullRange =
+    frequency
+        [ (1, pure minTokenQuantity)
+        , (1, pure maxTokenQuantity)
+        ,
+            ( 8
+            , quantityFromInteger
+                <$> choose (1, quantityToInteger maxTokenQuantity - 1)
+            )
+        ]
   where
     minTokenQuantity :: TokenQuantity
     minTokenQuantity = TokenQuantity 0

@@ -1,35 +1,42 @@
-module Cardano.Wallet.Primitive.Types.TokenPolicy.Gen
-    (
+module Cardano.Wallet.Primitive.Types.TokenPolicy.Gen (
     -- * Generators and shrinkers
-      genTokenName
-    , genTokenNameLargeRange
-    , genTokenPolicyId
-    , genTokenPolicyIdLargeRange
-    , shrinkTokenName
-    , shrinkTokenPolicyId
+    genTokenName,
+    genTokenNameLargeRange,
+    genTokenPolicyId,
+    genTokenPolicyIdLargeRange,
+    shrinkTokenName,
+    shrinkTokenPolicyId,
 
     -- * Test values
-    , testTokenNames
-    , testTokenPolicyIds
+    testTokenNames,
+    testTokenPolicyIds,
 
     -- * Creation of test values
-    , mkTokenName
-    , mkTokenPolicyId
-
-    ) where
+    mkTokenName,
+    mkTokenPolicyId,
+) where
 
 import Prelude
 
-import Cardano.Wallet.Primitive.Types.Hash
-    ( Hash (..) )
-import Cardano.Wallet.Primitive.Types.TokenPolicy
-    ( TokenName (..), TokenPolicyId (..) )
-import Data.Either
-    ( fromRight )
-import Data.Text.Class
-    ( FromText (..) )
-import Test.QuickCheck
-    ( Gen, elements, sized, vector )
+import Cardano.Wallet.Primitive.Types.Hash (
+    Hash (..),
+ )
+import Cardano.Wallet.Primitive.Types.TokenPolicy (
+    TokenName (..),
+    TokenPolicyId (..),
+ )
+import Data.Either (
+    fromRight,
+ )
+import Data.Text.Class (
+    FromText (..),
+ )
+import Test.QuickCheck (
+    Gen,
+    elements,
+    sized,
+    vector,
+ )
 
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Char8 as B8
@@ -100,14 +107,15 @@ mkTokenPolicyIdValidChars = ['0' .. '9'] <> ['A' .. 'F']
 -- The input must be a character in the range [0-9] or [A-F].
 --
 mkTokenPolicyId :: Char -> TokenPolicyId
-mkTokenPolicyId c
-    = fromRight reportError
-    $ fromText
-    $ T.pack
-    $ replicate tokenPolicyIdHexStringLength c
+mkTokenPolicyId c =
+    fromRight reportError $
+        fromText $
+            T.pack $
+                replicate tokenPolicyIdHexStringLength c
   where
-    reportError = error $
-        "Unable to generate token policy id from character: " <> show c
+    reportError =
+        error $
+            "Unable to generate token policy id from character: " <> show c
 
 tokenPolicyIdHexStringLength :: Int
 tokenPolicyIdHexStringLength = 56

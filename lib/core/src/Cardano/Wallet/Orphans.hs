@@ -2,30 +2,42 @@
 {-# LANGUAGE TypeFamilies #-}
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 
--- |
--- Copyright: © 2018-2020 IOHK
--- License: Apache-2.0
---
--- Module for orphans which would be too inconvenient to avoid.
+{- |
+ Copyright: © 2018-2020 IOHK
+ License: Apache-2.0
 
+ Module for orphans which would be too inconvenient to avoid.
+-}
 module Cardano.Wallet.Orphans where
 
 import Prelude
 
-import Cardano.Api
-    ( TxMetadata (..), TxMetadataValue (..) )
-import Cardano.Slotting.Slot
-    ( SlotNo (..) )
-import Control.DeepSeq
-    ( NFData (..) )
-import Data.Ord
-    ( comparing )
-import Fmt
-    ( Buildable (..), blockListF, hexF, nameF, unlinesF )
-import Ouroboros.Consensus.HardFork.History.Qry
-    ( PastHorizonException )
-import UnliftIO.Exception
-    ( displayException )
+import Cardano.Api (
+    TxMetadata (..),
+    TxMetadataValue (..),
+ )
+import Cardano.Slotting.Slot (
+    SlotNo (..),
+ )
+import Control.DeepSeq (
+    NFData (..),
+ )
+import Data.Ord (
+    comparing,
+ )
+import Fmt (
+    Buildable (..),
+    blockListF,
+    hexF,
+    nameF,
+    unlinesF,
+ )
+import Ouroboros.Consensus.HardFork.History.Qry (
+    PastHorizonException,
+ )
+import UnliftIO.Exception (
+    displayException,
+ )
 
 import qualified Data.Map as Map
 
@@ -43,9 +55,12 @@ instance Buildable TxMetadata where
       where
         buildElem (n, d) = nameF ("element " <> build n) $ buildDatum d
         buildDatum = \case
-            TxMetaMap as -> blockListF $ mconcat
-                [ [ nameF "key" (buildDatum k), nameF "val" (buildDatum v) ]
-                | (k, v) <- as ]
+            TxMetaMap as ->
+                blockListF $
+                    mconcat
+                        [ [nameF "key" (buildDatum k), nameF "val" (buildDatum v)]
+                        | (k, v) <- as
+                        ]
             TxMetaList xs -> nameF "list" $ blockListF (map buildDatum xs)
             TxMetaNumber i -> build i
             TxMetaBytes bs -> hexF bs

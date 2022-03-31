@@ -9,209 +9,289 @@
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE TypeApplications #-}
-
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 
--- |
--- Copyright: © 2018-2020 IOHK
--- License: Apache-2.0
---
--- This benchmark gathers timings of the important database operations, for
--- various sizes of input. The chosen sizes are meant to approach and slightly
--- exceed realistic maximum values for a wallet.
---
--- For example, the number of inputs and outputs of a single transaction is
--- limited by the maximum transaction size. So we don't need to benchmark
--- transactions larger than that. However we could benchmark writing many large
--- transactions.
---
--- Additionally, the highest number of checkpoints that a wallet could ever want
--- is k=2160. However, there could be multiple wallets in the database, and each
--- checkpoint could have a large (fragmented) UTxO.
---
--- The coin selection algorithm attempts to minimize UTxO size, however a small
--- UTxO can't be taken for granted.
---
--- Smaller input sizes are also timed so that we can check that whether
--- operations are accidentally quadratic.
---
--- An important limit is SQLITE_MAX_VARIABLE_NUMBER, which defaults to 999. If
--- there are database statements with more parameters than that, the DBLayer
--- will throw exceptions.
+{- |
+ Copyright: © 2018-2020 IOHK
+ License: Apache-2.0
 
+ This benchmark gathers timings of the important database operations, for
+ various sizes of input. The chosen sizes are meant to approach and slightly
+ exceed realistic maximum values for a wallet.
+
+ For example, the number of inputs and outputs of a single transaction is
+ limited by the maximum transaction size. So we don't need to benchmark
+ transactions larger than that. However we could benchmark writing many large
+ transactions.
+
+ Additionally, the highest number of checkpoints that a wallet could ever want
+ is k=2160. However, there could be multiple wallets in the database, and each
+ checkpoint could have a large (fragmented) UTxO.
+
+ The coin selection algorithm attempts to minimize UTxO size, however a small
+ UTxO can't be taken for granted.
+
+ Smaller input sizes are also timed so that we can check that whether
+ operations are accidentally quadratic.
+
+ An important limit is SQLITE_MAX_VARIABLE_NUMBER, which defaults to 999. If
+ there are database statements with more parameters than that, the DBLayer
+ will throw exceptions.
+-}
 module Main where
 
 import Prelude
 
-import Cardano.Address.Derivation
-    ( XPub, xpubFromBytes )
-import Cardano.BM.Configuration.Static
-    ( defaultConfigStdout )
-import Cardano.BM.Data.Severity
-    ( Severity (..) )
-import Cardano.BM.Data.Trace
-    ( Trace )
-import Cardano.BM.Data.Tracer
-    ( Tracer, filterSeverity )
-import Cardano.BM.Setup
-    ( setupTrace_, shutdown )
-import Cardano.DB.Sqlite
-    ( ConnectionPool
-    , SqliteContext (..)
-    , newSqliteContext
-    , withConnectionPool
-    )
-import Cardano.Mnemonic
-    ( EntropySize, SomeMnemonic (..), entropyToMnemonic, genEntropy )
-import Cardano.Startup
-    ( withUtf8Encoding )
-import Cardano.Wallet.DB
-    ( DBLayer (..), cleanDB )
-import Cardano.Wallet.DB.Sqlite
-    ( CacheBehavior (..)
-    , PersistAddressBook
-    , WalletDBLog (..)
-    , newDBLayerWith
-    )
-import Cardano.Wallet.DB.Sqlite.TH
-    ( migrateAll )
-import Cardano.Wallet.DummyTarget.Primitive.Types
-    ( block0, dummyGenesisParameters, mkTxId )
-import Cardano.Wallet.Logging
-    ( trMessageText )
-import Cardano.Wallet.Primitive.AddressDerivation
-    ( DelegationAddress (..)
-    , Depth (..)
-    , Index (..)
-    , NetworkDiscriminant (..)
-    , Passphrase (..)
-    , PaymentAddress (..)
-    , PersistPrivateKey
-    , WalletKey (..)
-    )
-import Cardano.Wallet.Primitive.AddressDerivation.Byron
-    ( ByronKey (..) )
-import Cardano.Wallet.Primitive.AddressDerivation.Shelley
-    ( ShelleyKey (..), generateKeyFromSeed, unsafeGenerateKeyFromSeed )
-import Cardano.Wallet.Primitive.AddressDiscovery.Random
-    ( DerivationPath, RndState (..), mkRndState )
-import Cardano.Wallet.Primitive.AddressDiscovery.Sequential
-    ( DerivationPrefix (..)
-    , SeqAddressPool (..)
-    , SeqState (..)
-    , coinTypeAda
-    , defaultAddressPoolGap
-    , mkSeqStateFromAccountXPub
-    , mkSeqStateFromRootXPrv
-    , purposeCIP1852
-    )
-import Cardano.Wallet.Primitive.Model
-    ( Wallet, initWallet, unsafeInitWallet )
-import Cardano.Wallet.Primitive.Slotting
-    ( TimeInterpreter, hoistTimeInterpreter, mkSingleEraInterpreter )
-import Cardano.Wallet.Primitive.Types
-    ( ActiveSlotCoefficient (..)
-    , Block (..)
-    , BlockHeader (..)
-    , EpochLength (..)
-    , Range (..)
-    , SlotLength (..)
-    , SlotNo (..)
-    , SlottingParameters (..)
-    , SortOrder (..)
-    , StartTime (..)
-    , WalletDelegation (..)
-    , WalletDelegationStatus (..)
-    , WalletId (..)
-    , WalletMetadata (..)
-    , WalletName (..)
-    )
-import Cardano.Wallet.Primitive.Types.Address
-    ( Address (..), AddressState (..) )
-import Cardano.Wallet.Primitive.Types.Coin
-    ( Coin (..) )
-import Cardano.Wallet.Primitive.Types.Hash
-    ( Hash (..) )
-import Cardano.Wallet.Primitive.Types.TokenPolicy
-    ( TokenName (..) )
-import Cardano.Wallet.Primitive.Types.TokenQuantity
-    ( TokenQuantity (..) )
-import Cardano.Wallet.Primitive.Types.Tx
-    ( Direction (..)
-    , TransactionInfo
-    , Tx (..)
-    , TxIn (..)
-    , TxMeta (..)
-    , TxOut (..)
-    , TxStatus (..)
-    )
-import Cardano.Wallet.Primitive.Types.UTxO
-    ( UTxO (..) )
-import Cardano.Wallet.Unsafe
-    ( someDummyMnemonic, unsafeRunExceptT )
-import Control.DeepSeq
-    ( NFData (..), deepseq, force )
-import Control.Monad
-    ( join )
-import Control.Monad.Trans.Except
-    ( mapExceptT )
-import Control.Tracer
-    ( contramap )
-import Criterion.Main
-    ( Benchmark
-    , Benchmarkable
-    , bench
-    , bgroup
-    , defaultMain
-    , envWithCleanup
-    , perRunEnv
-    )
-import Crypto.Hash
-    ( hash )
-import Data.ByteString
-    ( ByteString )
-import Data.Either
-    ( fromRight )
-import Data.Functor
-    ( ($>) )
-import Data.Functor.Identity
-    ( Identity (..) )
-import Data.List
-    ( foldl' )
-import Data.Map.Strict
-    ( Map )
-import Data.Maybe
-    ( fromMaybe )
-import Data.Proxy
-    ( Proxy (..) )
-import Data.Quantity
-    ( Quantity (..) )
-import Data.Text
-    ( Text )
-import Data.Text.Class
-    ( fromText )
-import Data.Time.Clock.POSIX
-    ( posixSecondsToUTCTime )
-import Data.Time.Clock.System
-    ( SystemTime (..), systemToUTCTime )
-import Data.Word
-    ( Word64 )
-import Fmt
-    ( build, padLeftF, padRightF, pretty, (+|), (|+) )
-import System.Directory
-    ( doesFileExist, getFileSize )
-import System.FilePath
-    ( takeFileName )
-import System.IO.Unsafe
-    ( unsafePerformIO )
-import System.Random
-    ( mkStdGen, randoms )
-import Test.Utils.Resource
-    ( unBracket )
-import UnliftIO.Exception
-    ( bracket, throwIO )
-import UnliftIO.Temporary
-    ( withSystemTempFile )
+import Cardano.Address.Derivation (
+    XPub,
+    xpubFromBytes,
+ )
+import Cardano.BM.Configuration.Static (
+    defaultConfigStdout,
+ )
+import Cardano.BM.Data.Severity (
+    Severity (..),
+ )
+import Cardano.BM.Data.Trace (
+    Trace,
+ )
+import Cardano.BM.Data.Tracer (
+    Tracer,
+    filterSeverity,
+ )
+import Cardano.BM.Setup (
+    setupTrace_,
+    shutdown,
+ )
+import Cardano.DB.Sqlite (
+    ConnectionPool,
+    SqliteContext (..),
+    newSqliteContext,
+    withConnectionPool,
+ )
+import Cardano.Mnemonic (
+    EntropySize,
+    SomeMnemonic (..),
+    entropyToMnemonic,
+    genEntropy,
+ )
+import Cardano.Startup (
+    withUtf8Encoding,
+ )
+import Cardano.Wallet.DB (
+    DBLayer (..),
+    cleanDB,
+ )
+import Cardano.Wallet.DB.Sqlite (
+    CacheBehavior (..),
+    PersistAddressBook,
+    WalletDBLog (..),
+    newDBLayerWith,
+ )
+import Cardano.Wallet.DB.Sqlite.TH (
+    migrateAll,
+ )
+import Cardano.Wallet.DummyTarget.Primitive.Types (
+    block0,
+    dummyGenesisParameters,
+    mkTxId,
+ )
+import Cardano.Wallet.Logging (
+    trMessageText,
+ )
+import Cardano.Wallet.Primitive.AddressDerivation (
+    DelegationAddress (..),
+    Depth (..),
+    Index (..),
+    NetworkDiscriminant (..),
+    Passphrase (..),
+    PaymentAddress (..),
+    PersistPrivateKey,
+    WalletKey (..),
+ )
+import Cardano.Wallet.Primitive.AddressDerivation.Byron (
+    ByronKey (..),
+ )
+import Cardano.Wallet.Primitive.AddressDerivation.Shelley (
+    ShelleyKey (..),
+    generateKeyFromSeed,
+    unsafeGenerateKeyFromSeed,
+ )
+import Cardano.Wallet.Primitive.AddressDiscovery.Random (
+    DerivationPath,
+    RndState (..),
+    mkRndState,
+ )
+import Cardano.Wallet.Primitive.AddressDiscovery.Sequential (
+    DerivationPrefix (..),
+    SeqAddressPool (..),
+    SeqState (..),
+    coinTypeAda,
+    defaultAddressPoolGap,
+    mkSeqStateFromAccountXPub,
+    mkSeqStateFromRootXPrv,
+    purposeCIP1852,
+ )
+import Cardano.Wallet.Primitive.Model (
+    Wallet,
+    initWallet,
+    unsafeInitWallet,
+ )
+import Cardano.Wallet.Primitive.Slotting (
+    TimeInterpreter,
+    hoistTimeInterpreter,
+    mkSingleEraInterpreter,
+ )
+import Cardano.Wallet.Primitive.Types (
+    ActiveSlotCoefficient (..),
+    Block (..),
+    BlockHeader (..),
+    EpochLength (..),
+    Range (..),
+    SlotLength (..),
+    SlotNo (..),
+    SlottingParameters (..),
+    SortOrder (..),
+    StartTime (..),
+    WalletDelegation (..),
+    WalletDelegationStatus (..),
+    WalletId (..),
+    WalletMetadata (..),
+    WalletName (..),
+ )
+import Cardano.Wallet.Primitive.Types.Address (
+    Address (..),
+    AddressState (..),
+ )
+import Cardano.Wallet.Primitive.Types.Coin (
+    Coin (..),
+ )
+import Cardano.Wallet.Primitive.Types.Hash (
+    Hash (..),
+ )
+import Cardano.Wallet.Primitive.Types.TokenPolicy (
+    TokenName (..),
+ )
+import Cardano.Wallet.Primitive.Types.TokenQuantity (
+    TokenQuantity (..),
+ )
+import Cardano.Wallet.Primitive.Types.Tx (
+    Direction (..),
+    TransactionInfo,
+    Tx (..),
+    TxIn (..),
+    TxMeta (..),
+    TxOut (..),
+    TxStatus (..),
+ )
+import Cardano.Wallet.Primitive.Types.UTxO (
+    UTxO (..),
+ )
+import Cardano.Wallet.Unsafe (
+    someDummyMnemonic,
+    unsafeRunExceptT,
+ )
+import Control.DeepSeq (
+    NFData (..),
+    deepseq,
+    force,
+ )
+import Control.Monad (
+    join,
+ )
+import Control.Monad.Trans.Except (
+    mapExceptT,
+ )
+import Control.Tracer (
+    contramap,
+ )
+import Criterion.Main (
+    Benchmark,
+    Benchmarkable,
+    bench,
+    bgroup,
+    defaultMain,
+    envWithCleanup,
+    perRunEnv,
+ )
+import Crypto.Hash (
+    hash,
+ )
+import Data.ByteString (
+    ByteString,
+ )
+import Data.Either (
+    fromRight,
+ )
+import Data.Functor (
+    ($>),
+ )
+import Data.Functor.Identity (
+    Identity (..),
+ )
+import Data.List (
+    foldl',
+ )
+import Data.Map.Strict (
+    Map,
+ )
+import Data.Maybe (
+    fromMaybe,
+ )
+import Data.Proxy (
+    Proxy (..),
+ )
+import Data.Quantity (
+    Quantity (..),
+ )
+import Data.Text (
+    Text,
+ )
+import Data.Text.Class (
+    fromText,
+ )
+import Data.Time.Clock.POSIX (
+    posixSecondsToUTCTime,
+ )
+import Data.Time.Clock.System (
+    SystemTime (..),
+    systemToUTCTime,
+ )
+import Data.Word (
+    Word64,
+ )
+import Fmt (
+    build,
+    padLeftF,
+    padRightF,
+    pretty,
+    (+|),
+    (|+),
+ )
+import System.Directory (
+    doesFileExist,
+    getFileSize,
+ )
+import System.FilePath (
+    takeFileName,
+ )
+import System.IO.Unsafe (
+    unsafePerformIO,
+ )
+import System.Random (
+    mkStdGen,
+    randoms,
+ )
+import Test.Utils.Resource (
+    unBracket,
+ )
+import UnliftIO.Exception (
+    bracket,
+    throwIO,
+ )
+import UnliftIO.Temporary (
+    withSystemTempFile,
+ )
 
 import qualified Cardano.BM.Configuration.Model as CM
 import qualified Cardano.BM.Data.BackendKind as CM
@@ -227,19 +307,20 @@ import qualified Data.Map.Strict as Map
 import qualified Data.Text as T
 
 main :: IO ()
-main = withUtf8Encoding $ withLogging $ \trace -> do
-    let tr = filterSeverity (pure . const Error) $ trMessageText trace
-    defaultMain
-        [ withDB tr bgroupWriteUTxO
-        , withDB tr bgroupReadUTxO
-        , withDB tr bgroupWriteSeqState
-        , withDB tr bgroupWriteRndState
-        , withDB tr bgroupWriteTxHistory
-        , withDB tr bgroupReadTxHistory
-        ]
-    putStrLn "\n--"
-    utxoDiskSpaceTests tr
-    txHistoryDiskSpaceTests tr
+main = withUtf8Encoding $
+    withLogging $ \trace -> do
+        let tr = filterSeverity (pure . const Error) $ trMessageText trace
+        defaultMain
+            [ withDB tr bgroupWriteUTxO
+            , withDB tr bgroupReadUTxO
+            , withDB tr bgroupWriteSeqState
+            , withDB tr bgroupWriteRndState
+            , withDB tr bgroupWriteTxHistory
+            , withDB tr bgroupReadTxHistory
+            ]
+        putStrLn "\n--"
+        utxoDiskSpaceTests tr
+        txHistoryDiskSpaceTests tr
 
 ----------------------------------------------------------------------------
 -- UTxO Benchmarks
@@ -249,89 +330,102 @@ main = withUtf8Encoding $ withLogging $ \trace -> do
 --
 -- Currently the DBLayer will only store a single checkpoint (no rollback), so
 -- the #Checkpoints axis is a bit meaningless.
-bgroupWriteUTxO
-    :: DBLayerBench
-    -> Benchmark
-bgroupWriteUTxO db = bgroup "UTxO (Write)"
-    -- A fragmented wallet will have a large number of UTxO. The coin
-    -- selection algorithm tries to prevent fragmentation.
-    --
-    --      #Checkpoints   UTxO Size   #NAssets
-    [ bUTxO            1           0          0
-    , bUTxO            1          10          0
-    , bUTxO            1         100          0
-    , bUTxO            1        1000          0
-    , bUTxO            1       10000          0
-    , bUTxO            1       10000         10
-    , bUTxO            1       10000         20
-    , bUTxO            1      100000          0
-    , bUTxO           10        1000          0
-    , bUTxO          100        1000          0
-    ]
+bgroupWriteUTxO ::
+    DBLayerBench ->
+    Benchmark
+bgroupWriteUTxO db =
+    bgroup
+        "UTxO (Write)"
+        -- A fragmented wallet will have a large number of UTxO. The coin
+        -- selection algorithm tries to prevent fragmentation.
+        --
+        --      #Checkpoints   UTxO Size   #NAssets
+        [ bUTxO 1 0 0
+        , bUTxO 1 10 0
+        , bUTxO 1 100 0
+        , bUTxO 1 1000 0
+        , bUTxO 1 10000 0
+        , bUTxO 1 10000 10
+        , bUTxO 1 10000 20
+        , bUTxO 1 100000 0
+        , bUTxO 10 1000 0
+        , bUTxO 100 1000 0
+        ]
   where
-    bUTxO n s a = bench lbl $ withCleanDB db walletFixture $
-        benchPutUTxO n s a . fst
-      where lbl | a == 0    = n|+" CP (ada-only) x "+|s|+" UTxO"
-                | otherwise = n|+" CP ("+|a|+" assets per output) x "+|s|+" UTxO"
+    bUTxO n s a =
+        bench lbl $
+            withCleanDB db walletFixture $
+                benchPutUTxO n s a . fst
+      where
+        lbl
+            | a == 0 = n |+ " CP (ada-only) x " +| s |+ " UTxO"
+            | otherwise = n |+ " CP (" +| a |+ " assets per output) x " +| s |+ " UTxO"
 
-bgroupReadUTxO
-    :: DBLayerBench
-    -> Benchmark
-bgroupReadUTxO db = bgroup "UTxO (Read)"
-    --      #Checkpoints   UTxO Size   #NAssets
-    [ bUTxO            1           0          0
-    , bUTxO            1          10          0
-    , bUTxO            1         100          0
-    , bUTxO            1        1000          0
-    , bUTxO            1       10000          0
-    , bUTxO            1       10000         10
-    , bUTxO            1       10000         20
-    , bUTxO            1      100000          0
-    ]
+bgroupReadUTxO ::
+    DBLayerBench ->
+    Benchmark
+bgroupReadUTxO db =
+    bgroup
+        "UTxO (Read)"
+        --      #Checkpoints   UTxO Size   #NAssets
+        [ bUTxO 1 0 0
+        , bUTxO 1 10 0
+        , bUTxO 1 100 0
+        , bUTxO 1 1000 0
+        , bUTxO 1 10000 0
+        , bUTxO 1 10000 10
+        , bUTxO 1 10000 20
+        , bUTxO 1 100000 0
+        ]
   where
     bUTxO n s a = bench lbl $ withUTxO db n s a benchReadUTxO
-        where lbl | a == 0    = n|+" CP (ada-only) x "+|s|+" UTxO"
-                  | otherwise = n|+" CP ("+|a|+" assets per output) x "+|s|+" UTxO"
+      where
+        lbl
+            | a == 0 = n |+ " CP (ada-only) x " +| s |+ " UTxO"
+            | otherwise = n |+ " CP (" +| a |+ " assets per output) x " +| s |+ " UTxO"
 
 benchPutUTxO :: Int -> Int -> Int -> DBLayerBench -> IO ()
-benchPutUTxO numCheckpoints utxoSize numAssets DBLayer{..} = do
+benchPutUTxO numCheckpoints utxoSize numAssets DBLayer {..} = do
     let cps = mkCheckpoints numCheckpoints utxoSize numAssets
     unsafeRunExceptT $ mapExceptT atomically $ mapM_ (putCheckpoint testWid) cps
 
 mkCheckpoints :: Int -> Int -> Int -> [WalletBench]
 mkCheckpoints numCheckpoints utxoSize numAssets =
-    [ force (cp i) | !i <- [1..numCheckpoints] ]
+    [force (cp i) | !i <- [1 .. numCheckpoints]]
   where
-    cp i = unsafeInitWallet
-        (UTxO (utxo i))
-        (BlockHeader
-            (SlotNo $ fromIntegral i)
-            (Quantity $ fromIntegral i)
-            (Hash $ label "parentHeaderHash" i)
-            (Just $ Hash $ label "headerHash" i)
-        )
-        initDummySeqState
+    cp i =
+        unsafeInitWallet
+            (UTxO (utxo i))
+            ( BlockHeader
+                (SlotNo $ fromIntegral i)
+                (Quantity $ fromIntegral i)
+                (Hash $ label "parentHeaderHash" i)
+                (Just $ Hash $ label "headerHash" i)
+            )
+            initDummySeqState
 
-    utxo i = Map.fromList $ zip
-        (map fst $ mkInputs i utxoSize)
-        (mkOutputs i utxoSize numAssets)
+    utxo i =
+        Map.fromList $
+            zip
+                (map fst $ mkInputs i utxoSize)
+                (mkOutputs i utxoSize numAssets)
 
 benchReadUTxO :: DBLayerBench -> IO (Maybe WalletBench)
-benchReadUTxO DBLayer{..} = atomically $ readCheckpoint testWid
+benchReadUTxO DBLayer {..} = atomically $ readCheckpoint testWid
 
 -- Set up a database with some UTxO in checkpoints.
-withUTxO
-    :: NFData b
-    => DBLayerBench
-    -> Int
-    -> Int
-    -> Int
-    -> (DBLayerBench -> IO b)
-    -> Benchmarkable
-withUTxO  db n s a = perRunEnv (utxoFixture db n s a $> db)
+withUTxO ::
+    NFData b =>
+    DBLayerBench ->
+    Int ->
+    Int ->
+    Int ->
+    (DBLayerBench -> IO b) ->
+    Benchmarkable
+withUTxO db n s a = perRunEnv (utxoFixture db n s a $> db)
 
 utxoFixture :: DBLayerBench -> Int -> Int -> Int -> IO ()
-utxoFixture db@DBLayer{..} numCheckpoints utxoSize numAssets = do
+utxoFixture db@DBLayer {..} numCheckpoints utxoSize numAssets = do
     walletFixture db
     let cps = mkCheckpoints numCheckpoints utxoSize numAssets
     unsafeRunExceptT $ mapM_ (mapExceptT atomically . putCheckpoint testWid) cps
@@ -340,43 +434,51 @@ utxoFixture db@DBLayer{..} numCheckpoints utxoSize numAssets = do
 -- Wallet State (Sequential Scheme) Benchmarks
 --
 bgroupWriteSeqState :: DBLayerBench -> Benchmark
-bgroupWriteSeqState db = bgroup "SeqState"
-    --      #Checkpoints  #Addresses
-    [ bSeqState        1          10
-    , bSeqState        1         100
-    , bSeqState        1        1000
-    , bSeqState        1       10000
-    , bSeqState        1      100000
-    , bSeqState       10        1000
-    , bSeqState      100        1000
-    ]
+bgroupWriteSeqState db =
+    bgroup
+        "SeqState"
+        --      #Checkpoints  #Addresses
+        [ bSeqState 1 10
+        , bSeqState 1 100
+        , bSeqState 1 1000
+        , bSeqState 1 10000
+        , bSeqState 1 100000
+        , bSeqState 10 1000
+        , bSeqState 100 1000
+        ]
   where
     bSeqState n a = bench lbl $ withCleanDB db fixture (uncurry benchPutSeqState)
       where
-        lbl = n|+" CP x "+|a|+" addr"
+        lbl = n |+ " CP x " +| a |+ " addr"
         fixture db_ = do
             walletFixture db_
             pure cps
         cps :: [WalletBench]
         cps =
             [ snd $ initWallet (withMovingSlot i block0) $ mkSeqState a i
-            | i <- [1..n]
+            | i <- [1 .. n]
             ]
 
 benchPutSeqState :: DBLayerBench -> [WalletBench] -> IO ()
-benchPutSeqState DBLayer{..} cps = do
+benchPutSeqState DBLayer {..} cps = do
     unsafeRunExceptT $ mapExceptT atomically $ mapM_ (putCheckpoint testWid) cps
 
 mkSeqState :: Int -> Int -> SeqState 'Mainnet ShelleyKey
-mkSeqState numAddrs _ = s
-    { internalPool = fillPool (internalPool s)
-    , externalPool = fillPool (externalPool s)
-    }
+mkSeqState numAddrs _ =
+    s
+        { internalPool = fillPool (internalPool s)
+        , externalPool = fillPool (externalPool s)
+        }
   where
-    s = mkSeqStateFromAccountXPub @'Mainnet
-        ourAccount Nothing purposeCIP1852 defaultAddressPoolGap
-    fillPool (SeqAddressPool pool0) = SeqAddressPool $
-        foldl' (\p ix -> AddressPool.update (gen ix) p) pool0 [0 .. numAddrs-1]
+    s =
+        mkSeqStateFromAccountXPub @ 'Mainnet
+            ourAccount
+            Nothing
+            purposeCIP1852
+            defaultAddressPoolGap
+    fillPool (SeqAddressPool pool0) =
+        SeqAddressPool $
+            foldl' (\p ix -> AddressPool.update (gen ix) p) pool0 [0 .. numAddrs -1]
       where
         gen ix = AddressPool.generator pool0 $ toEnum ix
 
@@ -384,52 +486,53 @@ mkSeqState numAddrs _ = s
 -- Wallet State (Random Scheme) Benchmarks
 --
 
-
-
 bgroupWriteRndState :: DBLayerBenchByron -> Benchmark
-bgroupWriteRndState db = bgroup "RndState"
-    --      #Checkpoints  #Addresses  #Pending
-    [ bRndState        1          10        10
-    , bRndState        1         100       100
-    , bRndState        1        1000      1000
-    , bRndState        1       10000     10000
-    , bRndState        1      100000    100000
-    , bRndState       10        1000      1000
-    , bRndState      100        1000      1000
-    ]
+bgroupWriteRndState db =
+    bgroup
+        "RndState"
+        --      #Checkpoints  #Addresses  #Pending
+        [ bRndState 1 10 10
+        , bRndState 1 100 100
+        , bRndState 1 1000 1000
+        , bRndState 1 10000 10000
+        , bRndState 1 100000 100000
+        , bRndState 10 1000 1000
+        , bRndState 100 1000 1000
+        ]
   where
     bRndState n a p = bench lbl $ withCleanDB db fixture (uncurry benchPutRndState)
       where
-        lbl = n|+" CP x "+|a|+" addr x "+|p|+" pending"
+        lbl = n |+ " CP x " +| a |+ " addr x " +| p |+ " pending"
         fixture db_ = do
             walletFixtureByron db_
             pure cps
         cps :: [Wallet (RndState 'Mainnet)]
         cps =
-            [ snd $ initWallet (withMovingSlot i block0) $
-                RndState
-                    { hdPassphrase = dummyPassphrase
-                    , accountIndex = minBound
-                    , discoveredAddresses = (,Used) <$> mkRndAddresses a i
-                    , pendingAddresses = mkRndAddresses p (-i)
-                    , gen = mkStdGen 42
-                    }
-            | i <- [1..n]
+            [ snd $
+                initWallet (withMovingSlot i block0) $
+                    RndState
+                        { hdPassphrase = dummyPassphrase
+                        , accountIndex = minBound
+                        , discoveredAddresses = (,Used) <$> mkRndAddresses a i
+                        , pendingAddresses = mkRndAddresses p (- i)
+                        , gen = mkStdGen 42
+                        }
+            | i <- [1 .. n]
             ]
 
-benchPutRndState
-    :: DBLayerBenchByron
-    -> [Wallet (RndState 'Mainnet)]
-    -> IO ()
-benchPutRndState DBLayer{..} cps =
+benchPutRndState ::
+    DBLayerBenchByron ->
+    [Wallet (RndState 'Mainnet)] ->
+    IO ()
+benchPutRndState DBLayer {..} cps =
     unsafeRunExceptT $ mapExceptT atomically $ mapM_ (putCheckpoint testWid) cps
 
-mkRndAddresses
-    :: Int -> Int -> Map DerivationPath Address
+mkRndAddresses ::
+    Int -> Int -> Map DerivationPath Address
 mkRndAddresses numAddrs i =
     Map.fromList addrs
   where
-    addrs = [ force ((toEnum i, toEnum j), mkByronAddress i j) | j <- [1..numAddrs] ]
+    addrs = [force ((toEnum i, toEnum j), mkByronAddress i j) | j <- [1 .. numAddrs]]
 
 ----------------------------------------------------------------------------
 -- Tx history Benchmarks
@@ -478,48 +581,53 @@ mkRndAddresses numAddrs i =
 --
 -- - 50 inputs
 -- - 100 outputs
-bgroupWriteTxHistory
-    :: DBLayerBench
-    -> Benchmark
-bgroupWriteTxHistory db = bgroup "TxHistory (Write)"
-    --                   #NTxs #NInputs #NOutputs #NAssets  #SlotRange
-    [ bTxHistory             1        1        1         0     [1..10]
-    , bTxHistory            10        1        1         0     [1..10]
-    , bTxHistory            10       10       10         0     [1..10]
-    , bTxHistory            10       50      100         0     [1..10]
-    , bTxHistory           100       10       10         0    [1..100]
-    , bTxHistory           100       50      100         0    [1..100]
-    , bTxHistory          1000       10       10         0   [1..1000]
-    , bTxHistory          1000       50      100         0   [1..1000]
-    , bTxHistory          1000       50      100        10   [1..1000]
-    , bTxHistory          1000       50      100        20   [1..1000]
-    , bTxHistory         10000       10       10         0  [1..10000]
-    ]
+bgroupWriteTxHistory ::
+    DBLayerBench ->
+    Benchmark
+bgroupWriteTxHistory db =
+    bgroup
+        "TxHistory (Write)"
+        --                   #NTxs #NInputs #NOutputs #NAssets  #SlotRange
+        [ bTxHistory 1 1 1 0 [1 .. 10]
+        , bTxHistory 10 1 1 0 [1 .. 10]
+        , bTxHistory 10 10 10 0 [1 .. 10]
+        , bTxHistory 10 50 100 0 [1 .. 10]
+        , bTxHistory 100 10 10 0 [1 .. 100]
+        , bTxHistory 100 50 100 0 [1 .. 100]
+        , bTxHistory 1000 10 10 0 [1 .. 1000]
+        , bTxHistory 1000 50 100 0 [1 .. 1000]
+        , bTxHistory 1000 50 100 10 [1 .. 1000]
+        , bTxHistory 1000 50 100 20 [1 .. 1000]
+        , bTxHistory 10000 10 10 0 [1 .. 10000]
+        ]
   where
     bTxHistory n i o a r =
-        bench lbl $ withCleanDB db walletFixture $
-            benchPutTxHistory n i o a r . fst
+        bench lbl $
+            withCleanDB db walletFixture $
+                benchPutTxHistory n i o a r . fst
       where
-        lbl = n|+" w/ "+|i|+"i + "+|o|+"o ["+|inf|+".."+|sup|+"]"
+        lbl = n |+ " w/ " +| i |+ "i + " +| o |+ "o [" +| inf |+ ".." +| sup |+ "]"
         inf = head r
         sup = last r
 
-bgroupReadTxHistory
-    :: DBLayerBench
-    -> Benchmark
-bgroupReadTxHistory db = bgroup "TxHistory (Read)"
-    --             #NTxs  #NAssets #SlotRange  #SortOrder  #Status  #SearchRange
-    [ bTxHistory    1000         0   [1..100]  Descending  Nothing  wholeRange
-    , bTxHistory    1000         0   [1..100]   Ascending  Nothing  wholeRange
-    , bTxHistory    1000         0  [1..1000]  Descending  Nothing  wholeRange
-    , bTxHistory    1000         0   [1..100]  Descending  pending  wholeRange
-    , bTxHistory    1000         0   [1..100]  Descending  Nothing  (Just 40, Just 60)
-    , bTxHistory    1000        10   [1..100]  Descending  Nothing  (Just 40, Just 60)
-    , bTxHistory    1000        20   [1..100]  Descending  Nothing  (Just 40, Just 60)
-    , bTxHistory    1000         0 [1..10000]  Descending  Nothing  (Just 42, Just 1337)
-    , bTxHistory   10000         0   [1..100]  Descending  Nothing  (Just 40, Just 60)
-    , bTxHistory   10000         0 [1..10000]  Descending  Nothing  (Just 42, Just 1337)
-    ]
+bgroupReadTxHistory ::
+    DBLayerBench ->
+    Benchmark
+bgroupReadTxHistory db =
+    bgroup
+        "TxHistory (Read)"
+        --             #NTxs  #NAssets #SlotRange  #SortOrder  #Status  #SearchRange
+        [ bTxHistory 1000 0 [1 .. 100] Descending Nothing wholeRange
+        , bTxHistory 1000 0 [1 .. 100] Ascending Nothing wholeRange
+        , bTxHistory 1000 0 [1 .. 1000] Descending Nothing wholeRange
+        , bTxHistory 1000 0 [1 .. 100] Descending pending wholeRange
+        , bTxHistory 1000 0 [1 .. 100] Descending Nothing (Just 40, Just 60)
+        , bTxHistory 1000 10 [1 .. 100] Descending Nothing (Just 40, Just 60)
+        , bTxHistory 1000 20 [1 .. 100] Descending Nothing (Just 40, Just 60)
+        , bTxHistory 1000 0 [1 .. 10000] Descending Nothing (Just 42, Just 1337)
+        , bTxHistory 10000 0 [1 .. 100] Descending Nothing (Just 40, Just 60)
+        , bTxHistory 10000 0 [1 .. 10000] Descending Nothing (Just 42, Just 1337)
+        ]
   where
     wholeRange = (Nothing, Nothing)
     pending = Just Pending
@@ -527,47 +635,48 @@ bgroupReadTxHistory db = bgroup "TxHistory (Read)"
         bench lbl $ withTxHistory db n a r $ benchReadTxHistory o s st
       where
         lbl = unwords [show n, show a, range, ord, mstatus, search]
-        range = let inf = head r in let sup = last r in "["+|inf|+".."+|sup|+"]"
+        range = let inf = head r in let sup = last r in "[" +| inf |+ ".." +| sup |+ "]"
         ord = case o of Descending -> "DESC"; Ascending -> "ASC"
         mstatus = maybe "-" pretty st
         search = case s of
             (Nothing, Nothing) -> "*"
-            (Just inf, Nothing) -> inf|+".."
-            (Nothing, Just sup) -> ".."+|sup|+""
-            (Just inf, Just sup) -> inf|+".."+|sup|+""
+            (Just inf, Nothing) -> inf |+ ".."
+            (Nothing, Just sup) -> ".." +| sup |+ ""
+            (Just inf, Just sup) -> inf |+ ".." +| sup |+ ""
 
-benchPutTxHistory
-    :: Int
-    -> Int
-    -> Int
-    -> Int
-    -> [Word64]
-    -> DBLayerBench
-    -> IO ()
-benchPutTxHistory numTxs numInputs numOutputs numAssets range DBLayer{..} = do
+benchPutTxHistory ::
+    Int ->
+    Int ->
+    Int ->
+    Int ->
+    [Word64] ->
+    DBLayerBench ->
+    IO ()
+benchPutTxHistory numTxs numInputs numOutputs numAssets range DBLayer {..} = do
     let txs = mkTxHistory numTxs numInputs numOutputs numAssets range
     unsafeRunExceptT $ mapExceptT atomically $ putTxHistory testWid txs
 
-benchReadTxHistory
-    :: SortOrder
-    -> (Maybe Word64, Maybe Word64)
-    -> Maybe TxStatus
-    -> DBLayerBench
-    -> IO [TransactionInfo]
-benchReadTxHistory sortOrder (inf, sup) mstatus DBLayer{..} =
+benchReadTxHistory ::
+    SortOrder ->
+    (Maybe Word64, Maybe Word64) ->
+    Maybe TxStatus ->
+    DBLayerBench ->
+    IO [TransactionInfo]
+benchReadTxHistory sortOrder (inf, sup) mstatus DBLayer {..} =
     atomically $ readTxHistory testWid Nothing sortOrder range mstatus
   where
-    range = Range
-        (SlotNo . fromIntegral <$> inf)
-        (SlotNo . fromIntegral <$> sup)
+    range =
+        Range
+            (SlotNo . fromIntegral <$> inf)
+            (SlotNo . fromIntegral <$> sup)
 
-mkTxHistory
-    :: Int
-    -> Int
-    -> Int
-    -> Int
-    -> [Word64]
-    -> [(Tx, TxMeta)]
+mkTxHistory ::
+    Int ->
+    Int ->
+    Int ->
+    Int ->
+    [Word64] ->
+    [(Tx, TxMeta)]
 mkTxHistory numTx numInputs numOutputs numAssets range =
     [ force
         ( Tx
@@ -591,8 +700,8 @@ mkTxHistory numTx numInputs numOutputs numAssets range =
             , expiry = Nothing
             }
         )
-    | !i <- [1..numTx]
-    , let resolvedInputs = mkInputs  i numInputs
+    | !i <- [1 .. numTx]
+    , let resolvedInputs = mkInputs i numInputs
     , let outputs = mkOutputs i numOutputs numAssets
     ]
   where
@@ -604,7 +713,8 @@ mkInputs prefix n =
         ( TxIn (Hash (label lbl i)) (fromIntegral i)
         , Coin $ fromIntegral n
         )
-    | !i <- [1..n]]
+    | !i <- [1 .. n]
+    ]
   where
     lbl = show prefix <> "in"
 
@@ -612,12 +722,13 @@ mkInputs prefix n =
 mkOutputs :: Int -> Int -> Int -> [TxOut]
 mkOutputs prefix nOuts nAssets =
     [ force (mkTxOut i)
-    | !i <- [1..nOuts]
+    | !i <- [1 .. nOuts]
     ]
   where
-    mkTxOut i = TxOut
-        (mkAddress prefix i)
-        (TokenBundle.TokenBundle (Coin 1) (TokenMap.fromFlatList tokens))
+    mkTxOut i =
+        TxOut
+            (mkAddress prefix i)
+            (TokenBundle.TokenBundle (Coin 1) (TokenMap.fromFlatList tokens))
     tokens =
         [ ( TokenMap.AssetId (mkTokenPolicyId (ac `mod` 10)) (mkTokenName ac)
           , TokenQuantity 42
@@ -626,33 +737,34 @@ mkOutputs prefix nOuts nAssets =
         ]
     mkTokenName =
         UnsafeTokenName . B8.singleton . Char.chr
-    mkTokenPolicyId = fromRight (error "Couldn't decode tokenPolicyId")
-        . fromText
-        . T.pack
-        . take tokenPolicyIdHexStringLength
-        . join
-        . replicate tokenPolicyIdHexStringLength
-        . show
+    mkTokenPolicyId =
+        fromRight (error "Couldn't decode tokenPolicyId")
+            . fromText
+            . T.pack
+            . take tokenPolicyIdHexStringLength
+            . join
+            . replicate tokenPolicyIdHexStringLength
+            . show
     tokenPolicyIdHexStringLength = 56
 
-withTxHistory
-    :: NFData b
-    => DBLayerBench
-    -> Int
-    -> Int
-    -> [Word64]
-    -> (DBLayerBench -> IO b)
-    -> Benchmarkable
+withTxHistory ::
+    NFData b =>
+    DBLayerBench ->
+    Int ->
+    Int ->
+    [Word64] ->
+    (DBLayerBench -> IO b) ->
+    Benchmarkable
 withTxHistory db s a r =
     perRunEnv (txHistoryFixture db s a r $> db)
 
-txHistoryFixture
-    :: DBLayerBench
-    -> Int
-    -> Int
-    -> [Word64]
-    -> IO ()
-txHistoryFixture db@DBLayer{..} bSize nAssets range = do
+txHistoryFixture ::
+    DBLayerBench ->
+    Int ->
+    Int ->
+    [Word64] ->
+    IO ()
+txHistoryFixture db@DBLayer {..} bSize nAssets range = do
     walletFixture db
     let (nInps, nOuts) = (20, 20)
     let txs = mkTxHistory bSize nInps nOuts nAssets range
@@ -661,17 +773,18 @@ txHistoryFixture db@DBLayer{..} bSize nAssets range = do
 ----------------------------------------------------------------------------
 -- Criterion env functions for database setup
 
--- | Sets up a benchmark environment with the SQLite DBLayer using a file
--- database in a temporary location.
-withDB
-    :: forall s k.
-        ( PersistAddressBook s
-        , PersistPrivateKey (k 'RootK)
-        , WalletKey k
-        )
-    => Tracer IO WalletDBLog
-    -> (DBLayer IO s k -> Benchmark)
-    -> Benchmark
+{- | Sets up a benchmark environment with the SQLite DBLayer using a file
+ database in a temporary location.
+-}
+withDB ::
+    forall s k.
+    ( PersistAddressBook s
+    , PersistPrivateKey (k 'RootK)
+    , WalletKey k
+    ) =>
+    Tracer IO WalletDBLog ->
+    (DBLayer IO s k -> Benchmark) ->
+    Benchmark
 withDB tr bm = envWithCleanup (setupDB tr) cleanupDB $
     \benchEnv -> bm (dbLayer benchEnv)
 
@@ -687,14 +800,14 @@ instance NFData (BenchEnv s k) where
 withTempSqliteFile :: (FilePath -> IO a) -> IO a
 withTempSqliteFile action = withSystemTempFile "bench.db" $ \fp _ -> action fp
 
-setupDB
-    :: forall s k.
-        ( PersistAddressBook s
-        , PersistPrivateKey (k 'RootK)
-        , WalletKey k
-        )
-    => Tracer IO WalletDBLog
-    -> IO (BenchEnv s k)
+setupDB ::
+    forall s k.
+    ( PersistAddressBook s
+    , PersistPrivateKey (k 'RootK)
+    , WalletKey k
+    ) =>
+    Tracer IO WalletDBLog ->
+    IO (BenchEnv s k)
 setupDB tr = do
     (createPool, destroyPool) <- unBracket withSetup
     uncurry (BenchEnv destroyPool) <$> createPool
@@ -707,47 +820,54 @@ setupDB tr = do
             action (fp, db)
 
 singleEraInterpreter :: TimeInterpreter IO
-singleEraInterpreter = hoistTimeInterpreter (pure . runIdentity) $
-    mkSingleEraInterpreter
-        (StartTime $ posixSecondsToUTCTime 0)
-        (SlottingParameters
-        { getSlotLength = SlotLength 1
-        , getEpochLength = EpochLength 21600
-        , getActiveSlotCoefficient = ActiveSlotCoefficient 1
-        , getSecurityParameter = Quantity 2160
-        })
+singleEraInterpreter =
+    hoistTimeInterpreter (pure . runIdentity) $
+        mkSingleEraInterpreter
+            (StartTime $ posixSecondsToUTCTime 0)
+            ( SlottingParameters
+                { getSlotLength = SlotLength 1
+                , getEpochLength = EpochLength 21600
+                , getActiveSlotCoefficient = ActiveSlotCoefficient 1
+                , getSecurityParameter = Quantity 2160
+                }
+            )
 
--- | Cleans the database before running the benchmark.
--- It also cleans the database after running the benchmark. That is just to
--- exercise the delete functions.
-withCleanDB
-    :: NFData fixture
-    => DBLayer IO s k
-    -> (DBLayer IO s k -> IO fixture)
-    -> ((DBLayer IO s k, fixture) -> IO ())
-    -> Benchmarkable
+{- | Cleans the database before running the benchmark.
+ It also cleans the database after running the benchmark. That is just to
+ exercise the delete functions.
+-}
+withCleanDB ::
+    NFData fixture =>
+    DBLayer IO s k ->
+    (DBLayer IO s k -> IO fixture) ->
+    ((DBLayer IO s k, fixture) -> IO ()) ->
+    Benchmarkable
 withCleanDB db fixture =
     perRunEnv $ (db,) <$> fixture db
 
 walletFixture :: DBLayerBench -> IO ()
-walletFixture db@DBLayer{..} = do
+walletFixture db@DBLayer {..} = do
     cleanDB db
-    atomically $ unsafeRunExceptT $ initializeWallet
-        testWid
-        testCp
-        testMetadata
-        mempty
-        dummyGenesisParameters
+    atomically $
+        unsafeRunExceptT $
+            initializeWallet
+                testWid
+                testCp
+                testMetadata
+                mempty
+                dummyGenesisParameters
 
 walletFixtureByron :: DBLayerBenchByron -> IO ()
-walletFixtureByron db@DBLayer{..} = do
+walletFixtureByron db@DBLayer {..} = do
     cleanDB db
-    atomically $ unsafeRunExceptT $ initializeWallet
-        testWid
-        testCpByron
-        testMetadata
-        mempty
-        dummyGenesisParameters
+    atomically $
+        unsafeRunExceptT $
+            initializeWallet
+                testWid
+                testCpByron
+                testMetadata
+                mempty
+                dummyGenesisParameters
 
 ----------------------------------------------------------------------------
 -- Disk space usage tests
@@ -760,20 +880,20 @@ utxoDiskSpaceTests tr = do
     putStrLn "Database disk space usage tests for UTxO\n"
     sequence_
         --      #Checkpoints   UTxO Size
-        [ bUTxO            1          10
-        , bUTxO           10          10
-        , bUTxO            1         100
-        , bUTxO           10         100
-        , bUTxO            1        1000
-        , bUTxO           10        1000
-        , bUTxO            1       10000
-        , bUTxO           10       10000
-        , bUTxO            1      100000
-        , bUTxO           10      100000
+        [ bUTxO 1 10
+        , bUTxO 10 10
+        , bUTxO 1 100
+        , bUTxO 10 100
+        , bUTxO 1 1000
+        , bUTxO 10 1000
+        , bUTxO 1 10000
+        , bUTxO 10 10000
+        , bUTxO 1 100000
+        , bUTxO 10 100000
         ]
   where
     bUTxO n s = benchDiskSize tr $ \db -> do
-        putStrLn ("File size /"+|n|+" CP x "+|s|+" UTxO")
+        putStrLn ("File size /" +| n |+ " CP x " +| s |+ " UTxO")
         walletFixture db
         benchPutUTxO n s 0 db
 
@@ -782,20 +902,20 @@ txHistoryDiskSpaceTests tr = do
     putStrLn "Database disk space usage tests for TxHistory\n"
     sequence_
         --       #NTransactions  #NInputs  #NOutputs
-        [ bTxs             100         20         20
-        , bTxs            1000         20         20
-        , bTxs           10000         20         20
-        , bTxs          100000         20         20
+        [ bTxs 100 20 20
+        , bTxs 1000 20 20
+        , bTxs 10000 20 20
+        , bTxs 100000 20 20
         ]
   where
     bTxs n i o = benchDiskSize tr $ \db -> do
-        putStrLn ("File size /"+|n|+" w/ "+|i|+"i + "+|o|+"o")
+        putStrLn ("File size /" +| n |+ " w/ " +| i |+ "i + " +| o |+ "o")
         walletFixture db
-        benchPutTxHistory n i o 0 [1..100] db
+        benchPutTxHistory n i o 0 [1 .. 100] db
 
 benchDiskSize :: Tracer IO WalletDBLog -> (DBLayerBench -> IO ()) -> IO ()
-benchDiskSize tr action = bracket (setupDB tr) cleanupDB
-    $ \(BenchEnv destroyPool f db) -> do
+benchDiskSize tr action = bracket (setupDB tr) cleanupDB $
+    \(BenchEnv destroyPool f db) -> do
         action db
         mapM_ (printFileSize "") [f, f <> "-shm", f <> "-wal"]
         destroyPool
@@ -803,12 +923,14 @@ benchDiskSize tr action = bracket (setupDB tr) cleanupDB
         putStrLn ""
   where
     printFileSize sfx f = do
-        size <- doesFileExist f >>= \case
-            True -> Just <$> getFileSize f
-            False -> pure Nothing
-        putStrLn $ "  " +|
-            padRightF 28 ' ' (takeFileName f ++ sfx) <>
-            padLeftF 20 ' ' (maybe "-" sizeF size)
+        size <-
+            doesFileExist f >>= \case
+                True -> Just <$> getFileSize f
+                False -> pure Nothing
+        putStrLn $
+            "  "
+                +| padRightF 28 ' ' (takeFileName f ++ sfx)
+                <> padLeftF 20 ' ' (maybe "-" sizeF size)
 
     sizeF size
         | size < kb = build size <> " B"
@@ -817,8 +939,8 @@ benchDiskSize tr action = bracket (setupDB tr) cleanupDB
         | otherwise = build (size `div` gb) <> " GB"
       where
         kb = 1024
-        mb = 1024*kb
-        gb = 1024*mb
+        mb = 1024 * kb
+        gb = 1024 * mb
 
 ----------------------------------------------------------------------------
 -- Mock data to use for benchmarks
@@ -848,9 +970,10 @@ initDummySeqState :: SeqState 'Mainnet ShelleyKey
 initDummySeqState =
     mkSeqStateFromRootXPrv (xprv, mempty) purposeCIP1852 defaultAddressPoolGap
   where
-    mnemonic = unsafePerformIO
-        $ SomeMnemonic . entropyToMnemonic @15
-        <$> genEntropy @(EntropySize 15)
+    mnemonic =
+        unsafePerformIO $
+            SomeMnemonic . entropyToMnemonic @15
+                <$> genEntropy @(EntropySize 15)
     xprv = generateKeyFromSeed (mnemonic, Nothing) mempty
 
 {-# NOINLINE initDummyRndState #-}
@@ -859,26 +982,29 @@ initDummyRndState =
     mkRndState rootK 42
   where
     rootK = Byron.generateKeyFromSeed mnemonic mempty
-    mnemonic = unsafePerformIO $
-        SomeMnemonic . entropyToMnemonic @12 <$> genEntropy @(EntropySize 12)
+    mnemonic =
+        unsafePerformIO $
+            SomeMnemonic . entropyToMnemonic @12 <$> genEntropy @(EntropySize 12)
 
 testMetadata :: WalletMetadata
-testMetadata = WalletMetadata
-    { name = WalletName "test wallet"
-    , passphraseInfo = Nothing
-    , delegation = WalletDelegation NotDelegating []
-    , creationTime = systemToUTCTime (MkSystemTime 0 0)
-    }
+testMetadata =
+    WalletMetadata
+        { name = WalletName "test wallet"
+        , passphraseInfo = Nothing
+        , delegation = WalletDelegation NotDelegating []
+        , creationTime = systemToUTCTime (MkSystemTime 0 0)
+        }
 
 testWid :: WalletId
 testWid = WalletId (hash ("test" :: ByteString))
 
 defaultPrefix :: DerivationPrefix
-defaultPrefix = DerivationPrefix
-    ( purposeCIP1852
-    , coinTypeAda
-    , minBound
-    )
+defaultPrefix =
+    DerivationPrefix
+        ( purposeCIP1852
+        , coinTypeAda
+        , minBound
+        )
 
 ourAccount :: ShelleyKey 'AccountK XPub
 ourAccount = publicKey $ unsafeGenerateKeyFromSeed (seed, Nothing) mempty
@@ -899,28 +1025,30 @@ dummyPassphrase = Passphrase "dummy-passphrase"
 
 -- | Make sure to generate
 withMovingSlot :: Int -> Block -> Block
-withMovingSlot i b@(Block h _ _) = b
-    { header = h
-        { slotNo = SlotNo (fromIntegral i)
-        , blockHeight = Quantity (fromIntegral i)
+withMovingSlot i b@(Block h _ _) =
+    b
+        { header =
+            h
+                { slotNo = SlotNo (fromIntegral i)
+                , blockHeight = Quantity (fromIntegral i)
+                }
         }
-    }
 
 mkAddress :: Int -> Int -> Address
 mkAddress i j =
-    delegationAddress @'Mainnet
+    delegationAddress @ 'Mainnet
         (ShelleyKey $ unsafeXPub $ B8.pack $ take 64 $ randoms $ mkStdGen seed)
         rewardAccount
   where
     -- Generate a seed using two prime numbers and a pair of index. This should
     -- lead to a satisfactory entropy.
-    seed = 1459*i + 1153*j
+    seed = 1459 * i + 1153 * j
     unsafeXPub = fromMaybe (error "xpubFromBytes error") . xpubFromBytes
 
 mkByronAddress :: Int -> Int -> Address
 mkByronAddress i j =
-    paymentAddress @'Mainnet
-        (ByronKey
+    paymentAddress @ 'Mainnet
+        ( ByronKey
             (unsafeXPub (B8.pack $ take 64 $ randoms g))
             (Index acctIx, Index addrIx)
             (Passphrase $ BA.convert $ BS.pack $ replicate 32 0)
@@ -928,16 +1056,17 @@ mkByronAddress i j =
   where
     -- Generate a seed using two prime numbers and a pair of index. This should
     -- lead to a satisfactory entropy.
-    g = mkStdGen $ 1459*i + 1153*j
+    g = mkStdGen $ 1459 * i + 1153 * j
     unsafeXPub = fromMaybe (error "xpubFromBytes error") . xpubFromBytes
     [acctIx, addrIx] = take 2 $ randoms g
 
--- | Run an action with logging available and configured. When the action is
--- finished (normally or otherwise), log messages are flushed.
-withLogging
-    :: (Trace IO Text -> IO a)
-    -- ^ The action to run with logging configured.
-    -> IO a
+{- | Run an action with logging available and configured. When the action is
+ finished (normally or otherwise), log messages are flushed.
+-}
+withLogging ::
+    -- | The action to run with logging configured.
+    (Trace IO Text -> IO a) ->
+    IO a
 withLogging action = bracket before after between
   where
     before = do

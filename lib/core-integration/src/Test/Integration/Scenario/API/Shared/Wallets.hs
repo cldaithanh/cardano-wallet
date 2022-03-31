@@ -10,113 +10,137 @@
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE TypeSynonymInstances #-}
-
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 
-module Test.Integration.Scenario.API.Shared.Wallets
-    ( spec
-    ) where
+module Test.Integration.Scenario.API.Shared.Wallets (
+    spec,
+) where
 
 import Prelude
 
-import Cardano.Address.Script
-    ( Cosigner (..), ScriptTemplate (..) )
-import Cardano.Mnemonic
-    ( MkSomeMnemonic (..) )
-import Cardano.Wallet.Api.Types
-    ( ApiAccountKeyShared (..)
-    , ApiAddress
-    , ApiFee (..)
-    , ApiSharedWallet (..)
-    , ApiTransaction
-    , ApiWallet
-    , DecodeAddress
-    , DecodeStakeAddress
-    , EncodeAddress (..)
-    , KeyFormat (..)
-    , WalletStyle (..)
-    )
-import Cardano.Wallet.Compat
-    ( (^?) )
-import Cardano.Wallet.Primitive.AddressDerivation
-    ( DerivationIndex (..), Passphrase (..), Role (..) )
-import Cardano.Wallet.Primitive.AddressDiscovery.Shared
-    ( CredentialType (..) )
-import Cardano.Wallet.Primitive.SyncProgress
-    ( SyncProgress (..) )
-import Control.Monad
-    ( forM )
-import Control.Monad.IO.Class
-    ( liftIO )
-import Control.Monad.Trans.Resource
-    ( runResourceT )
-import Data.Aeson
-    ( ToJSON (..), Value (String) )
-import Data.Either.Combinators
-    ( swapEither )
-import Data.Generics.Internal.VL.Lens
-    ( view, (^.) )
-import Data.Quantity
-    ( Quantity (..) )
-import Data.Text
-    ( Text )
-import Data.Text.Class
-    ( ToText (..) )
-import Test.Hspec
-    ( SpecWith, describe )
-import Test.Hspec.Expectations.Lifted
-    ( shouldBe, shouldNotBe )
-import Test.Hspec.Extra
-    ( it )
-import Test.Integration.Framework.DSL
-    ( Context (..)
-    , Headers (..)
-    , MnemonicLength (..)
-    , Payload (..)
-    , accPubKeyFromMnemonics
-    , deleteSharedWallet
-    , eventually
-    , expectErrorMessage
-    , expectField
-    , expectListField
-    , expectListSize
-    , expectResponseCode
-    , faucetAmt
-    , fixturePassphrase
-    , fixtureWallet
-    , genMnemonics
-    , genXPubs
-    , getAccountKeyShared
-    , getFromResponse
-    , getSharedWallet
-    , getSharedWalletKey
-    , getWalletIdFromSharedWallet
-    , hexText
-    , json
-    , listFilteredSharedWallets
-    , minUTxOValue
-    , notDelegating
-    , patchSharedWallet
-    , postAccountKeyShared
-    , postSharedWallet
-    , request
-    , unsafeRequest
-    , verify
-    , walletId
-    )
-import Test.Integration.Framework.TestData
-    ( errMsg403CannotUpdateThisCosigner
-    , errMsg403CreateIllegal
-    , errMsg403KeyAlreadyPresent
-    , errMsg403NoDelegationTemplate
-    , errMsg403NoSuchCosigner
-    , errMsg403TemplateInvalidDuplicateXPub
-    , errMsg403TemplateInvalidNoCosignerInScript
-    , errMsg403TemplateInvalidScript
-    , errMsg403TemplateInvalidUnknownCosigner
-    , errMsg403WalletAlreadyActive
-    , errMsg403WrongIndex
-    )
+import Cardano.Address.Script (
+    Cosigner (..),
+    ScriptTemplate (..),
+ )
+import Cardano.Mnemonic (
+    MkSomeMnemonic (..),
+ )
+import Cardano.Wallet.Api.Types (
+    ApiAccountKeyShared (..),
+    ApiAddress,
+    ApiFee (..),
+    ApiSharedWallet (..),
+    ApiTransaction,
+    ApiWallet,
+    DecodeAddress,
+    DecodeStakeAddress,
+    EncodeAddress (..),
+    KeyFormat (..),
+    WalletStyle (..),
+ )
+import Cardano.Wallet.Compat (
+    (^?),
+ )
+import Cardano.Wallet.Primitive.AddressDerivation (
+    DerivationIndex (..),
+    Passphrase (..),
+    Role (..),
+ )
+import Cardano.Wallet.Primitive.AddressDiscovery.Shared (
+    CredentialType (..),
+ )
+import Cardano.Wallet.Primitive.SyncProgress (
+    SyncProgress (..),
+ )
+import Control.Monad (
+    forM,
+ )
+import Control.Monad.IO.Class (
+    liftIO,
+ )
+import Control.Monad.Trans.Resource (
+    runResourceT,
+ )
+import Data.Aeson (
+    ToJSON (..),
+    Value (String),
+ )
+import Data.Either.Combinators (
+    swapEither,
+ )
+import Data.Generics.Internal.VL.Lens (
+    view,
+    (^.),
+ )
+import Data.Quantity (
+    Quantity (..),
+ )
+import Data.Text (
+    Text,
+ )
+import Data.Text.Class (
+    ToText (..),
+ )
+import Test.Hspec (
+    SpecWith,
+    describe,
+ )
+import Test.Hspec.Expectations.Lifted (
+    shouldBe,
+    shouldNotBe,
+ )
+import Test.Hspec.Extra (
+    it,
+ )
+import Test.Integration.Framework.DSL (
+    Context (..),
+    Headers (..),
+    MnemonicLength (..),
+    Payload (..),
+    accPubKeyFromMnemonics,
+    deleteSharedWallet,
+    eventually,
+    expectErrorMessage,
+    expectField,
+    expectListField,
+    expectListSize,
+    expectResponseCode,
+    faucetAmt,
+    fixturePassphrase,
+    fixtureWallet,
+    genMnemonics,
+    genXPubs,
+    getAccountKeyShared,
+    getFromResponse,
+    getSharedWallet,
+    getSharedWalletKey,
+    getWalletIdFromSharedWallet,
+    hexText,
+    json,
+    listFilteredSharedWallets,
+    minUTxOValue,
+    notDelegating,
+    patchSharedWallet,
+    postAccountKeyShared,
+    postSharedWallet,
+    request,
+    unsafeRequest,
+    verify,
+    walletId,
+ )
+import Test.Integration.Framework.TestData (
+    errMsg403CannotUpdateThisCosigner,
+    errMsg403CreateIllegal,
+    errMsg403KeyAlreadyPresent,
+    errMsg403NoDelegationTemplate,
+    errMsg403NoSuchCosigner,
+    errMsg403TemplateInvalidDuplicateXPub,
+    errMsg403TemplateInvalidNoCosignerInScript,
+    errMsg403TemplateInvalidScript,
+    errMsg403TemplateInvalidUnknownCosigner,
+    errMsg403WalletAlreadyActive,
+    errMsg403WrongIndex,
+ )
 
 import qualified Cardano.Wallet.Api.Link as Link
 import qualified Data.ByteArray as BA
@@ -126,22 +150,25 @@ import qualified Data.Text as T
 import qualified Data.Text.Encoding as T
 import qualified Network.HTTP.Types as HTTP
 
-
-spec :: forall n.
+spec ::
+    forall n.
     ( DecodeAddress n
     , DecodeStakeAddress n
     , EncodeAddress n
-    ) => SpecWith Context
+    ) =>
+    SpecWith Context
 spec = describe "SHARED_WALLETS" $ do
     it "SHARED_WALLETS_CREATE_01 - Create an active shared wallet from root xprv" $ \ctx -> runResourceT $ do
         m15txt <- liftIO $ genMnemonics M15
         m12txt <- liftIO $ genMnemonics M12
-        let (Right m15) = mkSomeMnemonic @'[ 15 ] m15txt
-        let (Right m12) = mkSomeMnemonic @'[ 12 ] m12txt
+        let (Right m15) = mkSomeMnemonic @'[15] m15txt
+        let (Right m12) = mkSomeMnemonic @'[12] m12txt
         let passphrase = Passphrase $ BA.convert $ T.encodeUtf8 fixturePassphrase
         let index = 30
         let accXPubDerived = accPubKeyFromMnemonics m15 (Just m12) index passphrase
-        let payloadPost = Json [json| {
+        let payloadPost =
+                Json
+                    [json| {
                 "name": "Shared Wallet",
                 "mnemonic_sentence": #{m15txt},
                 "mnemonic_second_factor": #{m12txt},
@@ -159,7 +186,8 @@ spec = describe "SHARED_WALLETS" $ do
                     }
                 } |]
         rPost <- postSharedWallet ctx Default payloadPost
-        verify (fmap (view #wallet) <$> rPost)
+        verify
+            (fmap (view #wallet) <$> rPost)
             [ expectResponseCode HTTP.status201
             , expectField
                 (traverse . #name . #getApiT . #getWalletName)
@@ -168,35 +196,47 @@ spec = describe "SHARED_WALLETS" $ do
                 (traverse . #addressPoolGap . #getApiT . #getAddressPoolGap)
                 (`shouldBe` 20)
             , expectField
-                (traverse . #balance . #available) (`shouldBe` Quantity 0)
+                (traverse . #balance . #available)
+                (`shouldBe` Quantity 0)
             , expectField
-                (traverse . #balance . #total) (`shouldBe` Quantity 0)
+                (traverse . #balance . #total)
+                (`shouldBe` Quantity 0)
             , expectField
-                (traverse . #balance . #reward) (`shouldBe` Quantity 0)
-            , expectField (traverse . #assets . #total)
+                (traverse . #balance . #reward)
+                (`shouldBe` Quantity 0)
+            , expectField
+                (traverse . #assets . #total)
                 (`shouldBe` mempty)
-            , expectField (traverse . #assets . #available)
+            , expectField
+                (traverse . #assets . #available)
                 (`shouldBe` mempty)
-            , expectField (traverse . #delegation)
+            , expectField
+                (traverse . #delegation)
                 (`shouldBe` notDelegating [])
-            , expectField (traverse . #passphrase)
+            , expectField
+                (traverse . #passphrase)
                 (`shouldNotBe` Nothing)
-            , expectField (traverse . #delegationScriptTemplate)
+            , expectField
+                (traverse . #delegationScriptTemplate)
                 (`shouldBe` Nothing)
-            , expectField (traverse . #accountIndex . #getApiT)
+            , expectField
+                (traverse . #accountIndex . #getApiT)
                 (`shouldBe` DerivationIndex 2147483678)
             ]
 
         let wal = getFromResponse id rPost
 
-        let payloadKey = Json [json|{
+        let payloadKey =
+                Json
+                    [json|{
                 "passphrase": #{fixturePassphrase},
                 "format": "extended"
             }|]
         rKey <-
             postAccountKeyShared ctx wal (DerivationIndex $ 2147483648 + index) Default payloadKey
 
-        verify rKey
+        verify
+            rKey
             [ expectResponseCode HTTP.status202
             , expectField #format (`shouldBe` Extended)
             ]
@@ -205,7 +245,8 @@ spec = describe "SHARED_WALLETS" $ do
 
         aKey <- getAccountKeyShared ctx wal (Just Extended)
 
-        verify aKey
+        verify
+            aKey
             [ expectResponseCode HTTP.status200
             , expectField #format (`shouldBe` Extended)
             ]
@@ -215,12 +256,14 @@ spec = describe "SHARED_WALLETS" $ do
     it "SHARED_WALLETS_CREATE_02 - Create a pending shared wallet from root xprv" $ \ctx -> runResourceT $ do
         m15txt <- liftIO $ genMnemonics M15
         m12txt <- liftIO $ genMnemonics M12
-        let (Right m15) = mkSomeMnemonic @'[ 15 ] m15txt
-        let (Right m12) = mkSomeMnemonic @'[ 12 ] m12txt
+        let (Right m15) = mkSomeMnemonic @'[15] m15txt
+        let (Right m12) = mkSomeMnemonic @'[12] m12txt
         let passphrase = Passphrase $ BA.convert $ T.encodeUtf8 fixturePassphrase
         let index = 30
         let accXPubDerived = accPubKeyFromMnemonics m15 (Just m12) index passphrase
-        let payload = Json [json| {
+        let payload =
+                Json
+                    [json| {
                 "name": "Shared Wallet",
                 "mnemonic_sentence": #{m15txt},
                 "mnemonic_second_factor": #{m12txt},
@@ -239,7 +282,8 @@ spec = describe "SHARED_WALLETS" $ do
                     }
                 } |]
         rPost <- postSharedWallet ctx Default payload
-        verify (fmap (swapEither . view #wallet) <$> rPost)
+        verify
+            (fmap (swapEither . view #wallet) <$> rPost)
             [ expectResponseCode HTTP.status201
             , expectField
                 (traverse . #name . #getApiT . #getWalletName)
@@ -257,14 +301,17 @@ spec = describe "SHARED_WALLETS" $ do
 
         let wal = getFromResponse id rPost
 
-        let payloadKey = Json [json|{
+        let payloadKey =
+                Json
+                    [json|{
                 "passphrase": #{fixturePassphrase},
                 "format": "extended"
             }|]
         rKey <-
             postAccountKeyShared ctx wal (DerivationIndex $ 2147483648 + index) Default payloadKey
 
-        verify rKey
+        verify
+            rKey
             [ expectResponseCode HTTP.status202
             , expectField #format (`shouldBe` Extended)
             ]
@@ -272,8 +319,10 @@ spec = describe "SHARED_WALLETS" $ do
         hexText bytes `shouldBe` accXPubDerived
 
     it "SHARED_WALLETS_CREATE_03 - Create an active shared wallet from account xpub" $ \ctx -> runResourceT $ do
-        (_, accXPubTxt):_ <- liftIO $ genXPubs 1
-        let payload = Json [json| {
+        (_, accXPubTxt) : _ <- liftIO $ genXPubs 1
+        let payload =
+                Json
+                    [json| {
                 "name": "Shared Wallet",
                 "account_public_key": #{accXPubTxt},
                 "account_index": "10H",
@@ -289,7 +338,8 @@ spec = describe "SHARED_WALLETS" $ do
                     }
                 } |]
         rPost <- postSharedWallet ctx Default payload
-        verify (fmap (view #wallet) <$> rPost)
+        verify
+            (fmap (view #wallet) <$> rPost)
             [ expectResponseCode HTTP.status201
             , expectField
                 (traverse . #name . #getApiT . #getWalletName)
@@ -297,21 +347,29 @@ spec = describe "SHARED_WALLETS" $ do
             , expectField
                 (traverse . #addressPoolGap . #getApiT . #getAddressPoolGap)
                 (`shouldBe` 20)
-            , expectField (traverse . #balance . #available)
+            , expectField
+                (traverse . #balance . #available)
                 (`shouldBe` Quantity 0)
-            , expectField (traverse . #balance . #total)
+            , expectField
+                (traverse . #balance . #total)
                 (`shouldBe` Quantity 0)
-            , expectField (traverse . #balance . #reward)
+            , expectField
+                (traverse . #balance . #reward)
                 (`shouldBe` Quantity 0)
-            , expectField (traverse . #assets . #total)
+            , expectField
+                (traverse . #assets . #total)
                 (`shouldBe` mempty)
-            , expectField (traverse . #assets . #available)
+            , expectField
+                (traverse . #assets . #available)
                 (`shouldBe` mempty)
-            , expectField (traverse . #delegation)
+            , expectField
+                (traverse . #delegation)
                 (`shouldBe` notDelegating [])
-            , expectField (traverse . #passphrase)
+            , expectField
+                (traverse . #passphrase)
                 (`shouldBe` Nothing)
-            , expectField (traverse . #delegationScriptTemplate)
+            , expectField
+                (traverse . #delegationScriptTemplate)
                 (`shouldBe` Nothing)
             , expectField
                 (traverse . #accountIndex . #getApiT)
@@ -321,7 +379,8 @@ spec = describe "SHARED_WALLETS" $ do
         let wal = getFromResponse id rPost
         aKey <- getAccountKeyShared ctx wal (Just Extended)
 
-        verify aKey
+        verify
+            aKey
             [ expectResponseCode HTTP.status200
             , expectField #format (`shouldBe` Extended)
             ]
@@ -329,8 +388,10 @@ spec = describe "SHARED_WALLETS" $ do
         hexText bytes' `shouldBe` accXPubTxt
 
     it "SHARED_WALLETS_CREATE_04 - Create a pending shared wallet from account xpub" $ \ctx -> runResourceT $ do
-        (_, accXPubTxt):_ <- liftIO $ genXPubs 1
-        let payload = Json [json| {
+        (_, accXPubTxt) : _ <- liftIO $ genXPubs 1
+        let payload =
+                Json
+                    [json| {
                 "name": "Shared Wallet",
                 "account_public_key": #{accXPubTxt},
                 "account_index": "10H",
@@ -347,7 +408,8 @@ spec = describe "SHARED_WALLETS" $ do
                     }
                 } |]
         r <- postSharedWallet ctx Default payload
-        verify (fmap (swapEither . view #wallet) <$> r)
+        verify
+            (fmap (swapEither . view #wallet) <$> r)
             [ expectResponseCode HTTP.status201
             , expectField
                 (traverse . #name . #getApiT . #getWalletName)
@@ -366,12 +428,14 @@ spec = describe "SHARED_WALLETS" $ do
     it "SHARED_WALLETS_CREATE_05 - Create an active shared wallet from root xprv with self" $ \ctx -> runResourceT $ do
         m15txt <- liftIO $ genMnemonics M15
         m12txt <- liftIO $ genMnemonics M12
-        let (Right m15) = mkSomeMnemonic @'[ 15 ] m15txt
-        let (Right m12) = mkSomeMnemonic @'[ 12 ] m12txt
+        let (Right m15) = mkSomeMnemonic @'[15] m15txt
+        let (Right m12) = mkSomeMnemonic @'[12] m12txt
         let passphrase = Passphrase $ BA.convert $ T.encodeUtf8 fixturePassphrase
         let index = 30
         let accXPubDerived = accPubKeyFromMnemonics m15 (Just m12) index passphrase
-        let payloadPost = Json [json| {
+        let payloadPost =
+                Json
+                    [json| {
                 "name": "Shared Wallet",
                 "mnemonic_sentence": #{m15txt},
                 "mnemonic_second_factor": #{m12txt},
@@ -389,7 +453,8 @@ spec = describe "SHARED_WALLETS" $ do
                     }
                 } |]
         rPost <- postSharedWallet ctx Default payloadPost
-        verify rPost
+        verify
+            rPost
             [ expectResponseCode HTTP.status201
             ]
 
@@ -398,7 +463,9 @@ spec = describe "SHARED_WALLETS" $ do
         rDel <- deleteSharedWallet ctx wal
         expectResponseCode HTTP.status204 rDel
 
-        let payloadPostWithSelf = Json [json| {
+        let payloadPostWithSelf =
+                Json
+                    [json| {
                 "name": "Shared Wallet",
                 "mnemonic_sentence": #{m15txt},
                 "mnemonic_second_factor": #{m12txt},
@@ -416,7 +483,8 @@ spec = describe "SHARED_WALLETS" $ do
                     }
                 } |]
         rPostWithSelf <- postSharedWallet ctx Default payloadPostWithSelf
-        verify rPostWithSelf
+        verify
+            rPostWithSelf
             [ expectResponseCode HTTP.status201
             ]
 
@@ -425,8 +493,10 @@ spec = describe "SHARED_WALLETS" $ do
         getWalletIdFromSharedWallet walWithSelf `shouldBe` getWalletIdFromSharedWallet wal
 
     it "SHARED_WALLETS_CREATE_06 - Create an active shared wallet from account xpub with self" $ \ctx -> runResourceT $ do
-        (_, accXPubTxt):_ <- liftIO $ genXPubs 1
-        let payload = Json [json| {
+        (_, accXPubTxt) : _ <- liftIO $ genXPubs 1
+        let payload =
+                Json
+                    [json| {
                 "name": "Shared Wallet",
                 "account_public_key": #{accXPubTxt},
                 "account_index": "10H",
@@ -442,7 +512,8 @@ spec = describe "SHARED_WALLETS" $ do
                     }
                 } |]
         rPost <- postSharedWallet ctx Default payload
-        verify rPost
+        verify
+            rPost
             [ expectResponseCode HTTP.status201
             ]
 
@@ -451,7 +522,9 @@ spec = describe "SHARED_WALLETS" $ do
         rDel <- deleteSharedWallet ctx wal
         expectResponseCode HTTP.status204 rDel
 
-        let payloadWithSelf = Json [json| {
+        let payloadWithSelf =
+                Json
+                    [json| {
                 "name": "Shared Wallet",
                 "account_public_key": #{accXPubTxt},
                 "account_index": "10H",
@@ -467,7 +540,8 @@ spec = describe "SHARED_WALLETS" $ do
                     }
                 } |]
         rPostWithSelf <- postSharedWallet ctx Default payloadWithSelf
-        verify rPostWithSelf
+        verify
+            rPostWithSelf
             [ expectResponseCode HTTP.status201
             ]
 
@@ -476,8 +550,10 @@ spec = describe "SHARED_WALLETS" $ do
         getWalletIdFromSharedWallet walWithSelf `shouldBe` getWalletIdFromSharedWallet wal
 
     it "SHARED_WALLETS_CREATE_07 - Incorrect script template due to NoCosignerInScript" $ \ctx -> runResourceT $ do
-        (_, accXPubTxt):_ <- liftIO $ genXPubs 1
-        let payload = Json [json| {
+        (_, accXPubTxt) : _ <- liftIO $ genXPubs 1
+        let payload =
+                Json
+                    [json| {
                 "name": "Shared Wallet",
                 "account_public_key": #{accXPubTxt},
                 "account_index": "10H",
@@ -496,8 +572,10 @@ spec = describe "SHARED_WALLETS" $ do
         expectErrorMessage errMsg403TemplateInvalidNoCosignerInScript rPost
 
     it "SHARED_WALLETS_CREATE_08 - Incorrect script template due to UnknownCosigner" $ \ctx -> runResourceT $ do
-        (_, accXPubTxt):_ <- liftIO $ genXPubs 1
-        let payload = Json [json| {
+        (_, accXPubTxt) : _ <- liftIO $ genXPubs 1
+        let payload =
+                Json
+                    [json| {
                 "name": "Shared Wallet",
                 "account_public_key": #{accXPubTxt},
                 "account_index": "10H",
@@ -517,8 +595,10 @@ spec = describe "SHARED_WALLETS" $ do
         expectErrorMessage errMsg403TemplateInvalidUnknownCosigner rPost
 
     it "SHARED_WALLETS_CREATE_09 - Incorrect script template due to DuplicateXPub" $ \ctx -> runResourceT $ do
-        (_, accXPubTxt):_ <- liftIO $ genXPubs 1
-        let payload = Json [json| {
+        (_, accXPubTxt) : _ <- liftIO $ genXPubs 1
+        let payload =
+                Json
+                    [json| {
                 "name": "Shared Wallet",
                 "account_public_key": #{accXPubTxt},
                 "account_index": "10H",
@@ -539,8 +619,10 @@ spec = describe "SHARED_WALLETS" $ do
         expectErrorMessage errMsg403TemplateInvalidDuplicateXPub rPost
 
     it "SHARED_WALLETS_CREATE_10 - Incorrect script template due to WrongScript when recommended validation" $ \ctx -> runResourceT $ do
-        (_, accXPubTxt):_ <- liftIO $ genXPubs 1
-        let payload = Json [json| {
+        (_, accXPubTxt) : _ <- liftIO $ genXPubs 1
+        let payload =
+                Json
+                    [json| {
                 "name": "Shared Wallet",
                 "account_public_key": #{accXPubTxt},
                 "account_index": "10H",
@@ -562,8 +644,10 @@ spec = describe "SHARED_WALLETS" $ do
         expectErrorMessage (errMsg403TemplateInvalidScript reason) rPost
 
     it "SHARED_WALLETS_CREATE_11 - Correct script template when required validation" $ \ctx -> runResourceT $ do
-        (_, accXPubTxt):_ <- liftIO $ genXPubs 1
-        let payload = Json [json| {
+        (_, accXPubTxt) : _ <- liftIO $ genXPubs 1
+        let payload =
+                Json
+                    [json| {
                 "name": "Shared Wallet",
                 "account_public_key": #{accXPubTxt},
                 "account_index": "10H",
@@ -584,8 +668,10 @@ spec = describe "SHARED_WALLETS" $ do
         expectResponseCode HTTP.status201 rPost
 
     it "SHARED_WALLETS_CREATE_12 - Incorrect script template due to WrongScript - timelocks" $ \ctx -> runResourceT $ do
-        (_, accXPubTxt):_ <- liftIO $ genXPubs 1
-        let payload = Json [json| {
+        (_, accXPubTxt) : _ <- liftIO $ genXPubs 1
+        let payload =
+                Json
+                    [json| {
                 "name": "Shared Wallet",
                 "account_public_key": #{accXPubTxt},
                 "account_index": "10H",
@@ -608,7 +694,9 @@ spec = describe "SHARED_WALLETS" $ do
 
     it "SHARED_WALLETS_CREATE_13 - Incorrect account index" $ \ctx -> runResourceT $ do
         [(_, accXPubTxt0)] <- liftIO $ genXPubs 1
-        let payloadCreate = Json [json| {
+        let payloadCreate =
+                Json
+                    [json| {
                 "name": "Shared Wallet",
                 "account_public_key": #{accXPubTxt0},
                 "account_index": "30",
@@ -632,8 +720,9 @@ spec = describe "SHARED_WALLETS" $ do
         let walName = "Shared Wallet" :: Text
         (_, payload) <- getAccountWallet walName
         rInit <- postSharedWallet ctx Default payload
-        verify rInit
-            [ expectResponseCode HTTP.status201 ]
+        verify
+            rInit
+            [expectResponseCode HTTP.status201]
         let wal = getFromResponse id rInit
 
         eventually "Wallet state = Ready" $ do
@@ -647,9 +736,11 @@ spec = describe "SHARED_WALLETS" $ do
         expectResponseCode HTTP.status204 rDel
 
     it "SHARED_WALLETS_PATCH_01 - Add cosigner key in a pending shared wallet and transit it to the active shared wallet" $ \ctx -> runResourceT $ do
-        [(accXPub0, accXPubTxt0),(accXPub1,accXPubTxt1)] <- liftIO $ genXPubs 2
+        [(accXPub0, accXPubTxt0), (accXPub1, accXPubTxt1)] <- liftIO $ genXPubs 2
 
-        let payloadCreate = Json [json| {
+        let payloadCreate =
+                Json
+                    [json| {
                 "name": "Shared Wallet",
                 "account_public_key": #{accXPubTxt0},
                 "account_index": "30H",
@@ -669,9 +760,11 @@ spec = describe "SHARED_WALLETS" $ do
         expectResponseCode HTTP.status201 rPost
         let wal@(ApiSharedWallet (Left pendingWal)) = getFromResponse id rPost
         let cosignerKeysPost = pendingWal ^. #paymentScriptTemplate
-        liftIO $ cosigners cosignerKeysPost `shouldBe` Map.fromList [(Cosigner 0,accXPub0)]
+        liftIO $ cosigners cosignerKeysPost `shouldBe` Map.fromList [(Cosigner 0, accXPub0)]
 
-        let payloadPatch = Json [json| {
+        let payloadPatch =
+                Json
+                    [json| {
                 "cosigner#1": #{accXPubTxt1}
                 } |]
 
@@ -679,11 +772,13 @@ spec = describe "SHARED_WALLETS" $ do
         expectResponseCode HTTP.status200 rPatch
         let (ApiSharedWallet (Right activeWal)) = getFromResponse id rPatch
         let cosignerKeysPatch = activeWal ^. #paymentScriptTemplate
-        liftIO $ cosigners cosignerKeysPatch `shouldBe` Map.fromList [(Cosigner 0,accXPub0), (Cosigner 1,accXPub1)]
+        liftIO $ cosigners cosignerKeysPatch `shouldBe` Map.fromList [(Cosigner 0, accXPub0), (Cosigner 1, accXPub1)]
 
     it "SHARED_WALLETS_PATCH_02 - Add cosigner for delegation script template" $ \ctx -> runResourceT $ do
-        [(accXPub0, accXPubTxt0),(accXPub1,accXPubTxt1)] <- liftIO $ genXPubs 2
-        let payloadCreate = Json [json| {
+        [(accXPub0, accXPubTxt0), (accXPub1, accXPubTxt1)] <- liftIO $ genXPubs 2
+        let payloadCreate =
+                Json
+                    [json| {
                 "name": "Shared Wallet",
                 "account_public_key": #{accXPubTxt0},
                 "account_index": "30H",
@@ -714,11 +809,13 @@ spec = describe "SHARED_WALLETS" $ do
         expectResponseCode HTTP.status201 rPost
         let wal@(ApiSharedWallet (Left pendingWal)) = getFromResponse id rPost
         let cosignerKeysPostInPayment = pendingWal ^. #paymentScriptTemplate
-        liftIO $ cosigners cosignerKeysPostInPayment `shouldBe` Map.fromList [(Cosigner 0,accXPub0)]
+        liftIO $ cosigners cosignerKeysPostInPayment `shouldBe` Map.fromList [(Cosigner 0, accXPub0)]
         let (Just cosignerKeysPostInDelegation) = pendingWal ^. #delegationScriptTemplate
-        liftIO $ cosigners cosignerKeysPostInDelegation `shouldBe` Map.fromList [(Cosigner 0,accXPub0)]
+        liftIO $ cosigners cosignerKeysPostInDelegation `shouldBe` Map.fromList [(Cosigner 0, accXPub0)]
 
-        let payloadPatch = Json [json| {
+        let payloadPatch =
+                Json
+                    [json| {
                 "cosigner#1": #{accXPubTxt1}
                 } |]
 
@@ -726,11 +823,13 @@ spec = describe "SHARED_WALLETS" $ do
         expectResponseCode HTTP.status200 rPatch
         let (ApiSharedWallet (Right activeWal)) = getFromResponse id rPatch
         let (Just cosignerKeysPatch) = activeWal ^. #delegationScriptTemplate
-        liftIO $ cosigners cosignerKeysPatch `shouldBe` Map.fromList [(Cosigner 0,accXPub0), (Cosigner 1,accXPub1)]
+        liftIO $ cosigners cosignerKeysPatch `shouldBe` Map.fromList [(Cosigner 0, accXPub0), (Cosigner 1, accXPub1)]
 
     it "SHARED_WALLETS_PATCH_03 - Cannot add cosigner key in an active shared wallet" $ \ctx -> runResourceT $ do
-        [(_, accXPubTxt0),(_,accXPubTxt1)] <- liftIO $ genXPubs 2
-        let payloadCreate = Json [json| {
+        [(_, accXPubTxt0), (_, accXPubTxt1)] <- liftIO $ genXPubs 2
+        let payloadCreate =
+                Json
+                    [json| {
                 "name": "Shared Wallet",
                 "account_public_key": #{accXPubTxt0},
                 "account_index": "30H",
@@ -749,7 +848,9 @@ spec = describe "SHARED_WALLETS" $ do
         expectResponseCode HTTP.status201 rPost
         let wal@(ApiSharedWallet (Right _activeWal)) = getFromResponse id rPost
 
-        let payloadPatch = Json [json| {
+        let payloadPatch =
+                Json
+                    [json| {
                 "cosigner#1": #{accXPubTxt1}
                 } |]
 
@@ -758,8 +859,10 @@ spec = describe "SHARED_WALLETS" $ do
         expectErrorMessage errMsg403WalletAlreadyActive rPatch
 
     it "SHARED_WALLETS_PATCH_04 - Cannot add cosigner key when delegation script missing and cannot add already existent key to other cosigner" $ \ctx -> runResourceT $ do
-        [(_, accXPubTxt0),(_,accXPubTxt1)] <- liftIO $ genXPubs 2
-        let payloadCreate = Json [json| {
+        [(_, accXPubTxt0), (_, accXPubTxt1)] <- liftIO $ genXPubs 2
+        let payloadCreate =
+                Json
+                    [json| {
                 "name": "Shared Wallet",
                 "account_public_key": #{accXPubTxt0},
                 "account_index": "30H",
@@ -779,7 +882,9 @@ spec = describe "SHARED_WALLETS" $ do
         expectResponseCode HTTP.status201 rPost
         let wal@(ApiSharedWallet (Left _pendingWal)) = getFromResponse id rPost
 
-        let payloadPatch = Json [json| {
+        let payloadPatch =
+                Json
+                    [json| {
                 "cosigner#1": #{accXPubTxt1}
                 } |]
 
@@ -788,8 +893,10 @@ spec = describe "SHARED_WALLETS" $ do
         expectErrorMessage errMsg403NoDelegationTemplate rPatch
 
     it "SHARED_WALLETS_PATCH_05 - Cannot create shared wallet when missing wallet's account public key in template" $ \ctx -> runResourceT $ do
-        [(_, accXPubTxt0),(_,accXPubTxt1)] <- liftIO $ genXPubs 2
-        let payloadCreate = Json [json| {
+        [(_, accXPubTxt0), (_, accXPubTxt1)] <- liftIO $ genXPubs 2
+        let payloadCreate =
+                Json
+                    [json| {
                 "name": "Shared Wallet",
                 "account_public_key": #{accXPubTxt0},
                 "account_index": "30H",
@@ -810,8 +917,10 @@ spec = describe "SHARED_WALLETS" $ do
         expectErrorMessage errMsg403CreateIllegal rPost
 
     it "SHARED_WALLETS_PATCH_06 - Can add the same cosigner key for delegation script template but not payment one" $ \ctx -> runResourceT $ do
-        [(_, accXPubTxt0),(_,accXPubTxt1)] <- liftIO $ genXPubs 2
-        let payloadCreate = Json [json| {
+        [(_, accXPubTxt0), (_, accXPubTxt1)] <- liftIO $ genXPubs 2
+        let payloadCreate =
+                Json
+                    [json| {
                 "name": "Shared Wallet",
                 "account_public_key": #{accXPubTxt0},
                 "account_index": "30H",
@@ -843,34 +952,44 @@ spec = describe "SHARED_WALLETS" $ do
         expectResponseCode HTTP.status201 rPost
         let wal@(ApiSharedWallet (Left _pendingWal)) = getFromResponse id rPost
 
-        let payloadPatch1 = Json [json| {
+        let payloadPatch1 =
+                Json
+                    [json| {
                 "cosigner#1": #{accXPubTxt1}
                 } |]
         rPatch1 <- patchSharedWallet ctx wal Delegation payloadPatch1
         expectResponseCode HTTP.status200 rPatch1
 
-        let payloadPatch2 = Json [json| {
+        let payloadPatch2 =
+                Json
+                    [json| {
                 "cosigner#0": #{accXPubTxt0}
                 } |]
         rPatch2 <- patchSharedWallet ctx wal Payment payloadPatch2
         expectResponseCode HTTP.status403 rPatch2
         expectErrorMessage errMsg403CannotUpdateThisCosigner rPatch2
 
-        let payloadPatch3 = Json [json| {
+        let payloadPatch3 =
+                Json
+                    [json| {
                 "cosigner#1": #{accXPubTxt0}
                 } |]
         rPatch3 <- patchSharedWallet ctx wal Payment payloadPatch3
         expectResponseCode HTTP.status403 rPatch3
         expectErrorMessage (errMsg403KeyAlreadyPresent (toText Payment)) rPatch3
 
-        let payloadPatch4 = Json [json| {
+        let payloadPatch4 =
+                Json
+                    [json| {
                 "cosigner#1": #{accXPubTxt1}
                 } |]
         rPatch4 <- patchSharedWallet ctx wal Delegation payloadPatch4
         expectResponseCode HTTP.status403 rPatch4
         expectErrorMessage (errMsg403KeyAlreadyPresent (toText Delegation)) rPatch4
 
-        let payloadPatch5 = Json [json| {
+        let payloadPatch5 =
+                Json
+                    [json| {
                 "cosigner#7": #{accXPubTxt0}
                 } |]
         rPatch5 <- patchSharedWallet ctx wal Payment payloadPatch5
@@ -878,8 +997,10 @@ spec = describe "SHARED_WALLETS" $ do
         expectErrorMessage (errMsg403NoSuchCosigner (toText Payment) 7) rPatch5
 
     it "SHARED_WALLETS_PATCH_07 - Cannot update cosigner key in a pending shared wallet having the shared wallet's account key" $ \ctx -> runResourceT $ do
-        [(_, accXPubTxt0),(_,accXPubTxt1)] <- liftIO $ genXPubs 2
-        let payloadCreate = Json [json| {
+        [(_, accXPubTxt0), (_, accXPubTxt1)] <- liftIO $ genXPubs 2
+        let payloadCreate =
+                Json
+                    [json| {
                 "name": "Shared Wallet",
                 "account_public_key": #{accXPubTxt0},
                 "account_index": "30H",
@@ -899,7 +1020,9 @@ spec = describe "SHARED_WALLETS" $ do
         expectResponseCode HTTP.status201 rPost
         let wal@(ApiSharedWallet (Left _pendingWal)) = getFromResponse id rPost
 
-        let payloadPatch = Json [json| {
+        let payloadPatch =
+                Json
+                    [json| {
                 "cosigner#0": #{accXPubTxt1}
                 } |]
         rPatch <- patchSharedWallet ctx wal Payment payloadPatch
@@ -910,7 +1033,8 @@ spec = describe "SHARED_WALLETS" $ do
         let walName = "Shared Wallet" :: Text
         (_, payload) <- getAccountWallet walName
         rPost <- postSharedWallet ctx Default payload
-        verify rPost
+        verify
+            rPost
             [ expectResponseCode HTTP.status201
             ]
         let wal@(ApiSharedWallet (Right _activeWal)) = getFromResponse id rPost
@@ -925,8 +1049,10 @@ spec = describe "SHARED_WALLETS" $ do
         T.isPrefixOf "stake_shared_vk" stakeAddr `shouldBe` True
 
     it "SHARED_WALLETS_KEYS_02 - Getting verification keys works for pending shared wallet" $ \ctx -> runResourceT $ do
-        (_, accXPubTxt):_ <- liftIO $ genXPubs 1
-        let payload = Json [json| {
+        (_, accXPubTxt) : _ <- liftIO $ genXPubs 1
+        let payload =
+                Json
+                    [json| {
                 "name": "Shared Wallet",
                 "account_public_key": #{accXPubTxt},
                 "account_index": "10H",
@@ -943,7 +1069,8 @@ spec = describe "SHARED_WALLETS" $ do
                     }
                 } |]
         rPost <- postSharedWallet ctx Default payload
-        verify rPost
+        verify
+            rPost
             [ expectResponseCode HTTP.status201
             ]
         let wal@(ApiSharedWallet (Left _pendingWal)) = getFromResponse id rPost
@@ -976,23 +1103,29 @@ spec = describe "SHARED_WALLETS" $ do
         let walName = "Shared Wallet" :: Text
         (_, payload) <- getAccountWallet walName
         rPost <- postSharedWallet ctx Default payload
-        verify rPost
+        verify
+            rPost
             [ expectResponseCode HTTP.status201
             ]
         let wal = getFromResponse id rPost
 
-        rl <- listFilteredSharedWallets (Set.singleton (getWalletIdFromSharedWallet wal ^. walletId) ) ctx
-        verify (fmap (fmap (view #wallet)) <$> rl)
+        rl <- listFilteredSharedWallets (Set.singleton (getWalletIdFromSharedWallet wal ^. walletId)) ctx
+        verify
+            (fmap (fmap (view #wallet)) <$> rl)
             [ expectResponseCode HTTP.status200
             , expectListSize 1
-            , expectListField 0
+            , expectListField
+                0
                 (traverse . #name . #getApiT . #getWalletName)
                 (`shouldBe` walName)
-            , expectListField 0
+            , expectListField
+                0
                 (traverse . #addressPoolGap . #getApiT . #getAddressPoolGap)
                 (`shouldBe` 20)
-            , expectListField 0
-                (traverse . #balance . #available) (`shouldBe` Quantity 0)
+            , expectListField
+                0
+                (traverse . #balance . #available)
+                (`shouldBe` Quantity 0)
             , expectListField 0 (traverse . #balance . #total) (`shouldBe` Quantity 0)
             , expectListField 0 (traverse . #balance . #reward) (`shouldBe` Quantity 0)
             , expectListField 0 (traverse . #assets . #total) (`shouldBe` mempty)
@@ -1007,14 +1140,16 @@ spec = describe "SHARED_WALLETS" $ do
         wids <- forM walNames $ \walName -> do
             (_, payload) <- getAccountWallet walName
             rPost <- postSharedWallet ctx Default payload
-            verify rPost
+            verify
+                rPost
                 [ expectResponseCode HTTP.status201
                 ]
             let wal = getFromResponse id rPost
             pure (getWalletIdFromSharedWallet wal ^. walletId)
         let name = (^? (#wallet . traverse . #name . #getApiT . #getWalletName))
         rl <- listFilteredSharedWallets (Set.fromList wids) ctx
-        verify (fmap (map name) <$> rl)
+        verify
+            (fmap (map name) <$> rl)
             [ expectResponseCode HTTP.status200
             , expectListSize 3
             , expectListField 0 traverse (`shouldBe` "1")
@@ -1026,7 +1161,8 @@ spec = describe "SHARED_WALLETS" $ do
         let walName = "Shared Wallet" :: Text
         (_, payload) <- getAccountWallet walName
         rPost <- postSharedWallet ctx Default payload
-        verify rPost
+        verify
+            rPost
             [ expectResponseCode HTTP.status201
             ]
         let wal = getFromResponse id rPost
@@ -1035,14 +1171,17 @@ spec = describe "SHARED_WALLETS" $ do
         expectResponseCode HTTP.status204 rDel
 
         rl <- listFilteredSharedWallets (Set.singleton $ getWalletIdFromSharedWallet wal ^. walletId) ctx
-        verify rl
+        verify
+            rl
             [ expectResponseCode HTTP.status200
             , expectListSize 0
             ]
 
     it "SHARED_WALLETS_DISCOVER_01 - Shared wallets can discover its address" $ \ctx -> runResourceT $ do
-        (_, accXPubTxt):_ <- liftIO $ genXPubs 1
-        let payload = Json [json| {
+        (_, accXPubTxt) : _ <- liftIO $ genXPubs 1
+        let payload =
+                Json
+                    [json| {
                 "name": "Shared Wallet",
                 "account_public_key": #{accXPubTxt},
                 "account_index": "10H",
@@ -1057,21 +1196,28 @@ spec = describe "SHARED_WALLETS" $ do
                     }
                 } |]
         rPost <- postSharedWallet ctx Default payload
-        verify (fmap (view #wallet) <$> rPost)
+        verify
+            (fmap (view #wallet) <$> rPost)
             [ expectResponseCode HTTP.status201
             , expectField (traverse . #balance . #available) (`shouldBe` Quantity 0)
             ]
         let walShared@(ApiSharedWallet (Right wal)) = getFromResponse id rPost
 
-        rAddr <- request @[ApiAddress n] ctx
-            (Link.listAddresses @'Shared wal) Default Empty
+        rAddr <-
+            request @[ApiAddress n]
+                ctx
+                (Link.listAddresses @ 'Shared wal)
+                Default
+                Empty
         expectResponseCode HTTP.status200 rAddr
         let sharedAddrs = getFromResponse id rAddr
         let destination = (sharedAddrs !! 1) ^. #id
 
         wShelley <- fixtureWallet ctx
         let amt = minUTxOValue (_mainEra ctx)
-        let payloadTx = Json [json|{
+        let payloadTx =
+                Json
+                    [json|{
                 "payments": [{
                     "address": #{destination},
                     "amount": {
@@ -1081,27 +1227,38 @@ spec = describe "SHARED_WALLETS" $ do
                 }],
                 "passphrase": #{fixturePassphrase}
             }|]
-        (_, ApiFee (Quantity _) (Quantity feeMax) _ _) <- unsafeRequest ctx
-            (Link.getTransactionFeeOld @'Shelley wShelley) payloadTx
-        let ep = Link.createTransactionOld @'Shelley
+        (_, ApiFee (Quantity _) (Quantity feeMax) _ _) <-
+            unsafeRequest
+                ctx
+                (Link.getTransactionFeeOld @ 'Shelley wShelley)
+                payloadTx
+        let ep = Link.createTransactionOld @ 'Shelley
         rTx <- request @(ApiTransaction n) ctx (ep wShelley) Default payloadTx
         expectResponseCode HTTP.status202 rTx
         eventually "wShelley balance is decreased" $ do
-            ra <- request @ApiWallet ctx
-                (Link.getWallet @'Shelley wShelley) Default Empty
+            ra <-
+                request @ApiWallet
+                    ctx
+                    (Link.getWallet @ 'Shelley wShelley)
+                    Default
+                    Empty
             expectField
                 (#balance . #available)
-                (`shouldBe` Quantity (faucetAmt - feeMax - amt)) ra
+                (`shouldBe` Quantity (faucetAmt - feeMax - amt))
+                ra
 
         rWal <- getSharedWallet ctx walShared
-        verify (fmap (view #wallet) <$> rWal)
+        verify
+            (fmap (view #wallet) <$> rWal)
             [ expectResponseCode HTTP.status200
             , expectField (traverse . #balance . #available) (`shouldBe` Quantity amt)
             ]
   where
-     getAccountWallet name = do
-          (_, accXPubTxt):_ <- liftIO $ genXPubs 1
-          let payload = Json [json| {
+    getAccountWallet name = do
+        (_, accXPubTxt) : _ <- liftIO $ genXPubs 1
+        let payload =
+                Json
+                    [json| {
                   "name": #{name},
                   "account_public_key": #{accXPubTxt},
                   "account_index": "30H",
@@ -1116,4 +1273,4 @@ spec = describe "SHARED_WALLETS" $ do
                             }
                       }
                   } |]
-          return (accXPubTxt, payload)
+        return (accXPubTxt, payload)

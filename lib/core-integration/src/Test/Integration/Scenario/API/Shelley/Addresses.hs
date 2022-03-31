@@ -8,87 +8,112 @@
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE TypeFamilies #-}
 
-module Test.Integration.Scenario.API.Shelley.Addresses
-    ( spec
-    ) where
+module Test.Integration.Scenario.API.Shelley.Addresses (
+    spec,
+) where
 
 import Prelude
 
-import Cardano.Wallet.Api.Types
-    ( AnyAddress
-    , ApiAccountKey
-    , ApiAddress
-    , ApiT (..)
-    , ApiTransaction
-    , ApiVerificationKeyShelley
-    , ApiWallet
-    , DecodeAddress
-    , DecodeStakeAddress
-    , EncodeAddress
-    , WalletStyle (..)
-    )
-import Cardano.Wallet.Primitive.AddressDerivation
-    ( DerivationIndex (..), Role (..) )
-import Cardano.Wallet.Primitive.AddressDiscovery.Sequential
-    ( defaultAddressPoolGap, getAddressPoolGap, purposeCIP1852 )
-import Cardano.Wallet.Primitive.Types.Address
-    ( AddressState (..) )
-import Cardano.Wallet.Primitive.Types.Tx
-    ( TxStatus (..) )
-import Control.Monad
-    ( forM, forM_ )
-import Control.Monad.IO.Class
-    ( liftIO )
-import Control.Monad.Trans.Resource
-    ( runResourceT )
-import Data.Aeson
-    ( ToJSON (..), object, (.=) )
-import Data.Generics.Internal.VL.Lens
-    ( view, (^.) )
-import Data.Quantity
-    ( Quantity (..) )
-import Data.Text
-    ( Text )
-import Test.Hspec
-    ( SpecWith, describe )
-import Test.Hspec.Expectations.Lifted
-    ( shouldBe, shouldNotBe, shouldNotSatisfy, shouldSatisfy )
-import Test.Hspec.Extra
-    ( it )
-import Test.Integration.Framework.DSL
-    ( Context (..)
-    , Headers (..)
-    , Payload (..)
-    , emptyRandomWallet
-    , emptyWallet
-    , emptyWalletWith
-    , eventually
-    , expectErrorMessage
-    , expectField
-    , expectListField
-    , expectListSize
-    , expectResponseCode
-    , fixturePassphrase
-    , fixtureWallet
-    , getFromResponse
-    , isValidDerivationPath
-    , json
-    , listAddresses
-    , minUTxOValue
-    , request
-    , unsafeRequest
-    , verify
-    , walletId
-    )
-import Test.Integration.Framework.TestData
-    ( errMsg400ScriptDuplicateKeys
-    , errMsg400ScriptIllFormed
-    , errMsg400ScriptNotUniformRoles
-    , errMsg400ScriptTimelocksContradictory
-    , errMsg400ScriptWrongCoeffcient
-    , errMsg403WrongIndex
-    , errMsg404NoWallet
-    )
+import Cardano.Wallet.Api.Types (
+    AnyAddress,
+    ApiAccountKey,
+    ApiAddress,
+    ApiT (..),
+    ApiTransaction,
+    ApiVerificationKeyShelley,
+    ApiWallet,
+    DecodeAddress,
+    DecodeStakeAddress,
+    EncodeAddress,
+    WalletStyle (..),
+ )
+import Cardano.Wallet.Primitive.AddressDerivation (
+    DerivationIndex (..),
+    Role (..),
+ )
+import Cardano.Wallet.Primitive.AddressDiscovery.Sequential (
+    defaultAddressPoolGap,
+    getAddressPoolGap,
+    purposeCIP1852,
+ )
+import Cardano.Wallet.Primitive.Types.Address (
+    AddressState (..),
+ )
+import Cardano.Wallet.Primitive.Types.Tx (
+    TxStatus (..),
+ )
+import Control.Monad (
+    forM,
+    forM_,
+ )
+import Control.Monad.IO.Class (
+    liftIO,
+ )
+import Control.Monad.Trans.Resource (
+    runResourceT,
+ )
+import Data.Aeson (
+    ToJSON (..),
+    object,
+    (.=),
+ )
+import Data.Generics.Internal.VL.Lens (
+    view,
+    (^.),
+ )
+import Data.Quantity (
+    Quantity (..),
+ )
+import Data.Text (
+    Text,
+ )
+import Test.Hspec (
+    SpecWith,
+    describe,
+ )
+import Test.Hspec.Expectations.Lifted (
+    shouldBe,
+    shouldNotBe,
+    shouldNotSatisfy,
+    shouldSatisfy,
+ )
+import Test.Hspec.Extra (
+    it,
+ )
+import Test.Integration.Framework.DSL (
+    Context (..),
+    Headers (..),
+    Payload (..),
+    emptyRandomWallet,
+    emptyWallet,
+    emptyWalletWith,
+    eventually,
+    expectErrorMessage,
+    expectField,
+    expectListField,
+    expectListSize,
+    expectResponseCode,
+    fixturePassphrase,
+    fixtureWallet,
+    getFromResponse,
+    isValidDerivationPath,
+    json,
+    listAddresses,
+    minUTxOValue,
+    request,
+    unsafeRequest,
+    verify,
+    walletId,
+ )
+import Test.Integration.Framework.TestData (
+    errMsg400ScriptDuplicateKeys,
+    errMsg400ScriptIllFormed,
+    errMsg400ScriptNotUniformRoles,
+    errMsg400ScriptTimelocksContradictory,
+    errMsg400ScriptWrongCoeffcient,
+    errMsg403WrongIndex,
+    errMsg404NoWallet,
+ )
 
 import qualified Cardano.Wallet.Api.Link as Link
 import qualified Data.Aeson as Aeson
@@ -96,11 +121,13 @@ import qualified Data.Aeson.Lens as Aeson
 import qualified Data.Text as T
 import qualified Network.HTTP.Types.Status as HTTP
 
-spec :: forall n.
+spec ::
+    forall n.
     ( DecodeAddress n
     , DecodeStakeAddress n
     , EncodeAddress n
-    ) => SpecWith Context
+    ) =>
+    SpecWith Context
 spec = describe "SHELLEY_ADDRESSES" $ do
     it "BYRON_ADDRESS_LIST - Byron wallet on Shelley ep" $ \ctx -> runResourceT $ do
         w <- emptyRandomWallet ctx
@@ -113,59 +140,98 @@ spec = describe "SHELLEY_ADDRESSES" $ do
     it "ADDRESS_LIST_01 - Can list known addresses on a default wallet" $ \ctx -> runResourceT $ do
         let g = fromIntegral $ getAddressPoolGap defaultAddressPoolGap
         w <- emptyWallet ctx
-        r <- request @[ApiAddress n] ctx
-            (Link.listAddresses @'Shelley w) Default Empty
+        r <-
+            request @[ApiAddress n]
+                ctx
+                (Link.listAddresses @ 'Shelley w)
+                Default
+                Empty
         expectResponseCode HTTP.status200 r
         expectListSize g r
-        forM_ [0..(g-1)] $ \addrNum -> do
+        forM_ [0 .. (g -1)] $ \addrNum -> do
             expectListField addrNum (#state . #getApiT) (`shouldBe` Unused) r
-            expectListField addrNum #derivationPath
-                (`shouldSatisfy` (isValidDerivationPath purposeCIP1852)) r
+            expectListField
+                addrNum
+                #derivationPath
+                (`shouldSatisfy` (isValidDerivationPath purposeCIP1852))
+                r
 
     it "ADDRESS_LIST_01 - Can list addresses with non-default pool gap" $ \ctx -> runResourceT $ do
         let g = 15
         w <- emptyWalletWith ctx ("Wallet", fixturePassphrase, g)
-        r <- request @[ApiAddress n] ctx
-            (Link.listAddresses @'Shelley w) Default Empty
+        r <-
+            request @[ApiAddress n]
+                ctx
+                (Link.listAddresses @ 'Shelley w)
+                Default
+                Empty
         expectResponseCode HTTP.status200 r
         expectListSize g r
-        forM_ [0..(g-1)] $ \addrNum -> do
+        forM_ [0 .. (g -1)] $ \addrNum -> do
             expectListField addrNum (#state . #getApiT) (`shouldBe` Unused) r
-            expectListField addrNum #derivationPath
-                (`shouldSatisfy` (isValidDerivationPath purposeCIP1852)) r
+            expectListField
+                addrNum
+                #derivationPath
+                (`shouldSatisfy` (isValidDerivationPath purposeCIP1852))
+                r
 
     it "ADDRESS_LIST_02 - Can filter used and unused addresses" $ \ctx -> runResourceT $ do
         let g = fromIntegral $ getAddressPoolGap defaultAddressPoolGap
         w <- fixtureWallet ctx
-        rUsed <- request @[ApiAddress n] ctx
-            (Link.listAddresses' @'Shelley w (Just Used)) Default Empty
+        rUsed <-
+            request @[ApiAddress n]
+                ctx
+                (Link.listAddresses' @ 'Shelley w (Just Used))
+                Default
+                Empty
         expectResponseCode HTTP.status200 rUsed
         expectListSize 10 rUsed
-        forM_ [0..9] $ \addrNum -> do
+        forM_ [0 .. 9] $ \addrNum -> do
             expectListField
-                addrNum (#state . #getApiT) (`shouldBe` Used) rUsed
-        rUnused <- request @[ApiAddress n] ctx
-            (Link.listAddresses' @'Shelley w (Just Unused)) Default Empty
+                addrNum
+                (#state . #getApiT)
+                (`shouldBe` Used)
+                rUsed
+        rUnused <-
+            request @[ApiAddress n]
+                ctx
+                (Link.listAddresses' @ 'Shelley w (Just Unused))
+                Default
+                Empty
         expectResponseCode HTTP.status200 rUnused
         expectListSize g rUnused
-        forM_ [10..(g-1)] $ \addrNum -> do
+        forM_ [10 .. (g -1)] $ \addrNum -> do
             expectListField
-                addrNum (#state . #getApiT) (`shouldBe` Unused) rUnused
+                addrNum
+                (#state . #getApiT)
+                (`shouldBe` Unused)
+                rUnused
 
-    it "ADDRESS_LIST_02 - Shows nothing when there are no used addresses"
-        $ \ctx -> runResourceT $ do
-        w <- emptyWallet ctx
-        rUsed <- request @[ApiAddress n] ctx
-            (Link.listAddresses' @'Shelley w (Just Used)) Default Empty
-        rUnused <- request @[ApiAddress n] ctx
-            (Link.listAddresses' @'Shelley w (Just Unused)) Default Empty
-        expectResponseCode HTTP.status200 rUsed
-        expectListSize 0 rUsed
-        expectResponseCode HTTP.status200 rUnused
-        expectListSize 20 rUnused
-        forM_ [0..19] $ \addrNum -> do
-            expectListField
-                addrNum (#state . #getApiT) (`shouldBe` Unused) rUnused
+    it "ADDRESS_LIST_02 - Shows nothing when there are no used addresses" $
+        \ctx -> runResourceT $ do
+            w <- emptyWallet ctx
+            rUsed <-
+                request @[ApiAddress n]
+                    ctx
+                    (Link.listAddresses' @ 'Shelley w (Just Used))
+                    Default
+                    Empty
+            rUnused <-
+                request @[ApiAddress n]
+                    ctx
+                    (Link.listAddresses' @ 'Shelley w (Just Unused))
+                    Default
+                    Empty
+            expectResponseCode HTTP.status200 rUsed
+            expectListSize 0 rUsed
+            expectResponseCode HTTP.status200 rUnused
+            expectListSize 20 rUnused
+            forM_ [0 .. 19] $ \addrNum -> do
+                expectListField
+                    addrNum
+                    (#state . #getApiT)
+                    (`shouldBe` Unused)
+                    rUnused
 
     -- TODO
     -- MOVE TO test/unit/Cardano/Wallet/ApiSpec.hs
@@ -185,9 +251,10 @@ spec = describe "SHELLEY_ADDRESSES" $ do
         let withQuery f (method, link) = (method, link <> "?state=" <> T.pack f)
         forM_ filters $ \fil -> it fil $ \ctx -> runResourceT $ do
             w <- emptyWallet ctx
-            let link = withQuery fil $ Link.listAddresses @'Shelley w
+            let link = withQuery fil $ Link.listAddresses @ 'Shelley w
             r <- request @[ApiAddress n] ctx link Default Empty
-            verify r
+            verify
+                r
                 [ expectResponseCode HTTP.status400
                 , expectErrorMessage
                     "Error parsing query parameter state failed: Unable to\
@@ -201,22 +268,29 @@ spec = describe "SHELLEY_ADDRESSES" $ do
         wDest <- emptyWalletWith ctx ("Wallet", fixturePassphrase, initPoolGap)
 
         -- make sure all addresses in address_pool_gap are 'Unused'
-        r <- request @[ApiAddress n] ctx
-            (Link.listAddresses @'Shelley wDest) Default Empty
-        verify r
+        r <-
+            request @[ApiAddress n]
+                ctx
+                (Link.listAddresses @ 'Shelley wDest)
+                Default
+                Empty
+        verify
+            r
             [ expectResponseCode HTTP.status200
             , expectListSize initPoolGap
             ]
-        forM_ [0..9] $ \addrNum -> do
+        forM_ [0 .. 9] $ \addrNum -> do
             expectListField addrNum (#state . #getApiT) (`shouldBe` Unused) r
         addrs <- listAddresses @n ctx wDest
 
         let amt = minUTxOValue (_mainEra ctx)
 
         -- run 10 transactions to make all addresses `Used`
-        forM_ [0..9] $ \addrNum -> do
+        forM_ [0 .. 9] $ \addrNum -> do
             let destination = (addrs !! addrNum) ^. #id
-            let payload = Json [json|{
+            let payload =
+                    Json
+                        [json|{
                     "payments": [{
                         "address": #{destination},
                         "amount": {
@@ -227,52 +301,88 @@ spec = describe "SHELLEY_ADDRESSES" $ do
                     "passphrase": #{fixturePassphrase}
                 }|]
 
-            rTrans <- request @(ApiTransaction n) ctx
-                (Link.createTransactionOld @'Shelley wSrc) Default payload
+            rTrans <-
+                request @(ApiTransaction n)
+                    ctx
+                    (Link.createTransactionOld @ 'Shelley wSrc)
+                    Default
+                    payload
             expectResponseCode HTTP.status202 rTrans
 
         -- make sure all transactions are in ledger
         eventually "Wallet balance = initPoolGap * minUTxOValue" $ do
-            rb <- request @ApiWallet ctx
-                (Link.getWallet @'Shelley wDest) Default Empty
+            rb <-
+                request @ApiWallet
+                    ctx
+                    (Link.getWallet @ 'Shelley wDest)
+                    Default
+                    Empty
             expectField
                 (#balance . #available)
                 (`shouldBe` Quantity (10 * amt))
                 rb
 
         -- verify new address_pool_gap has been created
-        rAddr <- request @[ApiAddress n] ctx
-            (Link.listAddresses @'Shelley wDest) Default Empty
-        verify rAddr
+        rAddr <-
+            request @[ApiAddress n]
+                ctx
+                (Link.listAddresses @ 'Shelley wDest)
+                Default
+                Empty
+        verify
+            rAddr
             [ expectResponseCode HTTP.status200
             , expectListSize 20
             ]
-        forM_ [0..9] $ \addrNum -> do
+        forM_ [0 .. 9] $ \addrNum -> do
             expectListField
-                addrNum (#state . #getApiT) (`shouldBe` Used) rAddr
-        forM_ [10..19] $ \addrNum -> do
+                addrNum
+                (#state . #getApiT)
+                (`shouldBe` Used)
+                rAddr
+        forM_ [10 .. 19] $ \addrNum -> do
             expectListField
-                addrNum (#state . #getApiT) (`shouldBe` Unused) rAddr
+                addrNum
+                (#state . #getApiT)
+                (`shouldBe` Unused)
+                rAddr
 
     it "ADDRESS_LIST_04 - Deleted wallet" $ \ctx -> runResourceT $ do
         w <- emptyWallet ctx
-        _ <- request @ApiWallet ctx
-            (Link.deleteWallet @'Shelley w) Default Empty
-        r <- request @[ApiAddress n] ctx
-            (Link.listAddresses @'Shelley w) Default Empty
+        _ <-
+            request @ApiWallet
+                ctx
+                (Link.deleteWallet @ 'Shelley w)
+                Default
+                Empty
+        r <-
+            request @[ApiAddress n]
+                ctx
+                (Link.listAddresses @ 'Shelley w)
+                Default
+                Empty
         expectResponseCode HTTP.status404 r
         expectErrorMessage (errMsg404NoWallet $ w ^. walletId) r
 
     it "ADDRESS_LIST_05 - bech32 HRP is correct - mainnet" $ \ctx -> runResourceT $ do
         w <- emptyWallet ctx
-        r <- request @[Aeson.Value] ctx
-            (Link.listAddresses @'Shelley w) Default Empty
-        verify r
+        r <-
+            request @[Aeson.Value]
+                ctx
+                (Link.listAddresses @ 'Shelley w)
+                Default
+                Empty
+        verify
+            r
             [ expectResponseCode HTTP.status200
-            -- integration tests are configured for mainnet
-            , expectListField 0 (Aeson.key "id" . Aeson._String)
+            , -- integration tests are configured for mainnet
+              expectListField
+                0
+                (Aeson.key "id" . Aeson._String)
                 (`shouldSatisfy` T.isPrefixOf "addr")
-            , expectListField 0 (Aeson.key "id" . Aeson._String)
+            , expectListField
+                0
+                (Aeson.key "id" . Aeson._String)
                 (`shouldNotSatisfy` T.isPrefixOf "addr_test")
             ]
 
@@ -284,13 +394,13 @@ spec = describe "SHELLEY_ADDRESSES" $ do
 
         -- 1. Create Shelley wallets
         let initialTotalA = 30
-        let initialUsedA  = 10
+        let initialUsedA = 10
         wA <- fixtureWallet ctx
         listAddresses @n ctx wA
             >>= verifyAddrs initialTotalA initialUsedA
 
         let initialTotalB = 20
-        let initialUsedB  = 0
+        let initialUsedB = 0
         wB <- emptyWallet ctx
         listAddresses @n ctx wB
             >>= verifyAddrs initialTotalB initialUsedB
@@ -298,7 +408,9 @@ spec = describe "SHELLEY_ADDRESSES" $ do
         -- 2. Send a transaction from A -> B
         destination <- view #id . head <$> listAddresses @n ctx wB
         let amount = 10 * minUTxOValue (_mainEra ctx)
-        let payload = Json [json|{
+        let payload =
+                Json
+                    [json|{
                 "payments": [{
                     "address": #{destination},
                     "amount": {
@@ -308,8 +420,11 @@ spec = describe "SHELLEY_ADDRESSES" $ do
                 }],
                 "passphrase": #{fixturePassphrase}
             }|]
-        (_, rtx) <- unsafeRequest @(ApiTransaction n) ctx
-            (Link.createTransactionOld @'Shelley wA) payload
+        (_, rtx) <-
+            unsafeRequest @(ApiTransaction n)
+                ctx
+                (Link.createTransactionOld @ 'Shelley wA)
+                payload
 
         -- 3. Check that there's one more used addresses on A.
         --
@@ -328,11 +443,17 @@ spec = describe "SHELLEY_ADDRESSES" $ do
 
         -- 4. Wait for transaction from A -> B to no longer be pending
         eventually "Transaction from A -> B is discovered on B" $ do
-            request @(ApiTransaction n) ctx
-                (Link.getTransaction @'Shelley wA rtx) Default Empty
+            request @(ApiTransaction n)
+                ctx
+                (Link.getTransaction @ 'Shelley wA rtx)
+                Default
+                Empty
                 >>= expectField #status (`shouldBe` ApiT InLedger)
-            request @(ApiTransaction n) ctx
-                (Link.getTransaction @'Shelley wB rtx) Default Empty
+            request @(ApiTransaction n)
+                ctx
+                (Link.getTransaction @ 'Shelley wB rtx)
+                Default
+                Empty
                 >>= expectField #status (`shouldBe` ApiT InLedger)
 
         -- 5. Check that there's one more used and total addresses on the wallets
@@ -353,33 +474,42 @@ spec = describe "SHELLEY_ADDRESSES" $ do
     it "ADDRESS_INSPECT_01 - Address inspect OK Icarus" $ \ctx -> do
         let str = "Ae2tdPwUPEYz6ExfbWubiXPB6daUuhJxikMEb4eXRp5oKZBKZwrbJ2k7EZe"
         r <- request @Aeson.Value ctx (Link.inspectAddress str) Default Empty
-        verify r
+        verify
+            r
             [ expectResponseCode HTTP.status200
-            , expectField (Aeson.key "address_style" . Aeson._String)
+            , expectField
+                (Aeson.key "address_style" . Aeson._String)
                 (`shouldBe` "Icarus")
-            , expectField (Aeson.key "address_type" . Aeson._Number)
+            , expectField
+                (Aeson.key "address_type" . Aeson._Number)
                 (`shouldBe` 8)
             ]
 
     it "ADDRESS_INSPECT_02 - Address inspect OK Byron" $ \ctx -> do
         let str = "37btjrVyb4KE2ByiPiJUQfAUBGaMyKScg4mnYjzVAsN2PUxj1WxTg98ien3oAo8vKBhP2KTuC9wi76vZ9kDNFkjbmzywdLTJgaz8n3RD3Rueim3Pd3"
         r <- request @Aeson.Value ctx (Link.inspectAddress str) Default Empty
-        verify r
+        verify
+            r
             [ expectResponseCode HTTP.status200
-            , expectField (Aeson.key "address_style" . Aeson._String)
+            , expectField
+                (Aeson.key "address_style" . Aeson._String)
                 (`shouldBe` "Byron")
-            , expectField (Aeson.key "address_type" . Aeson._Number)
+            , expectField
+                (Aeson.key "address_type" . Aeson._Number)
                 (`shouldBe` 8)
             ]
 
     it "ADDRESS_INSPECT_03 - Address inspect OK reward" $ \ctx -> do
         let str = "stake1u8pn5jr7cfa0x8ndtdufyg5lty3avg3zd2tq35c06hpsh8gptdza4"
         r <- request @Aeson.Value ctx (Link.inspectAddress str) Default Empty
-        verify r
+        verify
+            r
             [ expectResponseCode HTTP.status200
-            , expectField (Aeson.key "address_style" . Aeson._String)
+            , expectField
+                (Aeson.key "address_style" . Aeson._String)
                 (`shouldBe` "Shelley")
-            , expectField (Aeson.key "address_type" . Aeson._Number)
+            , expectField
+                (Aeson.key "address_type" . Aeson._Number)
                 (`shouldBe` 14)
             ]
 
@@ -391,15 +521,20 @@ spec = describe "SHELLEY_ADDRESSES" $ do
     it "ADDRESS_INSPECT_05 - Address inspect OK bech32" $ \ctx -> do
         let str = "addr_test1qzamu40sglnsrylzv9jylekjmzgaqsg5v5z9u6yk3jpnnxjwck77fqu8deuumsvnazjnjhwasc2eetfqpa2pvygts78ssd5388"
         r <- request @Aeson.Value ctx (Link.inspectAddress str) Default Empty
-        verify r
+        verify
+            r
             [ expectResponseCode HTTP.status200
-            , expectField (Aeson.key "address_style" . Aeson._String)
+            , expectField
+                (Aeson.key "address_style" . Aeson._String)
                 (`shouldBe` "Shelley")
-            , expectField (Aeson.key "spending_key_hash_bech32" . Aeson._String)
+            , expectField
+                (Aeson.key "spending_key_hash_bech32" . Aeson._String)
                 (`shouldBe` "addr_vkh1hwl9tuz8uuqe8cnpv387d5kcj8gyz9r9q30x395vsvue5e44fh7")
-            , expectField (Aeson.key "stake_key_hash_bech32" . Aeson._String)
+            , expectField
+                (Aeson.key "stake_key_hash_bech32" . Aeson._String)
                 (`shouldBe` "stake_vkh1fmzmmeyrsah8nnwpj0522w2amkrpt89dyq84g9s3pwrc7dqjnfu")
-            , expectField (Aeson.key "address_type" . Aeson._Number)
+            , expectField
+                (Aeson.key "address_type" . Aeson._Number)
                 (`shouldBe` 0)
             ]
 
@@ -409,7 +544,9 @@ spec = describe "SHELLEY_ADDRESSES" $ do
     it "ANY_ADDRESS_POST_01 - Golden tests for enterprise script address - signature" $ \ctx -> do
         --- $ cat script.txt
         --- addr_shared_vkh1zxt0uvrza94h3hv4jpv0ttddgnwkvdgeyq8jf9w30mcs6y8w3nq
-        let payload = Json [json|{
+        let payload =
+                Json
+                    [json|{
                 "payment": "addr_shared_vkh1zxt0uvrza94h3hv4jpv0ttddgnwkvdgeyq8jf9w30mcs6y8w3nq"
             }|]
         r <- request @AnyAddress ctx Link.postAnyAddress Default payload
@@ -421,7 +558,9 @@ spec = describe "SHELLEY_ADDRESSES" $ do
     it "ANY_ADDRESS_POST_02 - Golden tests for enterprise script address - any" $ \ctx -> do
         --- $ cat script.txt
         --- any [addr_shared_vkh1zxt0uvrza94h3hv4jpv0ttddgnwkvdgeyq8jf9w30mcs6y8w3nq, addr_shared_vkh1y3zl4nqgm96ankt96dsdhc86vd5geny0wr7hu8cpzdfcqskq2cp]
-        let payload = Json [json|{
+        let payload =
+                Json
+                    [json|{
                 "payment": {
                     "any": [
                         "addr_shared_vkh1zxt0uvrza94h3hv4jpv0ttddgnwkvdgeyq8jf9w30mcs6y8w3nq",
@@ -438,7 +577,9 @@ spec = describe "SHELLEY_ADDRESSES" $ do
     it "ANY_ADDRESS_POST_03 - Golden tests for enterprise script address - all" $ \ctx -> do
         --- $ cat script.txt
         --- all [addr_shared_vkh1zxt0uvrza94h3hv4jpv0ttddgnwkvdgeyq8jf9w30mcs6y8w3nq, addr_shared_vkh1y3zl4nqgm96ankt96dsdhc86vd5geny0wr7hu8cpzdfcqskq2cp]
-        let payload = Json [json|{
+        let payload =
+                Json
+                    [json|{
                 "payment": {
                     "all": [
                         "addr_shared_vkh1zxt0uvrza94h3hv4jpv0ttddgnwkvdgeyq8jf9w30mcs6y8w3nq",
@@ -455,7 +596,9 @@ spec = describe "SHELLEY_ADDRESSES" $ do
     it "ANY_ADDRESS_POST_04 - Golden tests for enterprise script address - some" $ \ctx -> do
         --- $ cat script.txt
         --- at_least 2 [addr_shared_vkh1zxt0uvrza94h3hv4jpv0ttddgnwkvdgeyq8jf9w30mcs6y8w3nq,addr_shared_vkh1y3zl4nqgm96ankt96dsdhc86vd5geny0wr7hu8cpzdfcqskq2cp,addr_shared_vkh175wsm9ckhm3snwcsn72543yguxeuqm7v9r6kl6gx57h8gdydcd9]
-        let payload = Json [json|{
+        let payload =
+                Json
+                    [json|{
                 "payment": {
                     "some": {
                         "from" : [
@@ -477,7 +620,9 @@ spec = describe "SHELLEY_ADDRESSES" $ do
     --- $ cardano-address script hash "$(cat script.txt)" \
     --- | cardano-address address stake --from-script --network-tag mainnet
     it "ANY_ADDRESS_POST_05 - Golden tests for reward account script address - any" $ \ctx -> do
-        let payload = Json [json|{
+        let payload =
+                Json
+                    [json|{
                 "stake": {
                     "any": [
                         "stake_shared_vkh1nqc00hvlc6cq0sfhretk0rmzw8dywmusp8retuqnnxzajtzhjg5",
@@ -496,7 +641,9 @@ spec = describe "SHELLEY_ADDRESSES" $ do
     --- | cardano-address address payment --from-script --network-tag mainnet \
     --- | cardano-address address delegation --from-script $(cardano-address script hash "$(cat script2.txt)")
     it "ANY_ADDRESS_POST_06 - Golden tests for delegating script address - any" $ \ctx -> do
-        let payload = Json [json|{
+        let payload =
+                Json
+                    [json|{
                 "payment": {
                     "some": {
                         "from" : [
@@ -544,7 +691,9 @@ spec = describe "SHELLEY_ADDRESSES" $ do
     --- > | cardano-address key public --with-chain-code \
     --- > | cardano-address address payment --from-key --network-tag mainnet
     it "ANY_ADDRESS_POST_07 - Golden tests for enterprise pub key address" $ \ctx -> do
-        let payload = Json [json|{
+        let payload =
+                Json
+                    [json|{
                 "payment": "addr_vk1lqglg77z6kajsdz4739q22c0zm0yhuy567z6xk2vc0z5ucjtkwpschzd2j"
             }|]
         r <- request @AnyAddress ctx Link.postAnyAddress Default payload
@@ -577,7 +726,9 @@ spec = describe "SHELLEY_ADDRESSES" $ do
     --- > | cardano-address key public --with-chain-code \
     --- > | cardano-address address stake --from-key --network-tag mainnet
     it "ANY_ADDRESS_POST_08 - Golden tests for reward account pub key address" $ \ctx -> do
-        let payload = Json [json|{
+        let payload =
+                Json
+                    [json|{
                 "stake": "stake_vk16apaenn9ut6s40lcw3l8v68xawlrlq20z2966uzcx8jmv2q9uy7qau558d"
             }|]
         r <- request @AnyAddress ctx Link.postAnyAddress Default payload
@@ -597,7 +748,9 @@ spec = describe "SHELLEY_ADDRESSES" $ do
     --- > | cardano-address address payment --from-key --network-tag mainnet \
     --- > | cardano-address address delegation --from-key $(cat stake.xpub)
     it "ANY_ADDRESS_POST_09 - Golden tests for delegating address with both pub key credentials" $ \ctx -> do
-        let payload = Json [json|{
+        let payload =
+                Json
+                    [json|{
                 "payment": "addr_vk1lqglg77z6kajsdz4739q22c0zm0yhuy567z6xk2vc0z5ucjtkwpschzd2j",
                 "stake": "stake_vk16apaenn9ut6s40lcw3l8v68xawlrlq20z2966uzcx8jmv2q9uy7qau558d"
             }|]
@@ -605,7 +758,8 @@ spec = describe "SHELLEY_ADDRESSES" $ do
         expectResponseCode HTTP.status202 r
         let goldenAddr =
                 "addr1q9qthemrg5kczwfjjnahwt65elhrl95e9hcgufnajtp6wff5r\
-                \h7cflza8t3m5wlaj45sg53nvtwpc73mqk90ghv7vv7s64ryn2" :: Text
+                \h7cflza8t3m5wlaj45sg53nvtwpc73mqk90ghv7vv7s64ryn2" ::
+                    Text
         validateAddr r goldenAddr
 
     -- Generating golden test data for delegating address - payment from script, stake from pub key:
@@ -617,7 +771,9 @@ spec = describe "SHELLEY_ADDRESSES" $ do
     --- | cardano-address address payment --from-script --network-tag mainnet \
     --- | cardano-address address delegation --from-key $(cat stake.xpub)
     it "ANY_ADDRESS_POST_10 - Golden tests for delegating address - payment from script, stake from key" $ \ctx -> do
-        let payload = Json [json|{
+        let payload =
+                Json
+                    [json|{
                 "payment": {
                     "some": {
                         "from" : [
@@ -643,7 +799,9 @@ spec = describe "SHELLEY_ADDRESSES" $ do
     --- > | cardano-address address payment --from-key --network-tag mainnet \
     --- > | cardano-address address delegation --from-script $(cardano-address script hash "$(cat script3.txt)")
     it "ANY_ADDRESS_POST_11 - Golden tests for delegating address - payment from key, stake from script" $ \ctx -> do
-        let payload = Json [json|{
+        let payload =
+                Json
+                    [json|{
                 "payment": "addr_vk1lqglg77z6kajsdz4739q22c0zm0yhuy567z6xk2vc0z5ucjtkwpschzd2j",
                 "stake": {
                     "some": {
@@ -667,15 +825,17 @@ spec = describe "SHELLEY_ADDRESSES" $ do
 
         -- Generate first 20 addresses using payment and stake keys derived from
         -- wallet API
-        let indices = [0..19]
+        let indices = [0 .. 19]
         generatedAddresses <- forM indices $ \index -> do
-            let paymentPath = Link.getWalletKey @'Shelley w UtxoExternal (DerivationIndex index) Nothing
+            let paymentPath = Link.getWalletKey @ 'Shelley w UtxoExternal (DerivationIndex index) Nothing
             (_, paymentKey) <- unsafeRequest @ApiVerificationKeyShelley ctx paymentPath Empty
 
-            let stakePath = Link.getWalletKey @'Shelley w MutableAccount (DerivationIndex 0) Nothing
+            let stakePath = Link.getWalletKey @ 'Shelley w MutableAccount (DerivationIndex 0) Nothing
             (_, stakeKey) <- unsafeRequest @ApiVerificationKeyShelley ctx stakePath Empty
 
-            let payload = Json [json|{
+            let payload =
+                    Json
+                        [json|{
                     "payment": #{paymentKey},
                     "stake": #{stakeKey}
                 }|]
@@ -684,13 +844,15 @@ spec = describe "SHELLEY_ADDRESSES" $ do
 
         -- Make sure the same addresses are already available in the wallet
         addrs <- listAddresses @n ctx w
-        forM_ (zip (fmap fromIntegral indices) generatedAddresses)
-            $ \(idx, genAddr) -> do
+        forM_ (zip (fmap fromIntegral indices) generatedAddresses) $
+            \(idx, genAddr) -> do
                 let walAddr = fst (addrs !! idx ^. #id) ^. (#getApiT . #unAddress)
                 walAddr `shouldBe` genAddr
 
     it "ANY_ADDRESS_POST_13 - Golden tests for script with timelocks" $ \ctx -> do
-        let payload = Json [json|{
+        let payload =
+                Json
+                    [json|{
                 "payment": {
                     "all" : [
                         "addr_shared_vkh1zxt0uvrza94h3hv4jpv0ttddgnwkvdgeyq8jf9w30mcs6y8w3nq",
@@ -711,7 +873,9 @@ spec = describe "SHELLEY_ADDRESSES" $ do
         validateAddr r goldenAddr
 
     it "ANY_ADDRESS_POST_14a - at_least 0 is valid when non-validated" $ \ctx -> do
-        let payload = Json [json|{
+        let payload =
+                Json
+                    [json|{
                 "payment": {
                     "some": {
                         "from" : [
@@ -727,7 +891,9 @@ spec = describe "SHELLEY_ADDRESSES" $ do
         expectResponseCode HTTP.status202 r
 
     it "ANY_ADDRESS_POST_14b - at_least 0 is valid when validation is required" $ \ctx -> do
-        let payload = Json [json|{
+        let payload =
+                Json
+                    [json|{
                 "payment": {
                     "some": {
                         "from" : [
@@ -744,7 +910,9 @@ spec = describe "SHELLEY_ADDRESSES" $ do
         expectResponseCode HTTP.status202 r
 
     it "ANY_ADDRESS_POST_14c - at_least 0 is not valid when validation is recommended" $ \ctx -> do
-        let payload = Json [json|{
+        let payload =
+                Json
+                    [json|{
                 "payment": {
                     "some": {
                         "from" : [
@@ -762,7 +930,9 @@ spec = describe "SHELLEY_ADDRESSES" $ do
         expectErrorMessage errMsg400ScriptWrongCoeffcient r
 
     it "ANY_ADDRESS_POST_15a - at_least 4 is valid when non-validated" $ \ctx -> do
-        let payload = Json [json|{
+        let payload =
+                Json
+                    [json|{
                 "payment": {
                     "some": {
                         "from" : [
@@ -778,7 +948,9 @@ spec = describe "SHELLEY_ADDRESSES" $ do
         expectResponseCode HTTP.status202 r
 
     it "ANY_ADDRESS_POST_15b - at_least 4 is valid when validation is required" $ \ctx -> do
-        let payload = Json [json|{
+        let payload =
+                Json
+                    [json|{
                 "payment": {
                     "some": {
                         "from" : [
@@ -796,7 +968,9 @@ spec = describe "SHELLEY_ADDRESSES" $ do
         expectErrorMessage errMsg400ScriptIllFormed r
 
     it "ANY_ADDRESS_POST_15c - at_least 4 is not valid when validation is recommended" $ \ctx -> do
-        let payload = Json [json|{
+        let payload =
+                Json
+                    [json|{
                 "payment": {
                     "some": {
                         "from" : [
@@ -814,7 +988,9 @@ spec = describe "SHELLEY_ADDRESSES" $ do
         expectErrorMessage errMsg400ScriptIllFormed r
 
     it "ANY_ADDRESS_POST_16a - script with duplicated verification keys is valid when non-validated" $ \ctx -> do
-        let payload = Json [json|{
+        let payload =
+                Json
+                    [json|{
                 "payment": {
                     "some": {
                         "from" : [
@@ -830,7 +1006,9 @@ spec = describe "SHELLEY_ADDRESSES" $ do
         expectResponseCode HTTP.status202 r
 
     it "ANY_ADDRESS_POST_16b - script with duplicated verification keys is valid when required validation used" $ \ctx -> do
-        let payload = Json [json|{
+        let payload =
+                Json
+                    [json|{
                 "payment": {
                     "some": {
                         "from" : [
@@ -847,7 +1025,9 @@ spec = describe "SHELLEY_ADDRESSES" $ do
         expectResponseCode HTTP.status202 r
 
     it "ANY_ADDRESS_POST_16c - script with duplicated verification keys is invalid when recommended validation used" $ \ctx -> do
-        let payload = Json [json|{
+        let payload =
+                Json
+                    [json|{
                 "payment": {
                     "some": {
                         "from" : [
@@ -865,7 +1045,9 @@ spec = describe "SHELLEY_ADDRESSES" $ do
         expectErrorMessage errMsg400ScriptDuplicateKeys r
 
     it "ANY_ADDRESS_POST_17a - Script with contradictory timelocks is valid when validation not used" $ \ctx -> do
-        let payload = Json [json|{
+        let payload =
+                Json
+                    [json|{
                 "payment": {
                     "all" : [
                         "addr_shared_vkh1zxt0uvrza94h3hv4jpv0ttddgnwkvdgeyq8jf9w30mcs6y8w3nq",
@@ -884,7 +1066,9 @@ spec = describe "SHELLEY_ADDRESSES" $ do
         expectResponseCode HTTP.status202 r
 
     it "ANY_ADDRESS_POST_17b - Script with contradictory timelocks is invalid when required validation is used" $ \ctx -> do
-        let payload = Json [json|{
+        let payload =
+                Json
+                    [json|{
                 "payment": {
                     "all" : [
                         "addr_shared_vkh1zxt0uvrza94h3hv4jpv0ttddgnwkvdgeyq8jf9w30mcs6y8w3nq",
@@ -904,7 +1088,9 @@ spec = describe "SHELLEY_ADDRESSES" $ do
         expectResponseCode HTTP.status202 r
 
     it "ANY_ADDRESS_POST_17c - Script with contradictory timelocks is invalid when recommended validation is used" $ \ctx -> do
-        let payload = Json [json|{
+        let payload =
+                Json
+                    [json|{
                 "payment": {
                     "all" : [
                         "stake_shared_vkh1nac0awgfa4zjsh4elnjmsscz0huhss8q2g0x3n7m539mwaa5m7s",
@@ -925,7 +1111,9 @@ spec = describe "SHELLEY_ADDRESSES" $ do
         expectErrorMessage errMsg400ScriptTimelocksContradictory r
 
     it "ANY_ADDRESS_POST_17d - script with mixed payment/delegation verification keys is invalid" $ \ctx -> do
-        let payload = Json [json|{
+        let payload =
+                Json
+                    [json|{
                 "payment": {
                     "some": {
                         "from" : [
@@ -945,8 +1133,10 @@ spec = describe "SHELLEY_ADDRESSES" $ do
         let initPoolGap = 10
         w <- emptyWalletWith ctx ("Wallet", fixturePassphrase, initPoolGap)
 
-        let endpoint = Link.postAccountKey @'Shelley w (DerivationIndex 0)
-        let payload = Json [json|{
+        let endpoint = Link.postAccountKey @ 'Shelley w (DerivationIndex 0)
+        let payload =
+                Json
+                    [json|{
                 "passphrase": #{fixturePassphrase},
                 "format": "extended"
             }|]
@@ -954,14 +1144,18 @@ spec = describe "SHELLEY_ADDRESSES" $ do
         expectErrorMessage errMsg403WrongIndex resp
 
         -- Request first 10 extended account public keys
-        let indices = [0..9]
+        let indices = [0 .. 9]
         accountPublicKeys <- forM indices $ \index -> do
-            let accountPath = Link.postAccountKey @'Shelley w (DerivationIndex $ 2147483648 + index)
-            let payload1 = Json [json|{
+            let accountPath = Link.postAccountKey @ 'Shelley w (DerivationIndex $ 2147483648 + index)
+            let payload1 =
+                    Json
+                        [json|{
                     "passphrase": #{fixturePassphrase},
                     "format": "extended"
                 }|]
-            let payload2 = Json [json|{
+            let payload2 =
+                    Json
+                        [json|{
                     "passphrase": #{fixturePassphrase},
                     "format": "non_extended"
                 }|]
@@ -977,8 +1171,10 @@ spec = describe "SHELLEY_ADDRESSES" $ do
     it "POST_ACCOUNT_02 - Can get account public key using purpose" $ \ctx -> runResourceT $ do
         let initPoolGap = 10
         w <- emptyWalletWith ctx ("Wallet", fixturePassphrase, initPoolGap)
-        let accountPath = Link.postAccountKey @'Shelley w (DerivationIndex $ 2147483648 + 1)
-        let payload1 = Json [json|{
+        let accountPath = Link.postAccountKey @ 'Shelley w (DerivationIndex $ 2147483648 + 1)
+        let payload1 =
+                Json
+                    [json|{
                 "passphrase": #{fixturePassphrase},
                 "format": "extended"
             }|]
@@ -986,7 +1182,9 @@ spec = describe "SHELLEY_ADDRESSES" $ do
         let (Aeson.String accXPub1Txt) = toJSON accXPub1
         T.isPrefixOf "acct_xvk" accXPub1Txt `shouldBe` True
 
-        let payload2 = Json [json|{
+        let payload2 =
+                Json
+                    [json|{
                 "passphrase": #{fixturePassphrase},
                 "format": "extended",
                 "purpose": "1852H"
@@ -994,7 +1192,9 @@ spec = describe "SHELLEY_ADDRESSES" $ do
         (_, accXPub2) <- unsafeRequest @ApiAccountKey ctx accountPath payload2
         accXPub1 `shouldBe` accXPub2
 
-        let payload3 = Json [json|{
+        let payload3 =
+                Json
+                    [json|{
                 "passphrase": #{fixturePassphrase},
                 "format": "extended",
                 "purpose": "1854H"
@@ -1004,7 +1204,9 @@ spec = describe "SHELLEY_ADDRESSES" $ do
         let (Aeson.String accXPub3Txt) = toJSON accXPub3
         T.isPrefixOf "acct_shared_xvk" accXPub3Txt `shouldBe` True
 
-        let payload4 = Json [json|{
+        let payload4 =
+                Json
+                    [json|{
                 "passphrase": #{fixturePassphrase},
                 "format": "extended",
                 "purpose": "1854"
@@ -1014,4 +1216,4 @@ spec = describe "SHELLEY_ADDRESSES" $ do
   where
     validateAddr resp expected = do
         let addr = getFromResponse id resp
-        toJSON addr `shouldBe` object ["address" .= expected ]
+        toJSON addr `shouldBe` object ["address" .= expected]

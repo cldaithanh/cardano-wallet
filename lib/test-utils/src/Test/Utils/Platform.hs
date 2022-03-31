@@ -1,45 +1,56 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
--- |
--- Copyright: © 2018-2021 IOHK
--- License: Apache-2.0
---
--- Utility function for making test suites pass on difficult platforms.
+{- |
+ Copyright: © 2018-2021 IOHK
+ License: Apache-2.0
 
-module Test.Utils.Platform
-    ( -- * Skipping tests
-      skipOnWindows
-    , pendingOnWindows
-    , pendingOnWine
-    , pendingOnMacOS
+ Utility function for making test suites pass on difficult platforms.
+-}
+module Test.Utils.Platform (
+    -- * Skipping tests
+    skipOnWindows,
+    pendingOnWindows,
+    pendingOnWine,
+    pendingOnMacOS,
 
     -- * OS detection
-    , whenWindows
-    , isWindows
-    , isMacOS
-    , getIsWine
+    whenWindows,
+    isWindows,
+    isMacOS,
+    getIsWine,
 
     -- * Cross-platform compatibility
-    , nullFileName
-    ) where
+    nullFileName,
+) where
 
 import Prelude
 
-import Control.Monad
-    ( when )
-import System.Exit
-    ( ExitCode (..) )
-import System.Info
-    ( os )
-import Test.Hspec.Core.Spec
-    ( ResultStatus (..), pendingWith )
-import Test.Hspec.Expectations
-    ( Expectation, HasCallStack )
-import UnliftIO.Exception
-    ( IOException, handle, throwIO )
-import UnliftIO.Process
-    ( readProcessWithExitCode )
+import Control.Monad (
+    when,
+ )
+import System.Exit (
+    ExitCode (..),
+ )
+import System.Info (
+    os,
+ )
+import Test.Hspec.Core.Spec (
+    ResultStatus (..),
+    pendingWith,
+ )
+import Test.Hspec.Expectations (
+    Expectation,
+    HasCallStack,
+ )
+import UnliftIO.Exception (
+    IOException,
+    handle,
+    throwIO,
+ )
+import UnliftIO.Process (
+    readProcessWithExitCode,
+ )
 
 skipOnWindows :: HasCallStack => String -> Expectation
 skipOnWindows _reason = whenWindows $ throwIO Success

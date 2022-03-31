@@ -1,26 +1,31 @@
 {-# LANGUAGE TypeApplications #-}
 
--- |
--- Copyright: © 2018-2020 IOHK
--- License: Apache-2.0
---
--- Common hashing functions used and re-used across the codebase.
+{- |
+ Copyright: © 2018-2020 IOHK
+ License: Apache-2.0
 
-module Crypto.Hash.Utils
-    ( blake2b256
-    , blake2b224
-    ) where
+ Common hashing functions used and re-used across the codebase.
+-}
+module Crypto.Hash.Utils (
+    blake2b256,
+    blake2b224,
+) where
 
 import Prelude
 
-import Crypto.Hash
-    ( hash )
-import Crypto.Hash.Algorithms
-    ( Blake2b_224, Blake2b_256 )
-import Data.ByteArray
-    ( ByteArrayAccess )
-import Data.ByteString
-    ( ByteString )
+import Crypto.Hash (
+    hash,
+ )
+import Crypto.Hash.Algorithms (
+    Blake2b_224,
+    Blake2b_256,
+ )
+import Data.ByteArray (
+    ByteArrayAccess,
+ )
+import Data.ByteString (
+    ByteString,
+ )
 
 import qualified Data.ByteArray as BA
 

@@ -17,108 +17,140 @@
 --
 -- Implementation of address derivation for 'Icarus' keys. This uses the Byron
 -- derivation for addresses, but on top of the derivation scheme V2.
-
 module Cardano.Wallet.Primitive.AddressDerivation.Icarus
-    ( -- * Types
-      IcarusKey(..)
+  ( -- * Types
+    IcarusKey (..),
 
     -- * Generation and derivation
-    , generateKeyFromSeed
-    , generateKeyFromHardwareLedger
-    , unsafeGenerateKeyFromSeed
-    , minSeedLengthBytes
-    ) where
-
-import Prelude
-
-import Cardano.Crypto.Wallet
-    ( DerivationScheme (..)
-    , XPrv
-    , XPub
-    , deriveXPrv
-    , deriveXPub
-    , generateNew
-    , toXPub
-    , unXPrv
-    , unXPub
-    , xPrvChangePass
-    , xprv
-    , xpub
-    )
-import Cardano.Mnemonic
-    ( SomeMnemonic (..), entropyToBytes, mnemonicToEntropy, mnemonicToText )
-import Cardano.Wallet.Primitive.AddressDerivation
-    ( Depth (..)
-    , DerivationType (..)
-    , ErrMkKeyFingerprint (..)
-    , HardDerivation (..)
-    , Index (..)
-    , KeyFingerprint (..)
-    , MkKeyFingerprint (..)
-    , NetworkDiscriminant (..)
-    , Passphrase (..)
-    , PaymentAddress (..)
-    , PersistPrivateKey (..)
-    , PersistPublicKey (..)
-    , RewardAccount (..)
-    , SoftDerivation (..)
-    , WalletKey (..)
-    , fromHex
-    , hex
-    )
-import Cardano.Wallet.Primitive.AddressDiscovery
-    ( GetPurpose (..), IsOurs (..) )
-import Cardano.Wallet.Primitive.AddressDiscovery.Sequential
-    ( SeqState, coinTypeAda, purposeBIP44 )
-import Cardano.Wallet.Primitive.Types
-    ( testnetMagic )
-import Cardano.Wallet.Primitive.Types.Address
-    ( Address (..) )
-import Cardano.Wallet.Primitive.Types.Hash
-    ( Hash (..) )
-import Cardano.Wallet.Util
-    ( invariant )
-import Control.Arrow
-    ( first, left )
-import Control.DeepSeq
-    ( NFData (..) )
-import Control.Monad
-    ( (<=<) )
-import Crypto.Error
-    ( eitherCryptoError )
-import Crypto.Hash
-    ( hash )
-import Crypto.Hash.Algorithms
-    ( SHA256 (..), SHA512 (..) )
-import Crypto.MAC.HMAC
-    ( HMAC, hmac )
-import Data.Bifunctor
-    ( bimap )
-import Data.Bits
-    ( clearBit, setBit, testBit )
-import Data.ByteString
-    ( ByteString )
-import Data.Coerce
-    ( coerce )
-import Data.Function
-    ( (&) )
-import Data.Maybe
-    ( fromMaybe )
-import Data.Proxy
-    ( Proxy (..) )
-import GHC.Generics
-    ( Generic )
-import GHC.TypeLits
-    ( KnownNat )
+    generateKeyFromSeed,
+    generateKeyFromHardwareLedger,
+    unsafeGenerateKeyFromSeed,
+    minSeedLengthBytes,
+  )
+where
 
 import qualified Cardano.Byron.Codec.Cbor as CBOR
+import Cardano.Crypto.Wallet
+  ( DerivationScheme (..),
+    XPrv,
+    XPub,
+    deriveXPrv,
+    deriveXPub,
+    generateNew,
+    toXPub,
+    unXPrv,
+    unXPub,
+    xPrvChangePass,
+    xprv,
+    xpub,
+  )
+import Cardano.Mnemonic
+  ( SomeMnemonic (..),
+    entropyToBytes,
+    mnemonicToEntropy,
+    mnemonicToText,
+  )
+import Cardano.Wallet.Primitive.AddressDerivation
+  ( Depth (..),
+    DerivationType (..),
+    ErrMkKeyFingerprint (..),
+    HardDerivation (..),
+    Index (..),
+    KeyFingerprint (..),
+    MkKeyFingerprint (..),
+    NetworkDiscriminant (..),
+    Passphrase (..),
+    PaymentAddress (..),
+    PersistPrivateKey (..),
+    PersistPublicKey (..),
+    RewardAccount (..),
+    SoftDerivation (..),
+    WalletKey (..),
+    fromHex,
+    hex,
+  )
+import Cardano.Wallet.Primitive.AddressDiscovery
+  ( GetPurpose (..),
+    IsOurs (..),
+  )
+import Cardano.Wallet.Primitive.AddressDiscovery.Sequential
+  ( SeqState,
+    coinTypeAda,
+    purposeBIP44,
+  )
+import Cardano.Wallet.Primitive.Types
+  ( testnetMagic,
+  )
+import Cardano.Wallet.Primitive.Types.Address
+  ( Address (..),
+  )
+import Cardano.Wallet.Primitive.Types.Hash
+  ( Hash (..),
+  )
+import Cardano.Wallet.Util
+  ( invariant,
+  )
 import qualified Codec.CBOR.Write as CBOR
+import Control.Arrow
+  ( first,
+    left,
+  )
+import Control.DeepSeq
+  ( NFData (..),
+  )
+import Control.Monad
+  ( (<=<),
+  )
 import qualified Crypto.ECC.Edwards25519 as Ed25519
+import Crypto.Error
+  ( eitherCryptoError,
+  )
+import Crypto.Hash
+  ( hash,
+  )
+import Crypto.Hash.Algorithms
+  ( SHA256 (..),
+    SHA512 (..),
+  )
 import qualified Crypto.KDF.PBKDF2 as PBKDF2
+import Crypto.MAC.HMAC
+  ( HMAC,
+    hmac,
+  )
+import Data.Bifunctor
+  ( bimap,
+  )
+import Data.Bits
+  ( clearBit,
+    setBit,
+    testBit,
+  )
 import qualified Data.ByteArray as BA
+import Data.ByteString
+  ( ByteString,
+  )
 import qualified Data.ByteString as BS
+import Data.Coerce
+  ( coerce,
+  )
+import Data.Function
+  ( (&),
+  )
+import Data.Maybe
+  ( fromMaybe,
+  )
+import Data.Proxy
+  ( Proxy (..),
+  )
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as T
+import GHC.Generics
+  ( Generic,
+  )
+import GHC.TypeLits
+  ( KnownNat,
+  )
+import Prelude
 
 -- | A cryptographic key for sequential-scheme address derivation, with
 -- phantom-types to disambiguate key types.
@@ -128,9 +160,8 @@ import qualified Data.Text.Encoding as T
 -- let accountPubKey = IcarusKey 'AccountK XPub
 -- let addressPubKey = IcarusKey 'AddressK XPub
 -- @
-newtype IcarusKey (depth :: Depth) key =
-    IcarusKey { getKey :: key }
-    deriving stock (Generic, Show, Eq)
+newtype IcarusKey (depth :: Depth) key = IcarusKey {getKey :: key}
+  deriving stock (Generic, Show, Eq)
 
 instance (NFData key) => NFData (IcarusKey depth key)
 
@@ -144,12 +175,12 @@ minSeedLengthBytes = 16
 
 -- | Generate a root key from a corresponding seed.
 -- The seed should be at least 16 bytes.
-generateKeyFromSeed
-    :: SomeMnemonic
-        -- ^ The root mnemonic
-    -> Passphrase "encryption"
-        -- ^ Master encryption passphrase
-    -> IcarusKey 'RootK XPrv
+generateKeyFromSeed ::
+  -- | The root mnemonic
+  SomeMnemonic ->
+  -- | Master encryption passphrase
+  Passphrase "encryption" ->
+  IcarusKey 'RootK XPrv
 generateKeyFromSeed = unsafeGenerateKeyFromSeed
 
 -- | Hardware Ledger devices generates keys from mnemonic using a different
@@ -163,28 +194,29 @@ generateKeyFromSeed = unsafeGenerateKeyFromSeed
 -- - [RFC 8032](https://tools.ietf.org/html/rfc8032#section-5.1.5)
 -- - What seems to be arbitrary changes from Ledger regarding the calculation of
 --   the initial chain code and generation of the root private key.
-generateKeyFromHardwareLedger
-    :: SomeMnemonic
-        -- ^ The root mnemonic
-    -> Passphrase "encryption"
-        -- ^ Master encryption passphrase
-    -> IcarusKey 'RootK XPrv
+generateKeyFromHardwareLedger ::
+  -- | The root mnemonic
+  SomeMnemonic ->
+  -- | Master encryption passphrase
+  Passphrase "encryption" ->
+  IcarusKey 'RootK XPrv
 generateKeyFromHardwareLedger (SomeMnemonic mw) (Passphrase pwd) = unsafeFromRight $ do
-    let seed = pbkdf2HmacSha512
-            $ T.encodeUtf8
-            $ T.intercalate " "
-            $ mnemonicToText mw
+  let seed =
+        pbkdf2HmacSha512 $
+          T.encodeUtf8 $
+            T.intercalate " " $
+              mnemonicToText mw
 
-    -- NOTE
-    -- SLIP-0010 refers to `iR` as the chain code. Here however, the chain code
-    -- is obtained as a hash of the initial seed whereas iR is used to make part
-    -- of the root private key itself.
-    let cc = hmacSha256 (BS.pack [1] <> seed)
-    let (iL, iR) = first pruneBuffer $ hashRepeatedly seed
-    pA <- ed25519ScalarMult iL
+  -- NOTE
+  -- SLIP-0010 refers to `iR` as the chain code. Here however, the chain code
+  -- is obtained as a hash of the initial seed whereas iR is used to make part
+  -- of the root private key itself.
+  let cc = hmacSha256 (BS.pack [1] <> seed)
+  let (iL, iR) = first pruneBuffer $ hashRepeatedly seed
+  pA <- ed25519ScalarMult iL
 
-    prv <- left show $ xprv $ iL <> iR <> pA <> cc
-    pure $ IcarusKey (xPrvChangePass (mempty :: ByteString) pwd prv)
+  prv <- left show $ xprv $ iL <> iR <> pA <> cc
+  pure $ IcarusKey (xPrvChangePass (mempty :: ByteString) pwd prv)
   where
     -- Errors yielded in the body of 'generateKeyFromHardwareLedger' are
     -- programmer errors (out-of-range byte buffer access or, invalid length for
@@ -204,17 +236,13 @@ generateKeyFromHardwareLedger (SomeMnemonic mw) (Passphrase pwd) = unsafeFromRig
     --      3. Split I into two 32-byte sequences, IL and IR.
     --
     -- extra *******************************************************************
-    -- *                                                                       *
-    -- *    3.5 If the third highest bit of the last byte of IL is not zero    *
-    -- *        S = I and go back to step 2.                                   *
-    -- *                                                                       *
-    -- *************************************************************************
+
     --
     --      4. Use parse256(IL) as master secret key, and IR as master chain code.
     hashRepeatedly :: ByteString -> (ByteString, ByteString)
     hashRepeatedly bytes = case BS.splitAt 32 (hmacSha512 bytes) of
-        (iL, iR) | isInvalidKey iL -> hashRepeatedly (iL <> iR)
-        (iL, iR) -> (iL, iR)
+      (iL, iR) | isInvalidKey iL -> hashRepeatedly (iL <> iR)
+      (iL, iR) -> (iL, iR)
       where
         isInvalidKey k = testBit (k `BS.index` 31) 5
 
@@ -225,32 +253,35 @@ generateKeyFromHardwareLedger (SomeMnemonic mw) (Passphrase pwd) = unsafeFromRig
     -- As described in [RFC 8032 - 5.1.5](https://tools.ietf.org/html/rfc8032#section-5.1.5)
     pruneBuffer :: ByteString -> ByteString
     pruneBuffer bytes =
-        let
-            (firstByte, rest) = fromMaybe (error "pruneBuffer: no first byte") $
-                BS.uncons bytes
+      let (firstByte, rest) =
+            fromMaybe (error "pruneBuffer: no first byte") $
+              BS.uncons bytes
 
-            (rest', lastByte) = fromMaybe (error "pruneBuffer: no last byte") $
-                BS.unsnoc rest
+          (rest', lastByte) =
+            fromMaybe (error "pruneBuffer: no last byte") $
+              BS.unsnoc rest
 
-            firstPruned = firstByte
-                & (`clearBit` 0)
-                & (`clearBit` 1)
-                & (`clearBit` 2)
+          firstPruned =
+            firstByte
+              & (`clearBit` 0)
+              & (`clearBit` 1)
+              & (`clearBit` 2)
 
-            lastPruned = lastByte
-                & (`setBit` 6)
-                & (`clearBit` 7)
-        in
-            (firstPruned `BS.cons` BS.snoc rest' lastPruned)
+          lastPruned =
+            lastByte
+              & (`setBit` 6)
+              & (`clearBit` 7)
+       in (firstPruned `BS.cons` BS.snoc rest' lastPruned)
 
     ed25519ScalarMult :: ByteString -> Either String ByteString
     ed25519ScalarMult bytes = do
-        scalar <- left show $ eitherCryptoError $ Ed25519.scalarDecodeLong bytes
-        pure $ Ed25519.pointEncode $ Ed25519.toPoint scalar
+      scalar <- left show $ eitherCryptoError $ Ed25519.scalarDecodeLong bytes
+      pure $ Ed25519.pointEncode $ Ed25519.toPoint scalar
 
     -- As described in [BIP 0039 - From Mnemonic to Seed](https://github.com/bitcoin/bips/blob/master/bip-0039.mediawiki#from-mnemonic-to-seed)
     pbkdf2HmacSha512 :: ByteString -> ByteString
-    pbkdf2HmacSha512 bytes = PBKDF2.generate
+    pbkdf2HmacSha512 bytes =
+      PBKDF2.generate
         (PBKDF2.prfHMAC SHA512)
         (PBKDF2.Parameters 2048 64)
         bytes
@@ -258,12 +289,12 @@ generateKeyFromHardwareLedger (SomeMnemonic mw) (Passphrase pwd) = unsafeFromRig
 
     hmacSha256 :: ByteString -> ByteString
     hmacSha256 =
-        BA.convert @(HMAC SHA256) . hmac salt
+      BA.convert @(HMAC SHA256) . hmac salt
 
     -- As described in [SLIP 0010 - Master Key Generation](https://github.com/satoshilabs/slips/blob/master/slip-0010.md#master-key-generation)
     hmacSha512 :: ByteString -> ByteString
     hmacSha512 =
-        BA.convert @(HMAC SHA512) . hmac salt
+      BA.convert @(HMAC SHA512) . hmac salt
 
     salt :: ByteString
     salt = "ed25519 seed"
@@ -272,159 +303,174 @@ generateKeyFromHardwareLedger (SomeMnemonic mw) (Passphrase pwd) = unsafeFromRig
 -- the caller gets to decide what type of key this is. This is mostly for
 -- testing, in practice, seeds are used to represent root keys, and one should
 -- use 'generateKeyFromSeed'.
-unsafeGenerateKeyFromSeed
-    :: SomeMnemonic
-        -- ^ The root mnemonic
-    -> Passphrase "encryption"
-        -- ^ Master encryption passphrase
-    -> IcarusKey depth XPrv
+unsafeGenerateKeyFromSeed ::
+  -- | The root mnemonic
+  SomeMnemonic ->
+  -- | Master encryption passphrase
+  Passphrase "encryption" ->
+  IcarusKey depth XPrv
 unsafeGenerateKeyFromSeed (SomeMnemonic mw) (Passphrase pwd) =
-    let
-        seed  = entropyToBytes $ mnemonicToEntropy mw
-        seed' = invariant
-            ("seed length : "
-                <> show (BA.length seed)
-                <> " in (Passphrase \"seed\") is not valid"
-            )
-            seed
-            (\s -> BA.length s >= minSeedLengthBytes && BA.length s <= 255)
-    in IcarusKey $ generateNew seed' (mempty :: ByteString) pwd
+  let seed = entropyToBytes $ mnemonicToEntropy mw
+      seed' =
+        invariant
+          ( "seed length : "
+              <> show (BA.length seed)
+              <> " in (Passphrase \"seed\") is not valid"
+          )
+          seed
+          (\s -> BA.length s >= minSeedLengthBytes && BA.length s <= 255)
+   in IcarusKey $ generateNew seed' (mempty :: ByteString) pwd
 
 {-------------------------------------------------------------------------------
                           Hard / Soft Key Derivation
 -------------------------------------------------------------------------------}
 
 instance HardDerivation IcarusKey where
-    type AddressIndexDerivationType IcarusKey = 'Soft
+  type AddressIndexDerivationType IcarusKey = 'Soft
 
-    deriveAccountPrivateKey
-            (Passphrase pwd) (IcarusKey rootXPrv) (Index accIx) =
-        let
-            purposeXPrv = -- lvl1 derivation; hardened derivation of purpose'
-                deriveXPrv DerivationScheme2 pwd rootXPrv (getIndex purposeBIP44)
-            coinTypeXPrv = -- lvl2 derivation; hardened derivation of coin_type'
-                deriveXPrv DerivationScheme2 pwd purposeXPrv (getIndex coinTypeAda)
-            acctXPrv = -- lvl3 derivation; hardened derivation of account' index
-                deriveXPrv DerivationScheme2 pwd coinTypeXPrv accIx
-        in
-            IcarusKey acctXPrv
+  deriveAccountPrivateKey
+    (Passphrase pwd)
+    (IcarusKey rootXPrv)
+    (Index accIx) =
+      let purposeXPrv =
+            -- lvl1 derivation; hardened derivation of purpose'
+            deriveXPrv DerivationScheme2 pwd rootXPrv (getIndex purposeBIP44)
+          coinTypeXPrv =
+            -- lvl2 derivation; hardened derivation of coin_type'
+            deriveXPrv DerivationScheme2 pwd purposeXPrv (getIndex coinTypeAda)
+          acctXPrv =
+            -- lvl3 derivation; hardened derivation of account' index
+            deriveXPrv DerivationScheme2 pwd coinTypeXPrv accIx
+       in IcarusKey acctXPrv
 
-    deriveAddressPrivateKey
-            (Passphrase pwd) (IcarusKey accXPrv) role (Index addrIx) =
-        let
-            changeCode =
-                fromIntegral $ fromEnum role
-            changeXPrv = -- lvl4 derivation; soft derivation of change chain
-                deriveXPrv DerivationScheme2 pwd accXPrv changeCode
-            addrXPrv = -- lvl5 derivation; soft derivation of address index
-                deriveXPrv DerivationScheme2 pwd changeXPrv addrIx
-        in
-            IcarusKey addrXPrv
+  deriveAddressPrivateKey
+    (Passphrase pwd)
+    (IcarusKey accXPrv)
+    role
+    (Index addrIx) =
+      let changeCode =
+            fromIntegral $ fromEnum role
+          changeXPrv =
+            -- lvl4 derivation; soft derivation of change chain
+            deriveXPrv DerivationScheme2 pwd accXPrv changeCode
+          addrXPrv =
+            -- lvl5 derivation; soft derivation of address index
+            deriveXPrv DerivationScheme2 pwd changeXPrv addrIx
+       in IcarusKey addrXPrv
 
 instance SoftDerivation IcarusKey where
-    deriveAddressPublicKey (IcarusKey accXPub) role (Index addrIx) =
-        fromMaybe errWrongIndex $ do
-            let changeCode = fromIntegral $ fromEnum role
-            changeXPub <- -- lvl4 derivation in bip44 is derivation of change chain
-                deriveXPub DerivationScheme2 accXPub changeCode
-            addrXPub <- -- lvl5 derivation in bip44 is derivation of address chain
-                deriveXPub DerivationScheme2 changeXPub addrIx
-            return $ IcarusKey addrXPub
-      where
-        errWrongIndex = error $
-            "deriveAddressPublicKey failed: was given an hardened (or too big) \
-            \index for soft path derivation ( " ++ show addrIx ++ "). This is \
-            \either a programmer error, or, we may have reached the maximum \
-            \number of addresses for a given wallet."
+  deriveAddressPublicKey (IcarusKey accXPub) role (Index addrIx) =
+    fromMaybe errWrongIndex $ do
+      let changeCode = fromIntegral $ fromEnum role
+      changeXPub <- -- lvl4 derivation in bip44 is derivation of change chain
+        deriveXPub DerivationScheme2 accXPub changeCode
+      addrXPub <- -- lvl5 derivation in bip44 is derivation of address chain
+        deriveXPub DerivationScheme2 changeXPub addrIx
+      return $ IcarusKey addrXPub
+    where
+      errWrongIndex =
+        error $
+          "deriveAddressPublicKey failed: was given an hardened (or too big) \
+          \index for soft path derivation ( "
+            ++ show addrIx
+            ++ "). This is \
+               \either a programmer error, or, we may have reached the maximum \
+               \number of addresses for a given wallet."
 
 {-------------------------------------------------------------------------------
                             WalletKey implementation
 -------------------------------------------------------------------------------}
 
 instance WalletKey IcarusKey where
-    keyTypeDescriptor _ = "ica"
+  keyTypeDescriptor _ = "ica"
 
-    changePassphrase (Passphrase old) (Passphrase new) (IcarusKey prv) =
-        IcarusKey $ xPrvChangePass old new prv
+  changePassphrase (Passphrase old) (Passphrase new) (IcarusKey prv) =
+    IcarusKey $ xPrvChangePass old new prv
 
-    publicKey (IcarusKey prv) =
-        IcarusKey (toXPub prv)
+  publicKey (IcarusKey prv) =
+    IcarusKey (toXPub prv)
 
-    digest (IcarusKey prv) =
-        hash (unXPub prv)
+  digest (IcarusKey prv) =
+    hash (unXPub prv)
 
-    getRawKey =
-        getKey
+  getRawKey =
+    getKey
 
-    liftRawKey =
-        IcarusKey
+  liftRawKey =
+    IcarusKey
 
 {-------------------------------------------------------------------------------
                          Relationship Key / Address
 -------------------------------------------------------------------------------}
 
 instance GetPurpose IcarusKey where
-    getPurpose = purposeBIP44
+  getPurpose = purposeBIP44
 
 instance PaymentAddress 'Mainnet IcarusKey where
-    paymentAddress k = Address
-        $ CBOR.toStrictByteString
-        $ CBOR.encodeAddress (getKey k) []
-    liftPaymentAddress (KeyFingerprint bytes) =
-        Address bytes
+  paymentAddress k =
+    Address $
+      CBOR.toStrictByteString $
+        CBOR.encodeAddress (getKey k) []
+  liftPaymentAddress (KeyFingerprint bytes) =
+    Address bytes
 
 instance KnownNat pm => PaymentAddress ('Testnet pm) IcarusKey where
-    paymentAddress k = Address
-        $ CBOR.toStrictByteString
-        $ CBOR.encodeAddress (getKey k)
-            [ CBOR.encodeProtocolMagicAttr (testnetMagic @pm)
-            ]
-    liftPaymentAddress (KeyFingerprint bytes) =
-        Address bytes
+  paymentAddress k =
+    Address $
+      CBOR.toStrictByteString $
+        CBOR.encodeAddress
+          (getKey k)
+          [ CBOR.encodeProtocolMagicAttr (testnetMagic @pm)
+          ]
+  liftPaymentAddress (KeyFingerprint bytes) =
+    Address bytes
 
 instance MkKeyFingerprint IcarusKey Address where
-    paymentKeyFingerprint addr@(Address bytes) =
-        case CBOR.deserialiseCbor CBOR.decodeAddressPayload bytes of
-            Just _  -> Right $ KeyFingerprint bytes
-            Nothing -> Left $ ErrInvalidAddress addr (Proxy @IcarusKey)
+  paymentKeyFingerprint addr@(Address bytes) =
+    case CBOR.deserialiseCbor CBOR.decodeAddressPayload bytes of
+      Just _ -> Right $ KeyFingerprint bytes
+      Nothing -> Left $ ErrInvalidAddress addr (Proxy @IcarusKey)
 
-instance PaymentAddress n IcarusKey
-    => MkKeyFingerprint IcarusKey (Proxy (n :: NetworkDiscriminant), IcarusKey 'AddressK XPub)
+instance
+  PaymentAddress n IcarusKey =>
+  MkKeyFingerprint IcarusKey (Proxy (n :: NetworkDiscriminant), IcarusKey 'AddressK XPub)
   where
-    paymentKeyFingerprint (proxy, k) =
-        bimap (const err) coerce
-        . paymentKeyFingerprint @IcarusKey
-        . paymentAddress @n
-        $ k
-      where
-        err = ErrInvalidAddress (proxy, k) Proxy
+  paymentKeyFingerprint (proxy, k) =
+    bimap (const err) coerce
+      . paymentKeyFingerprint @IcarusKey
+      . paymentAddress @n
+      $ k
+    where
+      err = ErrInvalidAddress (proxy, k) Proxy
 
 instance IsOurs (SeqState n IcarusKey) RewardAccount where
-    isOurs _account state = (Nothing, state)
+  isOurs _account state = (Nothing, state)
 
 {-------------------------------------------------------------------------------
                           Storing and retrieving keys
 -------------------------------------------------------------------------------}
 
 instance PersistPrivateKey (IcarusKey 'RootK) where
-    serializeXPrv (k, h) =
-        ( hex . unXPrv . getKey $ k
-        , hex . getHash $ h
-        )
+  serializeXPrv (k, h) =
+    ( hex . unXPrv . getKey $ k,
+      hex . getHash $ h
+    )
 
-    unsafeDeserializeXPrv (k, h) = either err id $ (,)
+  unsafeDeserializeXPrv (k, h) =
+    either err id $
+      (,)
         <$> fmap IcarusKey (xprvFromText k)
         <*> fmap Hash (fromHex h)
-      where
-        xprvFromText = xprv <=< fromHex @ByteString
-        err _ = error "unsafeDeserializeXPrv: unable to deserialize IcarusKey"
+    where
+      xprvFromText = xprv <=< fromHex @ByteString
+      err _ = error "unsafeDeserializeXPrv: unable to deserialize IcarusKey"
 
 instance PersistPublicKey (IcarusKey depth) where
-    serializeXPub =
-        hex . unXPub . getKey
+  serializeXPub =
+    hex . unXPub . getKey
 
-    unsafeDeserializeXPub =
-        either err IcarusKey . xpubFromText
-      where
-        xpubFromText = xpub <=< fromHex @ByteString
-        err _ = error "unsafeDeserializeXPub: unable to deserialize IcarusKey"
+  unsafeDeserializeXPub =
+    either err IcarusKey . xpubFromText
+    where
+      xpubFromText = xpub <=< fromHex @ByteString
+      err _ = error "unsafeDeserializeXPub: unable to deserialize IcarusKey"

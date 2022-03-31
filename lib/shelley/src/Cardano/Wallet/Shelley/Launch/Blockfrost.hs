@@ -2,33 +2,44 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 
 module Cardano.Wallet.Shelley.Launch.Blockfrost
-    ( TokenFile
-    , readToken
-    , tokenFileOption
-    ) where
-
-import Prelude
+  ( TokenFile,
+    readToken,
+    tokenFileOption,
+  )
+where
 
 import Blockfrost.Client.Core
-    ( projectFromFile )
+  ( projectFromFile,
+  )
 import Blockfrost.Client.Types
-    ( Project (..) )
+  ( Project (..),
+  )
 import Options.Applicative
-    ( Parser, help, long, metavar, option, str )
+  ( Parser,
+    help,
+    long,
+    metavar,
+    option,
+    str,
+  )
+import Prelude
 
 newtype TokenFile = TokenFile FilePath
-    deriving newtype (Eq, Show)
+  deriving newtype (Eq, Show)
 
 -- | --blockfrost-token-file FILE
 tokenFileOption :: Parser TokenFile
-tokenFileOption = option (TokenFile <$> str) $ mconcat
-    [ long "blockfrost-token-file"
-    , metavar "FILE"
-    , help $ mconcat
-        [ "FILE contains an authentication token for "
-        , "BlockFrost Cardano API (https://blockfrost.io)."
-        ]
-    ]
+tokenFileOption =
+  option (TokenFile <$> str) $
+    mconcat
+      [ long "blockfrost-token-file",
+        metavar "FILE",
+        help $
+          mconcat
+            [ "FILE contains an authentication token for ",
+              "BlockFrost Cardano API (https://blockfrost.io)."
+            ]
+      ]
 
 readToken :: TokenFile -> IO Project
 readToken (TokenFile fp) = projectFromFile fp

@@ -22,36 +22,26 @@
 -- More than 6K lines end-up being generated from the instructions below! As a
 -- result, we're going to ignore code-coverage on the following module and, no
 -- hand-written functions should be written in this module!
-
 module Cardano.Wallet.DB.Sqlite.TH where
 
-import Prelude
-
 import Cardano.Address.Script
-    ( Cosigner, Script )
+  ( Cosigner,
+    Script,
+  )
 import Cardano.Slotting.Slot
-    ( SlotNo )
+  ( SlotNo,
+  )
 import Cardano.Wallet.DB.Sqlite.Types
-    ( BlockId, HDPassphrase, TxId, sqlSettings' )
-import Cardano.Wallet.Primitive.AddressDiscovery.Shared
-    ( CredentialType )
-import Data.Quantity
-    ( Percentage (..) )
-import Data.Text
-    ( Text )
-import Data.Time.Clock
-    ( UTCTime )
-import Data.Word
-    ( Word16, Word32, Word64, Word8 )
-import Database.Persist.TH
-    ( mkMigrate, mkPersist, persistLowerCase, share )
-import GHC.Generics
-    ( Generic (..) )
-import System.Random
-    ( StdGen )
-
+  ( BlockId,
+    HDPassphrase,
+    TxId,
+    sqlSettings',
+  )
 import qualified Cardano.Wallet.Primitive.AddressDerivation as W
 import qualified Cardano.Wallet.Primitive.AddressDiscovery.Sequential as W
+import Cardano.Wallet.Primitive.AddressDiscovery.Shared
+  ( CredentialType,
+  )
 import qualified Cardano.Wallet.Primitive.Types as W
 import qualified Cardano.Wallet.Primitive.Types.Address as W
 import qualified Cardano.Wallet.Primitive.Types.Coin as W
@@ -59,12 +49,40 @@ import qualified Cardano.Wallet.Primitive.Types.TokenPolicy as W
 import qualified Cardano.Wallet.Primitive.Types.TokenQuantity as W
 import qualified Cardano.Wallet.Primitive.Types.Tx as W
 import qualified Data.ByteString.Char8 as B8
+import Data.Quantity
+  ( Percentage (..),
+  )
+import Data.Text
+  ( Text,
+  )
+import Data.Time.Clock
+  ( UTCTime,
+  )
+import Data.Word
+  ( Word16,
+    Word32,
+    Word64,
+    Word8,
+  )
+import Database.Persist.TH
+  ( mkMigrate,
+    mkPersist,
+    persistLowerCase,
+    share,
+  )
+import GHC.Generics
+  ( Generic (..),
+  )
+import System.Random
+  ( StdGen,
+  )
+import Prelude
 
 share
-    [ mkPersist sqlSettings'
-    , mkMigrate "migrateAll"
-    ]
-    [persistLowerCase|
+  [ mkPersist sqlSettings',
+    mkMigrate "migrateAll"
+  ]
+  [persistLowerCase|
 
 -- Wallet IDs, address discovery state, and metadata.
 Wallet

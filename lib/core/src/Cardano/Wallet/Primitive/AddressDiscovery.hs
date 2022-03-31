@@ -17,42 +17,47 @@
 --
 --  * "Cardano.Wallet.Primitive.AddressDiscovery.Sequential"
 --  * "Cardano.Wallet.Primitive.AddressDiscovery.Random"
-
 module Cardano.Wallet.Primitive.AddressDiscovery
-    (
-    -- * Abstractions
-      IsOurs(..)
-    , IsOwned(..)
-    , GenChange(..)
-    , CompareDiscovery(..)
-    , KnownAddresses(..)
-    , GetPurpose (..)
-    , GetAccount (..)
-    , coinTypeAda
-    , MaybeLight (..)
-    , DiscoverTxs (..)
-    ) where
-
-import Prelude
+  ( -- * Abstractions
+    IsOurs (..),
+    IsOwned (..),
+    GenChange (..),
+    CompareDiscovery (..),
+    KnownAddresses (..),
+    GetPurpose (..),
+    GetAccount (..),
+    coinTypeAda,
+    MaybeLight (..),
+    DiscoverTxs (..),
+  )
+where
 
 import Cardano.Crypto.Wallet
-    ( XPrv, XPub )
+  ( XPrv,
+    XPub,
+  )
 import Cardano.Wallet.Primitive.AddressDerivation
-    ( Depth (..)
-    , DerivationIndex (..)
-    , DerivationType (..)
-    , Index (..)
-    , Passphrase (..)
-    , RewardAccount
-    )
+  ( Depth (..),
+    DerivationIndex (..),
+    DerivationType (..),
+    Index (..),
+    Passphrase (..),
+    RewardAccount,
+  )
 import Cardano.Wallet.Primitive.BlockSummary
-    ( ChainEvents )
+  ( ChainEvents,
+  )
 import Cardano.Wallet.Primitive.Types.Address
-    ( Address (..), AddressState (..) )
+  ( Address (..),
+    AddressState (..),
+  )
 import Data.Kind
-    ( Type )
+  ( Type,
+  )
 import Data.List.NonEmpty
-    ( NonEmpty )
+  ( NonEmpty,
+  )
+import Prelude
 
 -- | Checks whether or not a given entity belongs to us.
 --
@@ -73,11 +78,11 @@ import Data.List.NonEmpty
 -- same time, and this little abstraction can buy us this without introducing
 -- too much overhead.
 class IsOurs s entity where
-    isOurs
-        :: entity
-        -> s
-        -> (Maybe (NonEmpty DerivationIndex), s)
-        -- ^ Returns derivation path if the entity is ours, otherwise Nothing.
+  isOurs ::
+    entity ->
+    s ->
+    -- | Returns derivation path if the entity is ours, otherwise Nothing.
+    (Maybe (NonEmpty DerivationIndex), s)
 
 -- | More powerful than 'isOurs', this abstractions offer the underlying state
 -- the ability to find / compute the address private key corresponding to a
@@ -88,15 +93,15 @@ class IsOurs s entity where
 -- owned wallet which would delegate its key management to a third party (like
 -- a hardware Ledger or Trezor).
 class IsOurs s Address => IsOwned s key where
-    isOwned
-        :: s
-        -> (key 'RootK XPrv, Passphrase "encryption")
-        -> Address
-        -> Maybe (key 'AddressK XPrv, Passphrase "encryption")
-        -- ^ Derive the private key corresponding to an address. Careful, this
-        -- operation can be costly. Note that the state is discarded from this
-        -- function as we do not intend to discover any addresses from this
-        -- operation; This is merely a lookup from known addresses.
+  isOwned ::
+    s ->
+    (key 'RootK XPrv, Passphrase "encryption") ->
+    Address ->
+    -- | Derive the private key corresponding to an address. Careful, this
+    -- operation can be costly. Note that the state is discarded from this
+    -- function as we do not intend to discover any addresses from this
+    -- operation; This is merely a lookup from known addresses.
+    Maybe (key 'AddressK XPrv, Passphrase "encryption")
 
 -- | Abstracting over change address generation. In theory, this is only needed
 -- for sending transactions on a wallet following a particular scheme. This
@@ -104,13 +109,13 @@ class IsOurs s Address => IsOwned s key where
 -- instance, in BIP-44, change addresses belong to a particular change chain
 -- (also called "Internal Chain").
 class GenChange s where
-    type ArgGenChange s :: Type
-    genChange
-        :: ArgGenChange s
-        -> s
-        -> (Address, s)
-        -- ^ Generate a new change address for the given scheme. The rules for
-        -- generating a new change address depends on the underlying scheme.
+  type ArgGenChange s :: Type
+  genChange ::
+    ArgGenChange s ->
+    s ->
+    -- | Generate a new change address for the given scheme. The rules for
+    -- generating a new change address depends on the underlying scheme.
+    (Address, s)
 
 -- | Ordering addresses by discovery date.
 --
@@ -129,11 +134,11 @@ class GenChange s where
 -- Note that, if an address isn't known it is considered not discovered and
 -- therefore, is always _greater than_ any known address.
 class CompareDiscovery s where
-    compareDiscovery
-        :: s
-        -> Address
-        -> Address
-        -> Ordering
+  compareDiscovery ::
+    s ->
+    Address ->
+    Address ->
+    Ordering
 
 -- | Extract the list of all known addresses.
 --
@@ -141,9 +146,9 @@ class CompareDiscovery s where
 -- rationale is that, we don't want users or consumers of the wallet to be using
 -- change addresses prematurely.
 class KnownAddresses s where
-    knownAddresses
-        :: s
-        -> [(Address, AddressState, NonEmpty DerivationIndex)]
+  knownAddresses ::
+    s ->
+    [(Address, AddressState, NonEmpty DerivationIndex)]
 
 -- | One master node (seed) can be used for unlimited number of independent
 -- cryptocoins such as Bitcoin, Litecoin or Namecoin. However, sharing the
@@ -161,25 +166,28 @@ coinTypeAda :: Index 'Hardened 'CoinTypeK
 coinTypeAda = toEnum 0x80000717
 
 -- It is used for getting purpose for a given key.
-class GetPurpose (key :: Depth -> Type -> Type)  where
-    getPurpose :: Index 'Hardened 'PurposeK
+class GetPurpose (key :: Depth -> Type -> Type) where
+  getPurpose :: Index 'Hardened 'PurposeK
 
 -- It is used for getting account public key for a given state.
-class GetAccount s (key :: Depth -> Type -> Type) | s -> key  where
-    getAccount :: s -> key 'AccountK XPub
+class GetAccount s (key :: Depth -> Type -> Type) | s -> key where
+  getAccount :: s -> key 'AccountK XPub
 
 -- | Checks whether the address discovery state @s@ works in light-mode
 -- and returns a procedure for discovering addresses
 -- if that is indeed the case.
 class MaybeLight s where
-    maybeDiscover :: Maybe (LightDiscoverTxs s)
+  maybeDiscover :: Maybe (LightDiscoverTxs s)
 
 type LightDiscoverTxs s =
-    DiscoverTxs (Either Address RewardAccount) ChainEvents s
+  DiscoverTxs (Either Address RewardAccount) ChainEvents s
 
 -- | Function that discovers transactions based on an address.
 newtype DiscoverTxs addr txs s = DiscoverTxs
-    { discoverTxs 
-        :: forall m. Monad m
-        => (addr -> m txs) -> s -> m (txs, s)
-    }
+  { discoverTxs ::
+      forall m.
+      Monad m =>
+      (addr -> m txs) ->
+      s ->
+      m (txs, s)
+  }

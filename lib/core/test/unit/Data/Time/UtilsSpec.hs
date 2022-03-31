@@ -1,35 +1,53 @@
 module Data.Time.UtilsSpec
-    ( spec
-    ) where
-
-import Prelude
+  ( spec,
+  )
+where
 
 import Data.Time.Utils
-    ( utcTimePred, utcTimeSucc )
+  ( utcTimePred,
+    utcTimeSucc,
+  )
 import Test.Hspec
-    ( Spec, describe, it )
+  ( Spec,
+    describe,
+    it,
+  )
 import Test.Hspec.Extra
-    ( parallel )
+  ( parallel,
+  )
 import Test.QuickCheck
-    ( property, withMaxSuccess, (===) )
+  ( property,
+    withMaxSuccess,
+    (===),
+  )
 import Test.Utils.Time
-    ( getUniformTime )
+  ( getUniformTime,
+  )
+import Prelude
 
 spec :: Spec
-spec = parallel $ describe "Manipulation of time values." $ do
-
-    parallel $ it "utcTimePred . utcTimeSucc == id" $
-        withMaxSuccess 10000 $ property $ \t ->
+spec = parallel $
+  describe "Manipulation of time values." $ do
+    parallel $
+      it "utcTimePred . utcTimeSucc == id" $
+        withMaxSuccess 10000 $
+          property $ \t ->
             utcTimePred (utcTimeSucc (getUniformTime t)) === getUniformTime t
 
-    parallel $ it "utcTimeSucc . utcTimePred == id" $
-        withMaxSuccess 10000 $ property $ \t ->
+    parallel $
+      it "utcTimeSucc . utcTimePred == id" $
+        withMaxSuccess 10000 $
+          property $ \t ->
             utcTimeSucc (utcTimePred (getUniformTime t)) === getUniformTime t
 
-    parallel $ it "utcTimeSucc t > t" $
-        withMaxSuccess 10000 $ property $ \t ->
+    parallel $
+      it "utcTimeSucc t > t" $
+        withMaxSuccess 10000 $
+          property $ \t ->
             utcTimeSucc (getUniformTime t) > getUniformTime t
 
-    parallel $ it "utcTimePred t < t" $
-        withMaxSuccess 10000 $ property $ \t ->
+    parallel $
+      it "utcTimePred t < t" $
+        withMaxSuccess 10000 $
+          property $ \t ->
             utcTimePred (getUniformTime t) < getUniformTime t

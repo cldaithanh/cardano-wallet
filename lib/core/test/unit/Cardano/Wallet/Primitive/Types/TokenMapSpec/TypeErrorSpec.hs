@@ -5,23 +5,30 @@
 {-# OPTIONS_GHC -fno-warn-unused-imports #-}
 
 module Cardano.Wallet.Primitive.Types.TokenMapSpec.TypeErrorSpec
-    ( spec
-    ) where
-
-import Prelude
+  ( spec,
+  )
+where
 
 import Cardano.Wallet.Primitive.Types.TokenMap
-    ( TokenMap (..) )
+  ( TokenMap (..),
+  )
 import Test.Hspec
-    ( Expectation, Spec, describe, it )
+  ( Expectation,
+    Spec,
+    describe,
+    it,
+  )
 import Test.ShouldNotTypecheck
-    ( shouldNotTypecheck )
+  ( shouldNotTypecheck,
+  )
+import Prelude
 
 spec :: Spec
-spec = describe "Token map type error tests" $
-
-    it "Default data constructor is not exported"
-        testDefaultDataConstructorNotExported
+spec =
+  describe "Token map type error tests" $
+    it
+      "Default data constructor is not exported"
+      testDefaultDataConstructorNotExported
 
 -- Test that the default data constructor for 'TokenMap' is not exported.
 --

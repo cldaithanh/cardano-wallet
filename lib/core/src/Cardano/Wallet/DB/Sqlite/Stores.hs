@@ -14,14 +14,14 @@
 --   a monadic fashion.
 --   Hide the new implementation behind a feature flag,
 --   i.e. "Cardano.Wallet.DB.Sqlite.StoresNew".
-
 module Cardano.Wallet.DB.Sqlite.Stores
-    ( mkStoreWallets
-    , PersistAddressBook (..)
-    , blockHeaderFromEntity
+  ( mkStoreWallets,
+    PersistAddressBook (..),
+    blockHeaderFromEntity,
+
     -- * Testing
-    , mkStoreWallet
-    )
-    where
+    mkStoreWallet,
+  )
+where
 
 import Cardano.Wallet.DB.Sqlite.CheckpointsOld

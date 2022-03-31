@@ -5,23 +5,30 @@
 {-# OPTIONS_GHC -fno-warn-unused-imports #-}
 
 module Cardano.Wallet.Primitive.Types.UTxOIndex.TypeErrorSpec
-    ( spec
-    ) where
-
-import Prelude
+  ( spec,
+  )
+where
 
 import Cardano.Wallet.Primitive.Types.UTxOIndex.Internal
-    ( UTxOIndex (..) )
+  ( UTxOIndex (..),
+  )
 import Test.Hspec
-    ( Expectation, Spec, describe, it )
+  ( Expectation,
+    Spec,
+    describe,
+    it,
+  )
 import Test.ShouldNotTypecheck
-    ( shouldNotTypecheck )
+  ( shouldNotTypecheck,
+  )
+import Prelude
 
 spec :: Spec
-spec = describe "UTxO index type error tests" $
-
-    it "Default data constructor is not exported"
-        testDefaultDataConstructorNotExported
+spec =
+  describe "UTxO index type error tests" $
+    it
+      "Default data constructor is not exported"
+      testDefaultDataConstructorNotExported
 
 -- Test that the default data constructor for 'UTxOIndex' is not exported.
 --
@@ -37,4 +44,4 @@ spec = describe "UTxO index type error tests" $
 --
 testDefaultDataConstructorNotExported :: Expectation
 testDefaultDataConstructorNotExported =
-    shouldNotTypecheck UTxOIndex
+  shouldNotTypecheck UTxOIndex

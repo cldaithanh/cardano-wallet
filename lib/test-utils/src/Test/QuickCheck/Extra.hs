@@ -9,98 +9,105 @@
 -- License: Apache-2.0
 --
 -- Extra helper functions for QuickCheck
---
-
 module Test.QuickCheck.Extra
-    (
-      -- * Generation
-      genFunction
-    , genMapWith
-    , genSized2
-    , genSized2With
-    , reasonablySized
+  ( -- * Generation
+    genFunction,
+    genMapWith,
+    genSized2,
+    genSized2With,
+    reasonablySized,
 
-      -- * Shrinking
-    , liftShrinker
-    , shrinkInterleaved
-    , shrinkMapWith
-    , groundRobinShrink
-    , groundRobinShrink'
-    , genericRoundRobinShrink
-    , genericRoundRobinShrink'
-    , (<@>)
-    , (<:>)
+    -- * Shrinking
+    liftShrinker,
+    shrinkInterleaved,
+    shrinkMapWith,
+    groundRobinShrink,
+    groundRobinShrink',
+    genericRoundRobinShrink,
+    genericRoundRobinShrink',
+    (<@>),
+    (<:>),
 
-      -- * Generating and shrinking natural numbers
-    , chooseNatural
-    , shrinkNatural
+    -- * Generating and shrinking natural numbers
+    chooseNatural,
+    shrinkNatural,
 
-      -- * Generating and shrinking non-empty lists
-    , genNonEmpty
-    , shrinkNonEmpty
+    -- * Generating and shrinking non-empty lists
+    genNonEmpty,
+    shrinkNonEmpty,
 
-      -- * Counterexamples
-    , report
-    , verify
+    -- * Counterexamples
+    report,
+    verify,
 
-      -- * Pretty-printing
-    , Pretty (..)
+    -- * Pretty-printing
+    Pretty (..),
 
-      -- * Combinators
-    , NotNull (..)
+    -- * Combinators
+    NotNull (..),
 
-      -- * Utilities
-    , interleaveRoundRobin
-
-    ) where
-
-import Prelude
+    -- * Utilities
+    interleaveRoundRobin,
+  )
+where
 
 import Data.IntCast
-    ( intCast, intCastMaybe )
-import Data.List.NonEmpty
-    ( NonEmpty (..) )
-import Data.Map.Strict
-    ( Map )
-import Data.Maybe
-    ( mapMaybe )
-import Fmt
-    ( indentF, (+|), (|+) )
-import Generics.SOP
-import Numeric.Natural
-    ( Natural )
-import Test.QuickCheck
-    ( Arbitrary (..)
-    , Gen
-    , Property
-    , Testable
-    , chooseInteger
-    , counterexample
-    , liftArbitrary2
-    , liftShrink2
-    , listOf
-    , property
-    , scale
-    , shrinkIntegral
-    , shrinkList
-    , shrinkMapBy
-    , suchThat
-    , suchThatMap
-    , (.&&.)
-    )
-import Test.QuickCheck.Gen.Unsafe
-    ( promote )
-import Test.Utils.Pretty
-    ( pShowBuilder )
-import Text.Pretty.Simple
-    ( pShow )
-
+  ( intCast,
+    intCastMaybe,
+  )
 import qualified Data.List as L
+import Data.List.NonEmpty
+  ( NonEmpty (..),
+  )
 import qualified Data.List.NonEmpty as NE
+import Data.Map.Strict
+  ( Map,
+  )
 import qualified Data.Map.Strict as Map
+import Data.Maybe
+  ( mapMaybe,
+  )
 import qualified Data.Text.Lazy as TL
-import qualified Generics.SOP.GGP as GGP
+import Fmt
+  ( indentF,
+    (+|),
+    (|+),
+  )
 import qualified GHC.Generics as GHC
+import Generics.SOP
+import qualified Generics.SOP.GGP as GGP
+import Numeric.Natural
+  ( Natural,
+  )
+import Test.QuickCheck
+  ( Arbitrary (..),
+    Gen,
+    Property,
+    Testable,
+    chooseInteger,
+    counterexample,
+    liftArbitrary2,
+    liftShrink2,
+    listOf,
+    property,
+    scale,
+    shrinkIntegral,
+    shrinkList,
+    shrinkMapBy,
+    suchThat,
+    suchThatMap,
+    (.&&.),
+  )
+import Test.QuickCheck.Gen.Unsafe
+  ( promote,
+  )
+import Test.Utils.Pretty
+  ( pShowBuilder,
+  )
+import Text.Pretty.Simple
+  ( pShow,
+  )
+import Prelude
 
 -- | Resize a generator to grow with the size parameter, but remains reasonably
 -- sized. That is handy when testing on data-structures that can be arbitrarily
@@ -119,7 +126,6 @@ import qualified GHC.Generics as GHC
 --     | 100         | 10               |
 --     | 1000        | 31               |
 --     +-------------+------------------+
---
 reasonablySized :: Gen a -> Gen a
 reasonablySized = scale (ceiling . sqrt @Double . fromIntegral)
 
@@ -142,22 +148,21 @@ reasonablySized = scale (ceiling . sqrt @Double . fromIntegral)
 -- >>>     <$> scaleToRoot 3 genA
 -- >>>     <*> scaleToRoot 3 genB
 -- >>>     <*> scaleToRoot 3 genC
---
 scaleToRoot :: Int -> Gen a -> Gen a
-scaleToRoot n = scale
-    $ floor @Double @Int
-    . (** (1.0 / fromIntegral @Int @Double n))
-    . fromIntegral @Int @Double
+scaleToRoot n =
+  scale $
+    floor @Double @Int
+      . (** (1.0 / fromIntegral @Int @Double n))
+      . fromIntegral @Int @Double
 
 -- | Generates a 2-tuple whose range depends linearly on the size parameter.
---
 genSized2 :: Gen a -> Gen b -> Gen (a, b)
-genSized2 genA genB = (,)
+genSized2 genA genB =
+  (,)
     <$> scaleToRoot 2 genA
     <*> scaleToRoot 2 genB
 
 -- | Similar to 'genSized2', but with a custom constructor.
---
 genSized2With :: (a -> b -> c) -> Gen a -> Gen b -> Gen c
 genSized2With f genA genB = uncurry f <$> genSized2 genA genB
 
@@ -178,11 +183,11 @@ interleaveRoundRobin = concat . L.transpose
 --
 -- Successive shrinks of the left and right hand sides are interleaved in the
 -- resulting sequence, to avoid biasing either side.
---
 shrinkInterleaved :: (a, a -> [a]) -> (b, b -> [b]) -> [(a, b)]
-shrinkInterleaved (a, shrinkA) (b, shrinkB) = interleave
-    [ (a', b ) | a' <- shrinkA a ]
-    [ (a , b') | b' <- shrinkB b ]
+shrinkInterleaved (a, shrinkA) (b, shrinkB) =
+  interleave
+    [(a', b) | a' <- shrinkA a]
+    [(a, b') | b' <- shrinkB b]
   where
     interleave (x : xs) (y : ys) = x : y : interleave xs ys
     interleave xs [] = xs
@@ -194,15 +199,14 @@ shrinkInterleaved (a, shrinkA) (b, shrinkB) = interleave
 
 chooseNatural :: (Natural, Natural) -> Gen Natural
 chooseNatural (lo, hi) =
-    chooseInteger (intCast lo, intCast hi)
-    `suchThatMap`
-    intCastMaybe @Integer @Natural
+  chooseInteger (intCast lo, intCast hi)
+    `suchThatMap` intCastMaybe @Integer @Natural
 
 shrinkNatural :: Natural -> [Natural]
-shrinkNatural n
-    = mapMaybe (intCastMaybe @Integer @Natural)
-    $ shrinkIntegral
-    $ intCast n
+shrinkNatural n =
+  mapMaybe (intCastMaybe @Integer @Natural) $
+    shrinkIntegral $
+      intCast n
 
 --------------------------------------------------------------------------------
 -- Generating and shrinking non-empty lists
@@ -221,7 +225,6 @@ shrinkNonEmpty shrinkA = mapMaybe NE.nonEmpty . shrinkList shrinkA . NE.toList
 -- | Generates a function.
 --
 -- This is based on the implementation of 'Arbitrary' for 'a -> b'.
---
 genFunction :: (a -> Gen b -> Gen b) -> Gen b -> Gen (a -> b)
 genFunction coarbitraryFn gen = promote (`coarbitraryFn` gen)
 
@@ -230,23 +233,21 @@ genFunction coarbitraryFn gen = promote (`coarbitraryFn` gen)
 --------------------------------------------------------------------------------
 
 -- | Generates a 'Map' with the given key and value generation functions.
---
 genMapWith :: Ord k => Gen k -> Gen v -> Gen (Map k v)
 genMapWith genKey genValue =
-    Map.fromList <$> listOf (liftArbitrary2 genKey genValue)
+  Map.fromList <$> listOf (liftArbitrary2 genKey genValue)
 
 -- | Shrinks a 'Map' with the given key and value shrinking functions.
---
-shrinkMapWith
-    :: Ord k
-    => (k -> [k])
-    -> (v -> [v])
-    -> Map k v
-    -> [Map k v]
-shrinkMapWith shrinkKey shrinkValue
-    = shrinkMapBy Map.fromList Map.toList
-    $ shrinkList
-    $ liftShrink2 shrinkKey shrinkValue
+shrinkMapWith ::
+  Ord k =>
+  (k -> [k]) ->
+  (v -> [v]) ->
+  Map k v ->
+  [Map k v]
+shrinkMapWith shrinkKey shrinkValue =
+  shrinkMapBy Map.fromList Map.toList $
+    shrinkList $
+      liftShrink2 shrinkKey shrinkValue
 
 --------------------------------------------------------------------------------
 -- Counterexamples
@@ -255,18 +256,17 @@ shrinkMapWith shrinkKey shrinkValue
 -- | Adds a named variable to the counterexample output of a property.
 --
 -- On failure, uses pretty-printing to show the contents of the variable.
---
 report :: (Show a, Testable prop) => a -> String -> prop -> Property
-report a name = counterexample $
-    "" +|name|+ ":\n" +|indentF 4 (pShowBuilder a) |+ ""
+report a name =
+  counterexample $
+    "" +| name |+ ":\n" +| indentF 4 (pShowBuilder a) |+ ""
 
 -- | Adds a named condition to a property.
 --
 -- On failure, reports the name of the condition that failed.
---
 verify :: Bool -> String -> Property -> Property
 verify condition conditionTitle =
-    (.&&.) (counterexample counterexampleText $ property condition)
+  (.&&.) (counterexample counterexampleText $ property condition)
   where
     counterexampleText = "Condition violated: " <> conditionTitle
 
@@ -275,27 +275,26 @@ verify condition conditionTitle =
 --------------------------------------------------------------------------------
 
 -- | A combinator that causes the output of `show` to be pretty-printed.
---
-newtype Pretty a = Pretty { unPretty :: a }
-    deriving Eq
+newtype Pretty a = Pretty {unPretty :: a}
+  deriving (Eq)
 
 instance Show a => Show (Pretty a) where
-    show (Pretty a) = TL.unpack ("\n" <> pShow a <> "\n")
+  show (Pretty a) = TL.unpack ("\n" <> pShow a <> "\n")
 
 instance Arbitrary a => Arbitrary (Pretty a) where
-    arbitrary = Pretty <$> arbitrary
-    shrink (Pretty a) = Pretty <$> shrink a
+  arbitrary = Pretty <$> arbitrary
+  shrink (Pretty a) = Pretty <$> shrink a
 
 --------------------------------------------------------------------------------
 -- Non-null values
 --------------------------------------------------------------------------------
 
-newtype NotNull a = NotNull { unNotNull :: a }
-    deriving (Eq, Show)
+newtype NotNull a = NotNull {unNotNull :: a}
+  deriving (Eq, Show)
 
 instance (Arbitrary a, Eq a, Monoid a) => Arbitrary (NotNull a) where
-    arbitrary = NotNull <$> arbitrary `suchThat` (/= mempty)
-    shrink (NotNull u) = NotNull <$> filter (/= mempty) (shrink u)
+  arbitrary = NotNull <$> arbitrary `suchThat` (/= mempty)
+  shrink (NotNull u) = NotNull <$> filter (/= mempty) (shrink u)
 
 --------------------------------------------------------------------------------
 -- Generic shrinking
@@ -366,22 +365,22 @@ groundRobinShrinkP fns = interleaveRoundRobin . groundRobinShrinkP' fns
   where
     groundRobinShrinkP' :: NP (I -.-> []) xs -> NP I xs -> [[NP I xs]]
     groundRobinShrinkP' Nil Nil =
-        -- In the case of no argument constructors, there is no need to
-        -- shrink
-        []
+      -- In the case of no argument constructors, there is no need to
+      -- shrink
+      []
     groundRobinShrinkP' (s :* ss) (x1 :* xs) =
-        -- Best explained with example:
-        --   BoolChar b c
-        --     1. shrink b = [b1, b2, b3]
-        --     -- shrink the first argument
-        --     2. [ BoolChar b1 c, BoolChar b2 c, BoolChar b3 c ]
-        --     -- create a list of values with only first value shrunk
-        --     3. shrink c = [c1, c2, c3]
-        --     -- shrink the second argument
-        --     4. [ BoolChar b c1, BoolChar b c2, BoolChar b c3 ]
-        --     -- create a list of values with only second value shrunk
-        --     -- append and return the lists in 2. and 4.
-        [ [ ( I x1' :* xs ) | x1' <- apFn s x1 ] ]
+      -- Best explained with example:
+      --   BoolChar b c
+      --     1. shrink b = [b1, b2, b3]
+      --     -- shrink the first argument
+      --     2. [ BoolChar b1 c, BoolChar b2 c, BoolChar b3 c ]
+      --     -- create a list of values with only first value shrunk
+      --     3. shrink c = [c1, c2, c3]
+      --     -- shrink the second argument
+      --     4. [ BoolChar b c1, BoolChar b c2, BoolChar b c3 ]
+      --     -- create a list of values with only second value shrunk
+      --     -- append and return the lists in 2. and 4.
+      [[(I x1' :* xs) | x1' <- apFn s x1]]
         <> (fmap (x1 :*) <$> groundRobinShrinkP' ss xs)
 
 -- | Using a round-robin algorithm, apply a list of shrinkers to their
@@ -399,16 +398,16 @@ groundRobinShrinkP fns = interleaveRoundRobin . groundRobinShrinkP' fns
 --                        )
 --                        (from bc)
 -- @
-groundRobinShrinkS
-    :: NP (I -.-> []) xs
-    -- ^ Given a list of shrinkers for each element in a product type
-    -> SOP I (xs ': '[])
-    -- ^ And a type with only one constructor
-    -> [SOP I (xs ': '[])]
-    -- ^ Return a shrunk list of that product type, using the round-robin
-    -- algorithm.
+groundRobinShrinkS ::
+  -- | Given a list of shrinkers for each element in a product type
+  NP (I -.-> []) xs ->
+  -- | And a type with only one constructor
+  SOP I (xs ': '[]) ->
+  -- | Return a shrunk list of that product type, using the round-robin
+  -- algorithm.
+  [SOP I (xs ': '[])]
 groundRobinShrinkS fs (SOP (Z xs)) = (SOP . Z) <$> groundRobinShrinkP fs xs
-groundRobinShrinkS _ (SOP (S _))   = error "only defined for product types."
+groundRobinShrinkS _ (SOP (S _)) = error "only defined for product types."
 
 -- | Given a list of shrinkers for each element of a product type (NOTE: this
 -- function is not defined for sum types), and a value of that product type,
@@ -424,19 +423,19 @@ groundRobinShrinkS _ (SOP (S _))   = error "only defined for product types."
 --                       :* Nil
 --                       )
 -- @
-groundRobinShrink
-    :: ( Generic a
-       -- Given a generic type
-       , Code a ~ '[xs]
-       -- whose generic representation matches the structure of the list of
-       -- functions
-       )
-    => NP (I -.-> []) xs
-    -- ^ and a list of shrinking functions, one for each argument of the product
-    -> a
-    -- ^ and a value of that type
-    -> [a]
-    -- ^ provide a list of shrunk values.
+groundRobinShrink ::
+  ( Generic a,
+    -- Given a generic type
+    Code a ~ '[xs]
+    -- whose generic representation matches the structure of the list of
+    -- functions
+  ) =>
+  -- | and a list of shrinking functions, one for each argument of the product
+  NP (I -.-> []) xs ->
+  -- | and a value of that type
+  a ->
+  -- | provide a list of shrunk values.
+  [a]
 groundRobinShrink f x = to <$> groundRobinShrinkS f (from x)
 
 -- | Same as groundRobinShrink, but use the available shrinkers via Arbitrary
@@ -448,54 +447,54 @@ groundRobinShrink f x = to <$> groundRobinShrinkS f (from x)
 -- shrinkBoolChar :: BoolChar -> [BoolChar]
 -- shrinkBoolChar = groundRobinShrink'
 -- @
-groundRobinShrink'
-    :: ( Generic a
-       -- The type is an instance of SOP.Generic
-       , Code a ~ '[xs]
-       , All Arbitrary xs
-       -- and each element of the constructor has an instance of arbitrary
-       )
-    => a
-    -- ^ Given such a type
-    -> [a]
-    -- ^ return a shrunk list of that product type, using the round-robin
-    -- algorithm.
+groundRobinShrink' ::
+  ( Generic a,
+    -- The type is an instance of SOP.Generic
+    Code a ~ '[xs],
+    All Arbitrary xs
+    -- and each element of the constructor has an instance of arbitrary
+  ) =>
+  -- | Given such a type
+  a ->
+  -- | return a shrunk list of that product type, using the round-robin
+  -- algorithm.
+  [a]
 groundRobinShrink' x =
-    fmap to
-    $ groundRobinShrinkS (hcpure (Proxy @Arbitrary) (liftShrinker shrink))
-    $ from x
+  fmap to $
+    groundRobinShrinkS (hcpure (Proxy @Arbitrary) (liftShrinker shrink)) $
+      from x
 
 -- | This function exists to provide a GHC.Generics version of
 -- @groundRobinShrink@, so that users of this code don't have to derive an
 -- instance of Generics.SOP.Generic; an instance of GHC.Generics.Generic will
 -- do.
-genericRoundRobinShrink
-    :: ( GHC.Generic a
-       , GGP.GFrom a
-       , GGP.GTo a
-       , GGP.GCode a ~ '[xs]
-       )
-    => NP (I -.-> []) xs
-    -> a
-    -> [a]
+genericRoundRobinShrink ::
+  ( GHC.Generic a,
+    GGP.GFrom a,
+    GGP.GTo a,
+    GGP.GCode a ~ '[xs]
+  ) =>
+  NP (I -.-> []) xs ->
+  a ->
+  [a]
 genericRoundRobinShrink f x =
-    GGP.gto <$> groundRobinShrinkS f (GGP.gfrom x)
+  GGP.gto <$> groundRobinShrinkS f (GGP.gfrom x)
 
 -- | Same as @genericRoundRobinShrink@ but uses available Arbitrary instance for
 -- shrinking.
-genericRoundRobinShrink'
-    :: ( GHC.Generic a
-       , GGP.GFrom a
-       , GGP.GTo a
-       , GGP.GCode a ~ '[xs]
-       , All Arbitrary xs
-       )
-    => a
-    -> [a]
+genericRoundRobinShrink' ::
+  ( GHC.Generic a,
+    GGP.GFrom a,
+    GGP.GTo a,
+    GGP.GCode a ~ '[xs],
+    All Arbitrary xs
+  ) =>
+  a ->
+  [a]
 genericRoundRobinShrink' x =
-    fmap GGP.gto
-    $ groundRobinShrinkS (hcpure (Proxy @Arbitrary) (liftShrinker shrink))
-    $ GGP.gfrom x
+  fmap GGP.gto $
+    groundRobinShrinkS (hcpure (Proxy @Arbitrary) (liftShrinker shrink)) $
+      GGP.gfrom x
 
 --------------------------------------------------------------------------------
 -- Generic shrinking operators
@@ -530,8 +529,10 @@ genericRoundRobinShrink' x =
 
 (<@>) :: (a -> b) -> a -> b
 a <@> b = a b
+
 infixl 6 <@>
 
 (<:>) :: (x -> [x]) -> NP (I -.-> []) xs -> NP (I -.-> []) (x : xs)
 a <:> b = liftShrinker a :* b
+
 infixr 7 <:>

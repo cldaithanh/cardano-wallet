@@ -7,67 +7,68 @@
 -- License: Apache-2.0
 --
 -- Provides a strict implementation of a non-empty set.
---
 module Data.Set.Strict.NonEmptySet
-    (
-    -- * Type
-      NonEmptySet
+  ( -- * Type
+    NonEmptySet,
 
     -- * Construction
-    , fromList
-    , fromSet
-    , singleton
+    fromList,
+    fromSet,
+    singleton,
 
     -- * Deconstruction
-    , toList
-    , toSet
+    toList,
+    toSet,
 
     -- * Insertion
-    , insert
+    insert,
 
     -- * Deletion
-    , delete
+    delete,
 
     -- * Membership
-    , member
+    member,
 
     -- * Combination
-    , union
-
-    ) where
-
-import Prelude
+    union,
+  )
+where
 
 import Control.DeepSeq
-    ( NFData )
+  ( NFData,
+  )
 import Data.List.NonEmpty
-    ( NonEmpty (..) )
-import Data.Map.Strict.NonEmptyMap
-    ( NonEmptyMap )
-import Data.Maybe
-    ( isJust )
-import Data.Set
-    ( Set )
-import GHC.Generics
-    ( Generic (..) )
-
+  ( NonEmpty (..),
+  )
 import qualified Data.Map.Strict as Map
+import Data.Map.Strict.NonEmptyMap
+  ( NonEmptyMap,
+  )
 import qualified Data.Map.Strict.NonEmptyMap as NonEmptyMap
+import Data.Maybe
+  ( isJust,
+  )
+import Data.Set
+  ( Set,
+  )
+import GHC.Generics
+  ( Generic (..),
+  )
+import Prelude
 
 -- | A non-empty set of elements of type 'a'.
---
 newtype NonEmptySet a = NonEmptySet
-    { elements :: NonEmptyMap a ()
-    }
-    deriving (Eq, Generic, Read, Show)
+  { elements :: NonEmptyMap a ()
+  }
+  deriving (Eq, Generic, Read, Show)
 
 instance Foldable NonEmptySet where
-    foldMap f s = foldMap (f . fst) (NonEmptyMap.toList $ elements s)
+  foldMap f s = foldMap (f . fst) (NonEmptyMap.toList $ elements s)
 
 instance NFData a => NFData (NonEmptySet a)
 
 fromList :: Ord a => NonEmpty a -> NonEmptySet a
-fromList = NonEmptySet . NonEmptyMap.fromList . fmap (, ())
+fromList = NonEmptySet . NonEmptyMap.fromList . fmap (,())
 
 fromSet :: Set a -> Maybe (NonEmptySet a)
 fromSet = fmap NonEmptySet . NonEmptyMap.fromMap . Map.fromSet (const ())
@@ -91,5 +92,6 @@ singleton :: Ord a => a -> NonEmptySet a
 singleton a = NonEmptySet $ NonEmptyMap.singleton a ()
 
 union :: Ord a => NonEmptySet a -> NonEmptySet a -> NonEmptySet a
-union (NonEmptySet x) (NonEmptySet y) = NonEmptySet $
+union (NonEmptySet x) (NonEmptySet y) =
+  NonEmptySet $
     NonEmptyMap.unionWith const x y

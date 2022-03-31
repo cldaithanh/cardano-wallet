@@ -18,38 +18,49 @@
 -- Auto-generated Sqlite & Persistent machinery via Template-Haskell. This has
 -- been moved into a separate file so that we can treat it slightly differently
 -- when computing code-coverage.
-
 module Cardano.Pool.DB.Sqlite.TH where
 
-import Prelude
-
 import Cardano.Slotting.Slot
-    ( SlotNo )
+  ( SlotNo,
+  )
 import Cardano.Wallet.DB.Sqlite.Types
-    ( sqlSettings' )
-import Data.Text
-    ( Text )
-import Data.Time.Clock
-    ( UTCTime )
-import Data.Time.Clock.POSIX
-    ( POSIXTime )
-import Data.Word
-    ( Word32, Word64, Word8 )
-import Database.Persist.TH
-    ( mkMigrate, mkPersist, persistLowerCase, share )
-import GHC.Generics
-    ( Generic (..) )
-import System.Random
-    ( StdGen )
-
+  ( sqlSettings',
+  )
 import qualified Cardano.Wallet.DB.Sqlite.Types as W
 import qualified Cardano.Wallet.Primitive.Types as W
+import Data.Text
+  ( Text,
+  )
+import Data.Time.Clock
+  ( UTCTime,
+  )
+import Data.Time.Clock.POSIX
+  ( POSIXTime,
+  )
+import Data.Word
+  ( Word32,
+    Word64,
+    Word8,
+  )
+import Database.Persist.TH
+  ( mkMigrate,
+    mkPersist,
+    persistLowerCase,
+    share,
+  )
+import GHC.Generics
+  ( Generic (..),
+  )
+import System.Random
+  ( StdGen,
+  )
+import Prelude
 
 share
-    [ mkPersist sqlSettings'
-    , mkMigrate "migrateAll"
-    ]
-    [persistLowerCase|
+  [ mkPersist sqlSettings',
+    mkMigrate "migrateAll"
+  ]
+  [persistLowerCase|
 
 InternalState sql=internal_state
     lastGCMetadata                   POSIXTime Maybe   sql=last_gc_metadata

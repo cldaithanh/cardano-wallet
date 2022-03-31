@@ -6,116 +6,140 @@
 {-# OPTIONS_GHC -fno-warn-partial-type-signatures #-}
 
 module Cardano.Wallet.Primitive.Types.Tx.Gen
-    ( coarbitraryTxIn
-    , genTx
-    , genTxHash
-    , genTxIndex
-    , genTxIn
-    , genTxInFunction
-    , genTxInLargeRange
-    , genTxOut
-    , genTxOutCoin
-    , genTxOutTokenBundle
-    , genTxScriptValidity
-    , shrinkTx
-    , shrinkTxHash
-    , shrinkTxIndex
-    , shrinkTxIn
-    , shrinkTxOut
-    , shrinkTxOutCoin
-    , shrinkTxScriptValidity
-    )
-    where
-
-import Prelude
+  ( coarbitraryTxIn,
+    genTx,
+    genTxHash,
+    genTxIndex,
+    genTxIn,
+    genTxInFunction,
+    genTxInLargeRange,
+    genTxOut,
+    genTxOutCoin,
+    genTxOutTokenBundle,
+    genTxScriptValidity,
+    shrinkTx,
+    shrinkTxHash,
+    shrinkTxIndex,
+    shrinkTxIn,
+    shrinkTxOut,
+    shrinkTxOutCoin,
+    shrinkTxScriptValidity,
+  )
+where
 
 import Cardano.Wallet.Gen
-    ( genNestedTxMetadata, shrinkTxMetadata )
+  ( genNestedTxMetadata,
+    shrinkTxMetadata,
+  )
 import Cardano.Wallet.Primitive.Types.Address.Gen
-    ( genAddress, shrinkAddress )
+  ( genAddress,
+    shrinkAddress,
+  )
 import Cardano.Wallet.Primitive.Types.Coin
-    ( Coin (..) )
-import Cardano.Wallet.Primitive.Types.Coin.Gen
-    ( genCoinPositive, shrinkCoinPositive )
-import Cardano.Wallet.Primitive.Types.Hash
-    ( Hash (..), mockHash )
-import Cardano.Wallet.Primitive.Types.RewardAccount
-    ( RewardAccount (..) )
-import Cardano.Wallet.Primitive.Types.RewardAccount.Gen
-    ( genRewardAccount, shrinkRewardAccount )
-import Cardano.Wallet.Primitive.Types.TokenBundle
-    ( TokenBundle )
-import Cardano.Wallet.Primitive.Types.TokenBundle.Gen
-    ( genTokenBundleSmallRange, shrinkTokenBundleSmallRange )
-import Cardano.Wallet.Primitive.Types.TokenMap.Gen
-    ( genAssetIdLargeRange )
-import Cardano.Wallet.Primitive.Types.TokenQuantity
-    ( TokenQuantity (..) )
-import Cardano.Wallet.Primitive.Types.Tx
-    ( Tx (..)
-    , TxIn (..)
-    , TxMetadata (..)
-    , TxOut (..)
-    , TxScriptValidity (..)
-    , coinIsValidForTxOut
-    , txOutMaxCoin
-    , txOutMaxTokenQuantity
-    , txOutMinCoin
-    , txOutMinTokenQuantity
-    )
-import Control.Monad
-    ( replicateM )
-import Data.Either
-    ( fromRight )
-import Data.Map.Strict
-    ( Map )
-import Data.Text.Class
-    ( FromText (..) )
-import Data.Word
-    ( Word32 )
-import Generics.SOP
-    ( NP (..) )
-import GHC.Generics
-    ( Generic )
-import Test.QuickCheck
-    ( Gen
-    , arbitrary
-    , choose
-    , coarbitrary
-    , elements
-    , frequency
-    , liftArbitrary
-    , liftArbitrary2
-    , liftShrink
-    , liftShrink2
-    , listOf
-    , listOf1
-    , oneof
-    , shrinkList
-    , shrinkMapBy
-    , sized
-    , suchThat
-    )
-import Test.QuickCheck.Arbitrary.Generic
-    ( genericArbitrary, genericShrink )
-import Test.QuickCheck.Extra
-    ( chooseNatural
-    , genFunction
-    , genMapWith
-    , genSized2With
-    , genericRoundRobinShrink
-    , shrinkInterleaved
-    , shrinkMapWith
-    , shrinkNatural
-    , (<:>)
-    , (<@>)
-    )
-
+  ( Coin (..),
+  )
 import qualified Cardano.Wallet.Primitive.Types.Coin as Coin
+import Cardano.Wallet.Primitive.Types.Coin.Gen
+  ( genCoinPositive,
+    shrinkCoinPositive,
+  )
+import Cardano.Wallet.Primitive.Types.Hash
+  ( Hash (..),
+    mockHash,
+  )
+import Cardano.Wallet.Primitive.Types.RewardAccount
+  ( RewardAccount (..),
+  )
+import Cardano.Wallet.Primitive.Types.RewardAccount.Gen
+  ( genRewardAccount,
+    shrinkRewardAccount,
+  )
+import Cardano.Wallet.Primitive.Types.TokenBundle
+  ( TokenBundle,
+  )
 import qualified Cardano.Wallet.Primitive.Types.TokenBundle as TokenBundle
+import Cardano.Wallet.Primitive.Types.TokenBundle.Gen
+  ( genTokenBundleSmallRange,
+    shrinkTokenBundleSmallRange,
+  )
+import Cardano.Wallet.Primitive.Types.TokenMap.Gen
+  ( genAssetIdLargeRange,
+  )
+import Cardano.Wallet.Primitive.Types.TokenQuantity
+  ( TokenQuantity (..),
+  )
+import Cardano.Wallet.Primitive.Types.Tx
+  ( Tx (..),
+    TxIn (..),
+    TxMetadata (..),
+    TxOut (..),
+    TxScriptValidity (..),
+    coinIsValidForTxOut,
+    txOutMaxCoin,
+    txOutMaxTokenQuantity,
+    txOutMinCoin,
+    txOutMinTokenQuantity,
+  )
+import Control.Monad
+  ( replicateM,
+  )
 import qualified Data.ByteString.Char8 as B8
+import Data.Either
+  ( fromRight,
+  )
 import qualified Data.List as L
+import Data.Map.Strict
+  ( Map,
+  )
 import qualified Data.Text as T
+import Data.Text.Class
+  ( FromText (..),
+  )
+import Data.Word
+  ( Word32,
+  )
+import GHC.Generics
+  ( Generic,
+  )
+import Generics.SOP
+  ( NP (..),
+  )
+import Test.QuickCheck
+  ( Gen,
+    arbitrary,
+    choose,
+    coarbitrary,
+    elements,
+    frequency,
+    liftArbitrary,
+    liftArbitrary2,
+    liftShrink,
+    liftShrink2,
+    listOf,
+    listOf1,
+    oneof,
+    shrinkList,
+    shrinkMapBy,
+    sized,
+    suchThat,
+  )
+import Test.QuickCheck.Arbitrary.Generic
+  ( genericArbitrary,
+    genericShrink,
+  )
+import Test.QuickCheck.Extra
+  ( chooseNatural,
+    genFunction,
+    genMapWith,
+    genSized2With,
+    genericRoundRobinShrink,
+    shrinkInterleaved,
+    shrinkMapWith,
+    shrinkNatural,
+    (<:>),
+    (<@>),
+  )
+import Prelude
 
 --------------------------------------------------------------------------------
 -- Transactions generated according to the size parameter
@@ -128,18 +152,19 @@ shrinkTx :: Tx -> [Tx]
 shrinkTx = shrinkMapBy txWithoutIdToTx txToTxWithoutId shrinkTxWithoutId
 
 data TxWithoutId = TxWithoutId
-    { fee :: !(Maybe Coin)
-    , resolvedCollateral :: ![(TxIn, Coin)]
-    , resolvedInputs :: ![(TxIn, Coin)]
-    , outputs :: ![TxOut]
-    , metadata :: !(Maybe TxMetadata)
-    , withdrawals :: !(Map RewardAccount Coin)
-    , scriptValidity :: !(Maybe TxScriptValidity)
-    }
-    deriving (Eq, Generic, Ord, Show)
+  { fee :: !(Maybe Coin),
+    resolvedCollateral :: ![(TxIn, Coin)],
+    resolvedInputs :: ![(TxIn, Coin)],
+    outputs :: ![TxOut],
+    metadata :: !(Maybe TxMetadata),
+    withdrawals :: !(Map RewardAccount Coin),
+    scriptValidity :: !(Maybe TxScriptValidity)
+  }
+  deriving (Eq, Generic, Ord, Show)
 
 genTxWithoutId :: Gen TxWithoutId
-genTxWithoutId = TxWithoutId
+genTxWithoutId =
+  TxWithoutId
     <$> liftArbitrary genCoinPositive
     <*> listOf1 (liftArbitrary2 genTxIn genCoinPositive)
     <*> listOf1 (liftArbitrary2 genTxIn genCoinPositive)
@@ -149,7 +174,8 @@ genTxWithoutId = TxWithoutId
     <*> liftArbitrary genTxScriptValidity
 
 shrinkTxWithoutId :: TxWithoutId -> [TxWithoutId]
-shrinkTxWithoutId = genericRoundRobinShrink
+shrinkTxWithoutId =
+  genericRoundRobinShrink
     <@> liftShrink shrinkCoinPositive
     <:> shrinkList (liftShrink2 shrinkTxIn shrinkCoinPositive)
     <:> shrinkList (liftShrink2 shrinkTxIn shrinkCoinPositive)
@@ -180,8 +206,8 @@ genTxHash = sized $ \size -> elements $ take (max 1 size) txHashes
 
 shrinkTxHash :: Hash "Tx" -> [Hash "Tx"]
 shrinkTxHash x
-    | x == simplest = []
-    | otherwise = [simplest]
+  | x == simplest = []
+  | otherwise = [simplest]
   where
     simplest = head txHashes
 
@@ -217,9 +243,11 @@ genTxIn :: Gen TxIn
 genTxIn = genSized2With TxIn genTxHash genTxIndex
 
 shrinkTxIn :: TxIn -> [TxIn]
-shrinkTxIn (TxIn h i) = uncurry TxIn <$> shrinkInterleaved
-    (h, shrinkTxHash)
-    (i, shrinkTxIndex)
+shrinkTxIn (TxIn h i) =
+  uncurry TxIn
+    <$> shrinkInterleaved
+      (h, shrinkTxHash)
+      (i, shrinkTxIndex)
 
 --------------------------------------------------------------------------------
 -- Transaction input functions
@@ -236,7 +264,8 @@ genTxInFunction = genFunction coarbitraryTxIn
 --------------------------------------------------------------------------------
 
 genTxInLargeRange :: Gen TxIn
-genTxInLargeRange = TxIn
+genTxInLargeRange =
+  TxIn
     <$> genTxHashLargeRange
     -- Note that we don't need to choose indices from a large range, as hashes
     -- are already chosen from a large range:
@@ -247,14 +276,17 @@ genTxInLargeRange = TxIn
 --------------------------------------------------------------------------------
 
 genTxOut :: Gen TxOut
-genTxOut = TxOut
+genTxOut =
+  TxOut
     <$> genAddress
     <*> genTokenBundleSmallRange `suchThat` tokenBundleHasNonZeroCoin
 
 shrinkTxOut :: TxOut -> [TxOut]
-shrinkTxOut (TxOut a b) = uncurry TxOut <$> shrinkInterleaved
-    (a, shrinkAddress)
-    (b, filter tokenBundleHasNonZeroCoin . shrinkTokenBundleSmallRange)
+shrinkTxOut (TxOut a b) =
+  uncurry TxOut
+    <$> shrinkInterleaved
+      (a, shrinkAddress)
+      (b, filter tokenBundleHasNonZeroCoin . shrinkTokenBundleSmallRange)
 
 tokenBundleHasNonZeroCoin :: TokenBundle -> Bool
 tokenBundleHasNonZeroCoin b = TokenBundle.getCoin b /= Coin 0
@@ -270,21 +302,23 @@ tokenBundleHasNonZeroCoin b = TokenBundle.getCoin b /= Coin 0
 --
 -- This can be useful when testing roundtrip conversions between different
 -- types.
---
 genTxOutCoin :: Gen Coin
-genTxOutCoin = frequency
-    [ (1, pure txOutMinCoin)
-    , (1, pure txOutMaxCoin)
-    , (8, Coin.fromNatural <$> chooseNatural
-        ( Coin.toNatural txOutMinCoin + 1
-        , Coin.toNatural txOutMaxCoin - 1
-        )
+genTxOutCoin =
+  frequency
+    [ (1, pure txOutMinCoin),
+      (1, pure txOutMaxCoin),
+      ( 8,
+        Coin.fromNatural
+          <$> chooseNatural
+            ( Coin.toNatural txOutMinCoin + 1,
+              Coin.toNatural txOutMaxCoin - 1
+            )
       )
     ]
 
 shrinkTxOutCoin :: Coin -> [Coin]
-shrinkTxOutCoin
-    = L.filter coinIsValidForTxOut
+shrinkTxOutCoin =
+  L.filter coinIsValidForTxOut
     . shrinkMapBy Coin.fromNatural Coin.toNatural shrinkNatural
 
 --------------------------------------------------------------------------------
@@ -297,22 +331,25 @@ shrinkTxOutCoin
 --------------------------------------------------------------------------------
 
 genTxOutTokenBundle :: Int -> Gen TokenBundle
-genTxOutTokenBundle fixedAssetCount
-    = TokenBundle.fromFlatList
-        <$> genTxOutCoin
-        <*> replicateM fixedAssetCount genAssetQuantity
+genTxOutTokenBundle fixedAssetCount =
+  TokenBundle.fromFlatList
+    <$> genTxOutCoin
+    <*> replicateM fixedAssetCount genAssetQuantity
   where
-    genAssetQuantity = (,)
+    genAssetQuantity =
+      (,)
         <$> genAssetIdLargeRange
         <*> genTokenQuantity
-    genTokenQuantity = integerToTokenQuantity <$> oneof
-        [ pure $ tokenQuantityToInteger txOutMinTokenQuantity
-        , pure $ tokenQuantityToInteger txOutMaxTokenQuantity
-        , choose
-            ( tokenQuantityToInteger txOutMinTokenQuantity + 1
-            , tokenQuantityToInteger txOutMaxTokenQuantity - 1
-            )
-        ]
+    genTokenQuantity =
+      integerToTokenQuantity
+        <$> oneof
+          [ pure $ tokenQuantityToInteger txOutMinTokenQuantity,
+            pure $ tokenQuantityToInteger txOutMaxTokenQuantity,
+            choose
+              ( tokenQuantityToInteger txOutMinTokenQuantity + 1,
+                tokenQuantityToInteger txOutMaxTokenQuantity - 1
+              )
+          ]
       where
         tokenQuantityToInteger :: TokenQuantity -> Integer
         tokenQuantityToInteger = fromIntegral . unTokenQuantity
@@ -327,13 +364,14 @@ genTxOutTokenBundle fixedAssetCount
 -- The input must be a character in the range [0-9] or [A-F].
 --
 mkTxHash :: Char -> Hash "Tx"
-mkTxHash c
-    = fromRight reportError
-    $ fromText
-    $ T.pack
-    $ replicate txHashHexStringLength c
+mkTxHash c =
+  fromRight reportError $
+    fromText $
+      T.pack $
+        replicate txHashHexStringLength c
   where
-    reportError = error $
+    reportError =
+      error $
         "Unable to generate transaction hash from character: " <> show c
 
 txHashHexStringLength :: Int

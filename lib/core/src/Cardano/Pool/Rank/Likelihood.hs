@@ -1,6 +1,7 @@
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE DerivingVia #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
+
 -- |
 -- Copyright: © 2022 IOHK
 -- License: Apache-2.0
@@ -13,94 +14,106 @@
 --
 -- The copy was made in order to reduce (transitive) dependencies.
 module Cardano.Pool.Rank.Likelihood
-    ( -- * Pool performance estimate from historical block production
-      BlockProduction (..)
-    , PerformanceEstimate (..)
-    , estimatePoolPerformance
+  ( -- * Pool performance estimate from historical block production
+    BlockProduction (..),
+    PerformanceEstimate (..),
+    estimatePoolPerformance,
 
     -- * Likelihood computations
-    , LogWeight (..)
-    , Likelihood (..)
-    , likelihood
-    , applyDecay
-    , Histogram (..)
-    , percentile'
-    )
-    where
-
-import Prelude
+    LogWeight (..),
+    Likelihood (..),
+    likelihood,
+    applyDecay,
+    Histogram (..),
+    percentile',
+  )
+where
 
 import Cardano.Wallet.Primitive.Types
-    ( ActiveSlotCoefficient (..)
-    , DecentralizationLevel (..)
-    , EpochLength (..)
-    , SlottingParameters (..)
-    )
+  ( ActiveSlotCoefficient (..),
+    DecentralizationLevel (..),
+    EpochLength (..),
+    SlottingParameters (..),
+  )
 import Control.DeepSeq
-    ( NFData )
+  ( NFData,
+  )
 import Data.Foldable
-    ( find )
+  ( find,
+  )
 import Data.Function
-    ( on )
+  ( on,
+  )
 import Data.List
-    ( foldl' )
+  ( foldl',
+  )
 import Data.Maybe
-    ( fromMaybe )
+  ( fromMaybe,
+  )
 import Data.Quantity
-    ( Percentage (..) )
+  ( Percentage (..),
+  )
 import Data.Sequence
-    ( Seq )
-import Data.Sequence.Strict
-    ( StrictSeq )
-import GHC.Generics
-    ( Generic )
-import NoThunks.Class
-    ( NoThunks (..) )
-import Numeric.Natural
-    ( Natural )
-import Quiet
-
+  ( Seq,
+  )
 import qualified Data.Sequence as Seq
+import Data.Sequence.Strict
+  ( StrictSeq,
+  )
 import qualified Data.Sequence.Strict as StrictSeq
+import GHC.Generics
+  ( Generic,
+  )
+import NoThunks.Class
+  ( NoThunks (..),
+  )
+import Numeric.Natural
+  ( Natural,
+  )
+import Quiet
+import Prelude
 
 {-------------------------------------------------------------------------------
     Estimating pool performance
 -------------------------------------------------------------------------------}
+
 -- | Information about block production of a pool in one epoch.
 data BlockProduction = BlockProduction
-    { blocksProduced :: !Natural
-        -- ^ Blocks produced in the given epoch.
-    , stakeRelative :: !Rational
-        -- ^ Relative stake of the pool that was relevant for block production.
-        -- (i.e. from the "set" snapshot).
-    }
+  { -- | Blocks produced in the given epoch.
+    blocksProduced :: !Natural,
+    -- | Relative stake of the pool that was relevant for block production.
+    -- (i.e. from the "set" snapshot).
+    stakeRelative :: !Rational
+  }
 
 -- | Estimate the performance of a pool from historical block production data.
 --
 -- Assumes that the 'SlottingParameters' are constant through the given
 -- history.
-estimatePoolPerformance
-    :: SlottingParameters
-    -> DecentralizationLevel
-    -> Seq BlockProduction
-        -- ^ Historical block production data. Most recent data comes /first/.
-        -- Recent performance weighs more than past performance:
-        --
-        -- * Block production from > 25 epochs ago has less than 10% influence
-        -- on the likelihoods. 
-        -- * Block production from > 50 epochs ago has less than 1% influence
-        -- on the likelihoods and can be ignored.
-    -> PerformanceEstimate
+estimatePoolPerformance ::
+  SlottingParameters ->
+  DecentralizationLevel ->
+  -- | Historical block production data. Most recent data comes /first/.
+  -- Recent performance weighs more than past performance:
+  --
+  -- * Block production from > 25 epochs ago has less than 10% influence
+  -- on the likelihoods.
+  -- * Block production from > 50 epochs ago has less than 1% influence
+  -- on the likelihoods and can be ignored.
+  Seq BlockProduction ->
+  PerformanceEstimate
 estimatePoolPerformance sp (DecentralizationLevel d) history =
-    percentile' $ foldl' considerEpoch mempty (Seq.reverse history)
+  percentile' $ foldl' considerEpoch mempty (Seq.reverse history)
   where
     considerEpoch li perf = applyDecay decayFactor li <> likelihood' perf
 
-    prob perf = leaderProbability
+    prob perf =
+      leaderProbability
         (toActiveSlotCoeff $ getActiveSlotCoefficient sp)
         (stakeRelative perf)
         (getPercentage d)
-    likelihood' perf = likelihood
+    likelihood' perf =
+      likelihood
         (blocksProduced perf)
         (prob perf)
         (fromIntegral $ unEpochLength $ getEpochLength sp)
@@ -113,7 +126,9 @@ decayFactor = 0.9
     for copy, to avoid changing it too much
 -------------------------------------------------------------------------------}
 type EpochSize = Integer
+
 type UnitInterval = Rational
+
 type PositiveUnitInterval = Rational
 
 unboundRational :: Rational -> Rational
@@ -123,7 +138,7 @@ toActiveSlotCoeff :: ActiveSlotCoefficient -> ActiveSlotCoeff
 toActiveSlotCoeff (ActiveSlotCoefficient x) = ActiveSlotCoeff (realToFrac x)
 
 newtype ActiveSlotCoeff = ActiveSlotCoeff
-    { activeSlotVal :: PositiveUnitInterval }
+  {activeSlotVal :: PositiveUnitInterval}
 
 {-------------------------------------------------------------------------------
     Copied material
@@ -263,4 +278,5 @@ riemannSum width heights = sum $ fmap (width *) heights
 -- make in the future. It is used for ranking pools in delegation.
 newtype PerformanceEstimate = PerformanceEstimate {unPerformanceEstimate :: Double}
   deriving (Show, Eq, Generic, NoThunks)
+
 -- ---- end copy ----

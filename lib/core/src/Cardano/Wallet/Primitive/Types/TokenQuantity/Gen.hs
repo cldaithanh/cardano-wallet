@@ -1,22 +1,29 @@
 {-# LANGUAGE TypeApplications #-}
 
 module Cardano.Wallet.Primitive.Types.TokenQuantity.Gen
-    ( genTokenQuantity
-    , genTokenQuantityPositive
-    , genTokenQuantityFullRange
-    , shrinkTokenQuantity
-    , shrinkTokenQuantityPositive
-    , shrinkTokenQuantityFullRange
-    ) where
-
-import Prelude
+  ( genTokenQuantity,
+    genTokenQuantityPositive,
+    genTokenQuantityFullRange,
+    shrinkTokenQuantity,
+    shrinkTokenQuantityPositive,
+    shrinkTokenQuantityFullRange,
+  )
+where
 
 import Cardano.Wallet.Primitive.Types.TokenQuantity
-    ( TokenQuantity (..) )
+  ( TokenQuantity (..),
+  )
 import Data.Word
-    ( Word64 )
+  ( Word64,
+  )
 import Test.QuickCheck
-    ( Gen, choose, frequency, shrink, sized )
+  ( Gen,
+    choose,
+    frequency,
+    shrink,
+    sized,
+  )
+import Prelude
 
 --------------------------------------------------------------------------------
 -- Token quantities chosen according to the size parameter.
@@ -37,8 +44,8 @@ genTokenQuantityPositive :: Gen TokenQuantity
 genTokenQuantityPositive = sized $ \n -> quantityFromInt <$> choose (1, max 1 n)
 
 shrinkTokenQuantityPositive :: TokenQuantity -> [TokenQuantity]
-shrinkTokenQuantityPositive
-    = fmap quantityFromInteger
+shrinkTokenQuantityPositive =
+  fmap quantityFromInteger
     . filter (> 0)
     . shrink
     . quantityToInteger
@@ -55,14 +62,14 @@ shrinkTokenQuantityPositive
 --
 -- This can be useful when testing roundtrip conversions between different
 -- types.
---
 genTokenQuantityFullRange :: Gen TokenQuantity
-genTokenQuantityFullRange = frequency
-    [ ( 1, pure minTokenQuantity )
-    , ( 1, pure maxTokenQuantity )
-    , ( 8
-      , quantityFromInteger <$>
-        choose (1, quantityToInteger maxTokenQuantity - 1)
+genTokenQuantityFullRange =
+  frequency
+    [ (1, pure minTokenQuantity),
+      (1, pure maxTokenQuantity),
+      ( 8,
+        quantityFromInteger
+          <$> choose (1, quantityToInteger maxTokenQuantity - 1)
       )
     ]
   where
@@ -73,9 +80,9 @@ genTokenQuantityFullRange = frequency
 
 shrinkTokenQuantityFullRange :: TokenQuantity -> [TokenQuantity]
 shrinkTokenQuantityFullRange =
-    -- Given that we may have a large value, we limit the number of results
-    -- returned in order to avoid processing long lists of shrunken values.
-    take 8 . shrinkTokenQuantity
+  -- Given that we may have a large value, we limit the number of results
+  -- returned in order to avoid processing long lists of shrunken values.
+  take 8 . shrinkTokenQuantity
 
 --------------------------------------------------------------------------------
 -- Internal functions
@@ -86,10 +93,10 @@ quantityToInteger (TokenQuantity q) = fromIntegral q
 
 quantityFromInt :: Int -> TokenQuantity
 quantityFromInt i
-    | i < 0 = error $ "Unable to convert integer to token quantity: " <> show i
-    | otherwise = TokenQuantity $ fromIntegral i
+  | i < 0 = error $ "Unable to convert integer to token quantity: " <> show i
+  | otherwise = TokenQuantity $ fromIntegral i
 
 quantityFromInteger :: Integer -> TokenQuantity
 quantityFromInteger i
-    | i < 0 = error $ "Unable to convert integer to token quantity: " <> show i
-    | otherwise = TokenQuantity $ fromIntegral i
+  | i < 0 = error $ "Unable to convert integer to token quantity: " <> show i
+  | otherwise = TokenQuantity $ fromIntegral i

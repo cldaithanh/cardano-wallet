@@ -10,50 +10,64 @@
 --
 -- This module provides functions and types that extend those provided by
 -- the 'Control.Monad.Random' module hierarchy.
---
 module Control.Monad.Random.Extra
-    (
-    -- * Random number generator seeds
-      StdGenSeed (..)
-    , stdGenSeed
-    , stdGenFromSeed
-    , stdGenToSeed
+  ( -- * Random number generator seeds
+    StdGenSeed (..),
+    stdGenSeed,
+    stdGenFromSeed,
+    stdGenToSeed,
 
     -- * Non-random contexts
-    , NonRandom (..)
-
-    ) where
-
-import Prelude
+    NonRandom (..),
+  )
+where
 
 import Control.Applicative
-    ( Applicative (..) )
+  ( Applicative (..),
+  )
 import Control.Monad.Random.Class
-    ( MonadRandom (..) )
+  ( MonadRandom (..),
+  )
 import Data.Aeson
-    ( FromJSON (..), ToJSON (..), Value (Number) )
+  ( FromJSON (..),
+    ToJSON (..),
+    Value (Number),
+  )
 import Data.Aeson.Extra
-    ( parseBoundedIntegral )
+  ( parseBoundedIntegral,
+  )
 import Data.Bits
-    ( (.|.) )
-import Data.Coerce
-    ( coerce )
-import Data.Word
-    ( Word64 )
-import Data.Word.Odd
-    ( Lit, OddWord )
-import GHC.Generics
-    ( Generic )
-import Quiet
-    ( Quiet (..) )
-import System.Random
-    ( Random (..), RandomGen (..) )
-import System.Random.Internal
-    ( StdGen (..) )
-import System.Random.SplitMix
-    ( seedSMGen', unseedSMGen )
-
+  ( (.|.),
+  )
 import qualified Data.Bits as Bits
+import Data.Coerce
+  ( coerce,
+  )
+import Data.Word
+  ( Word64,
+  )
+import Data.Word.Odd
+  ( Lit,
+    OddWord,
+  )
+import GHC.Generics
+  ( Generic,
+  )
+import Quiet
+  ( Quiet (..),
+  )
+import System.Random
+  ( Random (..),
+    RandomGen (..),
+  )
+import System.Random.Internal
+  ( StdGen (..),
+  )
+import System.Random.SplitMix
+  ( seedSMGen',
+    unseedSMGen,
+  )
+import Prelude
 
 --------------------------------------------------------------------------------
 -- Random number generator seeds
@@ -68,28 +82,28 @@ import qualified Data.Bits as Bits
 -- the 'StdGen' type, but unlike the 'StdGen' type, whose state has an internal
 -- invariant that must not be broken, values of the 'StdGenSeed' type are
 -- correct by construction.
---
 newtype StdGenSeed = StdGenSeed
-    { unStdGenSeed :: Word127
-    }
-    deriving (Eq, Bounded, Generic, Ord)
-    deriving Show via (Quiet StdGenSeed)
+  { unStdGenSeed :: Word127
+  }
+  deriving (Eq, Bounded, Generic, Ord)
+  deriving (Show) via (Quiet StdGenSeed)
 
 type Word127 = OddWord Integer (Lit 127)
 
 instance ToJSON StdGenSeed where
-    toJSON = toJSON . Number . fromIntegral . unStdGenSeed
+  toJSON = toJSON . Number . fromIntegral . unStdGenSeed
 
 instance FromJSON StdGenSeed where
-    parseJSON = fmap StdGenSeed . parseBoundedIntegral "StdGenSeed"
+  parseJSON = fmap StdGenSeed . parseBoundedIntegral "StdGenSeed"
 
 -- | Creates a new 'StdGenSeed' from within a random monadic context.
---
 stdGenSeed :: MonadRandom m => m StdGenSeed
 stdGenSeed = do
-    hi <- getRandom
-    lo <- getRandom
-    pure $ StdGenSeed $ (.|.)
+  hi <- getRandom
+  lo <- getRandom
+  pure $
+    StdGenSeed $
+      (.|.)
         (fromIntegral @Word64 @Word127 hi `Bits.shiftL` 63)
         (fromIntegral @Word64 @Word127 lo)
 
@@ -99,14 +113,15 @@ stdGenSeed = do
 --
 -- >>> stdGenFromSeed . stdGenToSeed == id
 -- >>> stdGenToSeed . stdGenFromSeed == id
---
 stdGenFromSeed :: StdGenSeed -> StdGen
-stdGenFromSeed
-    = StdGen
+stdGenFromSeed =
+  StdGen
     . seedSMGen'
-    . (\s -> (,)
-        (fromIntegral @Word127 @Word64 (s `Bits.shiftR` 63))
-        (fromIntegral @Word127 @Word64 (s `Bits.shiftL` 1)))
+    . ( \s ->
+          (,)
+            (fromIntegral @Word127 @Word64 (s `Bits.shiftR` 63))
+            (fromIntegral @Word127 @Word64 (s `Bits.shiftL` 1))
+      )
     . unStdGenSeed
 
 -- | Converts a 'StdGen' value to a 'StdGenSeed' value.
@@ -115,13 +130,14 @@ stdGenFromSeed
 --
 -- >>> stdGenFromSeed . stdGenToSeed == id
 -- >>> stdGenToSeed . stdGenFromSeed == id
---
 stdGenToSeed :: StdGen -> StdGenSeed
-stdGenToSeed
-    = StdGenSeed
-    . (\(a, b) -> (.|.)
-        (fromIntegral @Word64 @Word127 a `Bits.shiftL` 63)
-        (fromIntegral @Word64 @Word127 b `Bits.shiftR` 1))
+stdGenToSeed =
+  StdGenSeed
+    . ( \(a, b) ->
+          (.|.)
+            (fromIntegral @Word64 @Word127 a `Bits.shiftL` 63)
+            (fromIntegral @Word64 @Word127 b `Bits.shiftR` 1)
+      )
     . unseedSMGen
     . unStdGen
 
@@ -133,33 +149,31 @@ stdGenToSeed
 --
 -- This type is useful for testing functions that require a 'MonadRandom'
 -- context, but when actual randomness is not required or even desired.
---
 newtype NonRandom a = NonRandom
-    { runNonRandom :: a }
-    deriving (Eq, Generic, Ord, Show)
+  {runNonRandom :: a}
+  deriving (Eq, Generic, Ord, Show)
 
 instance Functor NonRandom where
-    fmap = coerce
+  fmap = coerce
 
 instance Applicative NonRandom where
-    liftA2 = coerce
-    pure = NonRandom
-    (<*>) = coerce
+  liftA2 = coerce
+  pure = NonRandom
+  (<*>) = coerce
 
 instance Monad NonRandom where
-    m >>= k = k (runNonRandom m)
+  m >>= k = k (runNonRandom m)
 
 instance MonadRandom NonRandom where
-    getRandom = pure $ fst $ random NonRandomGen
-    getRandomR r = pure $ fst $ randomR r NonRandomGen
-    getRandomRs r = pure $ randomRs r NonRandomGen
-    getRandoms = pure $ randoms NonRandomGen
+  getRandom = pure $ fst $ random NonRandomGen
+  getRandomR r = pure $ fst $ randomR r NonRandomGen
+  getRandomRs r = pure $ randomRs r NonRandomGen
+  getRandoms = pure $ randoms NonRandomGen
 
 -- | Provides a stateless and non-random implementation of 'RandomGen'
---
 data NonRandomGen = NonRandomGen
 
 instance RandomGen NonRandomGen where
-    genRange NonRandomGen = (minBound, maxBound)
-    next NonRandomGen = (0, NonRandomGen)
-    split NonRandomGen = (NonRandomGen, NonRandomGen)
+  genRange NonRandomGen = (minBound, maxBound)
+  next NonRandomGen = (0, NonRandomGen)
+  split NonRandomGen = (NonRandomGen, NonRandomGen)

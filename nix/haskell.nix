@@ -156,7 +156,9 @@ haskell-nix: haskell-nix.stackProject' [
           yq
           nixWrapped
           cabalWrapped
-        ] ++ lib.filter
+        ] ++ ([
+          pkgs.haskellPackages.fourmolu
+        ]) ++ lib.filter
           (drv: lib.isDerivation drv && drv.name != "regenerate-materialized-nix")
           (lib.attrValues haskell-build-tools));
 

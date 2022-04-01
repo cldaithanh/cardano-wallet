@@ -36,21 +36,21 @@ cabal configure --enable-tests --enable-benchmarks
 
 To run one of the unit test suites:
 #+BEGIN_SRC sh
-cabal test cardano-wallet-core:test:unit --test-options "--match \"Data.Vector.Shuffle/shuffle/every non-empty list can be shuffled, ultimately\""
+cabal <<ghc-options>> test cardano-wallet-core:test:unit --test-options "--match \"Data.Vector.Shuffle/shuffle/every non-empty list can be shuffled, ultimately\""
 #+END_SRC
 
 To run the entire test suite, remove the "--test-options" option.
 
 To run one of the DB benchmarks:
 #+BEGIN_SRC sh
-cabal bench cardano-wallet-core:bench:db --benchmark-options "SeqState"
+cabal <<ghc-options>> bench cardano-wallet-core:bench:db --benchmark-options "SeqState"
 #+END_SRC
 
 To run all the benchmarks, remove the "--benchmark-options" option.
 
 To run part of the integration test suite:
 #+BEGIN_SRC sh
-cabal test cardano-wallet:test:integration --test-options "--match CLI_VERSION -j8"
+cabal <<ghc-options>> test cardano-wallet:test:integration --test-options "--match CLI_VERSION -j8"
 #+END_SRC
 
 To run the entire integration test suite, remove the "--test-options" option.
@@ -58,5 +58,5 @@ To run the entire integration test suite, remove the "--test-options" option.
 6. Install binaries from `./dist-newstyle/` into a system location:
 
 #+BEGIN_SRC sh
-cabal install --install-method=copy --installdir=/usr/local/bin
+cabal install all --install-method=copy --installdir=/usr/local/bin
 #+END_SRC

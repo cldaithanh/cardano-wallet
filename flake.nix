@@ -38,6 +38,7 @@
     haskellNix = {
       url = "github:input-output-hk/haskell.nix";
       inputs.nixpkgs.follows = "nixpkgs";
+      inputs.flake-utils.follows = "flake-utils";
     };
     flake-utils.url = "github:numtide/flake-utils";
     iohkNix = {
@@ -51,9 +52,7 @@
     customConfig.url = "github:input-output-hk/empty-flake";
     emanote = {
       url = "github:srid/emanote";
-    };
-    ema = {
-      url = "github:srid/ema";
+      inputs.flake-utils.follows = "flake-utils";
     };
   };
 

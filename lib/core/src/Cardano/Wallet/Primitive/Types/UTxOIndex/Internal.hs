@@ -98,7 +98,7 @@ import Prelude hiding
     ( filter, lookup, null )
 
 import Cardano.Wallet.CoinSelection.Asset
-    ( Asset (..) )
+    ( WalletAsset (..) )
 import Cardano.Wallet.Primitive.Types.TokenBundle
     ( TokenBundle )
 import Control.DeepSeq
@@ -144,6 +144,11 @@ import qualified Data.Set.Strict.NonEmptySet as NonEmptySet
 --------------------------------------------------------------------------------
 -- Type
 --------------------------------------------------------------------------------
+
+-- TODO: ADP-1449
+-- Remove this type synonym once the type of assets has been parameterized.
+--
+type Asset = WalletAsset
 
 -- | A UTxO set that is indexed by asset identifier.
 --

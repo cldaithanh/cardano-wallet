@@ -45,7 +45,7 @@ import Algebra.PartialOrd
 import Cardano.Numeric.Util
     ( inAscendingPartialOrder )
 import Cardano.Wallet.CoinSelection.Asset
-    ( Asset (..) )
+    ( WalletAsset (..) )
 import Cardano.Wallet.CoinSelection.Internal.Balance
     ( AssetCount (..)
     , BalanceInsufficientError (..)
@@ -1749,7 +1749,7 @@ prop_assetSelectionLens_givesPriorityToSingletonAssets (Blind (Small u)) =
         --
         hasSingletonAsset <- isJust <$>
             run (UTxOIndex.selectRandom u $
-            SelectPairWith (Asset nonAdaAsset))
+            SelectPairWith (WalletAsset nonAdaAsset))
         monitor $ cover 20 hasSingletonAsset
             "There is at least one singleton entry that matches"
         monitor $ cover 20 (not hasSingletonAsset)
@@ -1786,7 +1786,7 @@ prop_coinSelectionLens_givesPriorityToCoins
 prop_coinSelectionLens_givesPriorityToCoins (Blind (Small u)) =
     entryCount > 0 ==> monadicIO $ do
         hasCoin <- isJust <$>
-            run (UTxOIndex.selectRandom u (SelectSingleton AssetLovelace))
+            run (UTxOIndex.selectRandom u (SelectSingleton WalletAssetLovelace))
         monitor $ cover 20 hasCoin
             "There is at least one coin"
         monitor $ cover 1 (not hasCoin)
@@ -4434,10 +4434,10 @@ utxoIndexNonAdaAssets
     . Set.toList
     . UTxOIndex.assets
 
-toNonAdaAsset :: Asset -> Maybe AssetId
+toNonAdaAsset :: WalletAsset -> Maybe AssetId
 toNonAdaAsset = \case
-    AssetLovelace -> Nothing
-    Asset assetId -> Just assetId
+    WalletAssetLovelace -> Nothing
+    WalletAsset assetId -> Just assetId
 
 --------------------------------------------------------------------------------
 -- Selection contexts

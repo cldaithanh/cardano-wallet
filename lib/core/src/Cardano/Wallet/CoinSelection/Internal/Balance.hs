@@ -130,7 +130,7 @@ import Algebra.PartialOrd
 import Cardano.Numeric.Util
     ( padCoalesce )
 import Cardano.Wallet.CoinSelection.Asset
-    ( Asset (..) )
+    ( WalletAsset (..) )
 import Cardano.Wallet.CoinSelection.Internal.Context
     ( SelectionContext (..) )
 import Cardano.Wallet.Primitive.Types.Coin
@@ -1105,7 +1105,7 @@ performSelectionNonEmpty constraints params
             , assetsToBurn
             }
 
-        selectOneEntry = selectQuantityOf AssetLovelace selectionLimit
+        selectOneEntry = selectQuantityOf WalletAssetLovelace selectionLimit
 
         requiredCost = computeMinimumCost SelectionSkeleton
             { skeletonInputCount = UTxOSelection.selectedSize s
@@ -1153,7 +1153,7 @@ runSelectionNonEmpty
     -> m (Maybe (UTxOSelectionNonEmpty u))
 runSelectionNonEmpty = (=<<)
     <$> runSelectionNonEmptyWith
-        . selectQuantityOf AssetLovelace
+        . selectQuantityOf WalletAssetLovelace
         . view #selectionLimit
     <*> runSelection
 
@@ -1208,7 +1208,7 @@ assetSelectionLens limit strategy (asset, minimumAssetQuantity) = SelectionLens
     { currentQuantity = selectedAssetQuantity asset
     , updatedQuantity = selectedAssetQuantity asset
     , minimumQuantity = unTokenQuantity minimumAssetQuantity
-    , selectQuantity = selectQuantityOf (Asset asset) limit
+    , selectQuantity = selectQuantityOf (WalletAsset asset) limit
     , selectionStrategy = strategy
     }
 
@@ -1223,14 +1223,14 @@ coinSelectionLens limit strategy minimumCoinQuantity = SelectionLens
     { currentQuantity = selectedCoinQuantity
     , updatedQuantity = selectedCoinQuantity
     , minimumQuantity = intCast $ unCoin minimumCoinQuantity
-    , selectQuantity  = selectQuantityOf AssetLovelace limit
+    , selectQuantity  = selectQuantityOf WalletAssetLovelace limit
     , selectionStrategy = strategy
     }
 
 selectQuantityOf
     :: (MonadRandom m, Ord u)
     => IsUTxOSelection utxoSelection u
-    => Asset
+    => WalletAsset
     -> SelectionLimit
     -> utxoSelection u
     -> m (Maybe (UTxOSelectionNonEmpty u))
@@ -1259,7 +1259,7 @@ selectQuantityOf a = selectMatchingQuantity
 selectMatchingQuantity
     :: forall m utxoSelection u. (MonadRandom m, Ord u)
     => IsUTxOSelection utxoSelection u
-    => NonEmpty (SelectionFilter Asset)
+    => NonEmpty (SelectionFilter WalletAsset)
         -- ^ A list of selection filters to be traversed from left-to-right,
         -- in descending order of priority.
     -> SelectionLimit

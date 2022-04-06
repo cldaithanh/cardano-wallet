@@ -4,7 +4,7 @@
 {-# LANGUAGE StandaloneDeriving #-}
 
 module Cardano.Wallet.CoinSelection.Asset
-    ( Asset (..)
+    ( WalletAsset (..)
     , tokenBundleAssets
     , tokenBundleAssetCount
     , tokenBundleHasAsset
@@ -34,12 +34,12 @@ import qualified Data.Set as Set
 -- TODO: ADP-1449
 -- Move this type to the wallet-specific 'CoinSelection' module.
 --
-data Asset
-    = AssetLovelace
-    | Asset AssetId
+data WalletAsset
+    = WalletAssetLovelace
+    | WalletAsset AssetId
     deriving (Eq, Generic, Ord, Read, Show)
 
-deriving instance NFData Asset
+deriving instance NFData WalletAsset
 
 -- | Returns the set of assets associated with a given 'TokenBundle'.
 --
@@ -48,10 +48,10 @@ deriving instance NFData Asset
 -- TODO: ADP-1449
 -- Move this function to the wallet-specific 'CoinSelection' module.
 --
-tokenBundleAssets :: TokenBundle -> Set Asset
+tokenBundleAssets :: TokenBundle -> Set WalletAsset
 tokenBundleAssets b = Set.union
-    (Set.fromList [AssetLovelace | TokenBundle.coin b /= mempty])
-    (Set.map Asset (TokenBundle.getAssets b))
+    (Set.fromList [WalletAssetLovelace | TokenBundle.coin b /= mempty])
+    (Set.map WalletAsset (TokenBundle.getAssets b))
 
 -- | Returns the number of assets associated with a given 'TokenBundle'.
 --
@@ -72,7 +72,7 @@ tokenBundleAssetCount b = (+)
 -- TODO: ADP-1449
 -- Move this function to the wallet-specific 'CoinSelection' module.
 --
-tokenBundleHasAsset :: TokenBundle -> Asset -> Bool
+tokenBundleHasAsset :: TokenBundle -> WalletAsset -> Bool
 tokenBundleHasAsset b = \case
-    AssetLovelace -> TokenBundle.coin b /= mempty
-    Asset assetId -> TokenBundle.hasQuantity b assetId
+    WalletAssetLovelace -> TokenBundle.coin b /= mempty
+    WalletAsset assetId -> TokenBundle.hasQuantity b assetId

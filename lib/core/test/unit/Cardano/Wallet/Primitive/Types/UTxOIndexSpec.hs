@@ -18,7 +18,7 @@ module Cardano.Wallet.Primitive.Types.UTxOIndexSpec
 import Prelude
 
 import Cardano.Wallet.CoinSelection.Asset
-    ( Asset (..) )
+    ( WalletAsset (..) )
 import Cardano.Wallet.Primitive.Types.TokenBundle
     ( TokenBundle )
 import Cardano.Wallet.Primitive.Types.TokenBundle.Gen
@@ -209,7 +209,7 @@ prop_delete_invariant
 prop_delete_invariant u i = invariantHolds $ UTxOIndex.delete u i
 
 prop_selectRandom_invariant
-    :: UTxOIndex TestUTxO -> SelectionFilter Asset -> Property
+    :: UTxOIndex TestUTxO -> SelectionFilter WalletAsset -> Property
 prop_selectRandom_invariant i f =
     monadicIO $ do
         run $ do
@@ -398,7 +398,7 @@ checkCoverage_filter_partition f i
 -- Index selection properties
 --------------------------------------------------------------------------------
 
-prop_SelectionFilter_coverage :: SelectionFilter Asset -> Property
+prop_SelectionFilter_coverage :: SelectionFilter WalletAsset -> Property
 prop_SelectionFilter_coverage selectionFilter = checkCoverage $ property
     $ cover 20 (category == SelectSingleton ())
         "SelectSingleton"
@@ -416,14 +416,14 @@ prop_SelectionFilter_coverage selectionFilter = checkCoverage $ property
 --
 -- This should always return 'Nothing'.
 --
-prop_selectRandom_empty :: SelectionFilter Asset -> Property
+prop_selectRandom_empty :: SelectionFilter WalletAsset -> Property
 prop_selectRandom_empty f = monadicIO $ do
     result <- run $ UTxOIndex.selectRandom (UTxOIndex.empty @TestUTxO) f
     assert $ isNothing result
 
 prop_selectRandom
     :: UTxOIndex TestUTxO
-    -> SelectionFilter Asset
+    -> SelectionFilter WalletAsset
     -> Property
 prop_selectRandom index selectionFilter = monadicIO $
     prop_inner <$> run (UTxOIndex.selectRandom index selectionFilter)
@@ -500,7 +500,8 @@ prop_selectRandom index selectionFilter = monadicIO $
                 $ categorizeTokenBundle bundle
             ]
 
-prop_selectRandom_all :: UTxOIndex TestUTxO -> SelectionFilter Asset -> Property
+prop_selectRandom_all
+    :: UTxOIndex TestUTxO -> SelectionFilter WalletAsset -> Property
 prop_selectRandom_all index f = monadicIO $
     prop_inner <$> run (selectAll f index)
   where
@@ -539,8 +540,8 @@ prop_selectRandom_all index f = monadicIO $
 --
 prop_selectRandomWithPriority :: UTxOIndex TestUTxO -> Property
 prop_selectRandomWithPriority i =
-    forAll (genAsset) $ \a1 ->
-    forAll (genAsset `suchThat` (/= a1)) $ \a2 ->
+    forAll (genWalletAsset) $ \a1 ->
+    forAll (genWalletAsset `suchThat` (/= a1)) $ \a2 ->
     checkCoverage $ monadicIO $ do
         haveMatchForAsset1 <- isJust <$>
             run (UTxOIndex.selectRandom i $ SelectPairWith a1)
@@ -687,7 +688,7 @@ selectionFilterMatchesBundleCategory selectionFilter category =
 --
 selectAll
     :: (MonadRandom m, u ~ TestUTxO)
-    => SelectionFilter Asset
+    => SelectionFilter WalletAsset
     -> UTxOIndex u
     -> m ([(u, TokenBundle)], UTxOIndex u)
 selectAll sf = go []
@@ -709,10 +710,6 @@ newtype TestUTxO = TestUTxO (Hexadecimal Quid)
     deriving (Arbitrary, CoArbitrary) via Quid
     deriving stock (Eq, Ord, Read, Show)
 
-instance Arbitrary Asset where
-    arbitrary = genAsset
-    shrink = shrinkAsset
-
 instance Arbitrary AssetId where
     arbitrary = genAssetId
     shrink = shrinkAssetId
@@ -725,31 +722,38 @@ instance Arbitrary TokenBundle where
     arbitrary = genTokenBundleSmallRangePositive
     shrink = shrinkTokenBundleSmallRangePositive
 
-instance Arbitrary (SelectionFilter Asset) where
+instance Arbitrary (SelectionFilter WalletAsset) where
     arbitrary = genSelectionFilter
     shrink = shrinkSelectionFilter
 
-genAsset :: Gen Asset
-genAsset = oneof
-    [ AssetLovelace & pure
-    , Asset <$> genAssetId
+instance Arbitrary WalletAsset where
+    arbitrary = genWalletAsset
+    shrink = shrinkWalletAsset
+
+genWalletAsset :: Gen WalletAsset
+genWalletAsset = oneof
+    [ WalletAssetLovelace & pure
+    , WalletAsset <$> genAssetId
     ]
 
-shrinkAsset :: Asset -> [Asset]
-shrinkAsset = \case
-    AssetLovelace -> []
-    Asset assetId -> AssetLovelace : (Asset <$> shrink assetId)
+shrinkWalletAsset :: WalletAsset -> [WalletAsset]
+shrinkWalletAsset = \case
+    WalletAssetLovelace ->
+        []
+    WalletAsset assetId ->
+        WalletAssetLovelace : (WalletAsset <$> shrink assetId)
 
-genSelectionFilter :: Gen (SelectionFilter Asset)
+genSelectionFilter :: Gen (SelectionFilter WalletAsset)
 genSelectionFilter = oneof
-    [ SelectSingleton <$> genAsset
-    , SelectPairWith <$> genAsset
-    , SelectAnyWith <$> genAsset
+    [ SelectSingleton <$> genWalletAsset
+    , SelectPairWith <$> genWalletAsset
+    , SelectAnyWith <$> genWalletAsset
     , SelectAny & pure
     ]
 
-shrinkSelectionFilter :: SelectionFilter Asset -> [SelectionFilter Asset]
-shrinkSelectionFilter = traverse shrinkAsset
+shrinkSelectionFilter
+    :: SelectionFilter WalletAsset -> [SelectionFilter WalletAsset]
+shrinkSelectionFilter = traverse shrinkWalletAsset
 
 --------------------------------------------------------------------------------
 -- Show instances

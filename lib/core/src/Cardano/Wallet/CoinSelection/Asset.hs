@@ -22,6 +22,8 @@ import Control.DeepSeq
     ( NFData )
 import Data.Set
     ( Set )
+import Fmt
+    ( Buildable (..) )
 import GHC.Generics
     ( Generic )
 
@@ -39,6 +41,11 @@ data WalletAsset
     = WalletAssetLovelace
     | WalletAsset AssetId
     deriving (Eq, Generic, Ord, Read, Show)
+
+instance Buildable WalletAsset where
+    build = \case
+        WalletAssetLovelace -> "lovelace"
+        WalletAsset assetId -> build (show assetId)
 
 deriving instance NFData WalletAsset
 

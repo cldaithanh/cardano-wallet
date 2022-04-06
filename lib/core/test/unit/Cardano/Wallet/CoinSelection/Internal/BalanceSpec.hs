@@ -177,6 +177,8 @@ import Data.Set
     ( Set )
 import Data.Tuple
     ( swap )
+import Data.Void
+    ( Void )
 import Data.Word
     ( Word64, Word8 )
 import Fmt
@@ -4445,6 +4447,10 @@ data TestSelectionContext
 
 instance SC.SelectionContext TestSelectionContext where
     type Address TestSelectionContext = TestAddress
+    -- TODO: ADP-1449
+    -- Provide a concrete type here when the type of assets is fully
+    -- parameterized.
+    type Asset TestSelectionContext = Void
     type UTxO TestSelectionContext = TestUTxO
 
     dummyAddress = TestAddress 0x0

@@ -75,6 +75,8 @@ module Cardano.Wallet.CoinSelection
     )
     where
 
+import Cardano.Wallet.CoinSelection.Asset
+    ( WalletAsset (..) )
 import Cardano.Wallet.CoinSelection.Internal
     ( SelectionCollateralError
     , SelectionCollateralRequirement (..)
@@ -155,6 +157,7 @@ data WalletSelectionContext
 
 instance SC.SelectionContext WalletSelectionContext where
     type Address WalletSelectionContext = Address
+    type Asset WalletSelectionContext = WalletAsset
     type UTxO WalletSelectionContext = WalletUTxO
 
     dummyAddress = Address ""

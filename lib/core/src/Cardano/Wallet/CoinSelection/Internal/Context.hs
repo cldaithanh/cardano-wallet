@@ -25,10 +25,13 @@ import Fmt
 --
 class
     ( Buildable (Address c)
+    , Buildable (Asset c)
     , Buildable (UTxO c)
     , Ord (Address c)
+    , Ord (Asset c)
     , Ord (UTxO c)
     , Show (Address c)
+    , Show (Asset c)
     , Show (UTxO c)
     ) =>
     SelectionContext c
@@ -36,6 +39,9 @@ class
 
     -- | A target address to which payments can be made.
     type Address c
+
+    -- | A unique identifier for an individual asset.
+    type Asset c
 
     -- | A unique identifier for an individual UTxO.
     type UTxO c

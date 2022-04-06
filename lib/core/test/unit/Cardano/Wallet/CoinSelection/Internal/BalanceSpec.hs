@@ -44,6 +44,8 @@ import Algebra.PartialOrd
     ( PartialOrd (..) )
 import Cardano.Numeric.Util
     ( inAscendingPartialOrder )
+import Cardano.Wallet.CoinSelection.Asset
+    ( Asset (..) )
 import Cardano.Wallet.CoinSelection.Internal.Balance
     ( AssetCount (..)
     , BalanceInsufficientError (..)
@@ -140,7 +142,7 @@ import Cardano.Wallet.Primitive.Types.TokenQuantity.Gen
 import Cardano.Wallet.Primitive.Types.Tx
     ( TokenBundleSizeAssessment (..), TokenBundleSizeAssessor (..) )
 import Cardano.Wallet.Primitive.Types.UTxOIndex
-    ( Asset (..), SelectionFilter (..), UTxOIndex )
+    ( SelectionFilter (..), UTxOIndex )
 import Cardano.Wallet.Primitive.Types.UTxOIndex.Gen
     ( genUTxOIndex, genUTxOIndexLarge, genUTxOIndexLargeN, shrinkUTxOIndex )
 import Cardano.Wallet.Primitive.Types.UTxOSelection

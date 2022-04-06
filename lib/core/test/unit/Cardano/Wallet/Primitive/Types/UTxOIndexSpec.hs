@@ -17,6 +17,8 @@ module Cardano.Wallet.Primitive.Types.UTxOIndexSpec
 
 import Prelude
 
+import Cardano.Wallet.CoinSelection.Asset
+    ( Asset (..) )
 import Cardano.Wallet.Primitive.Types.TokenBundle
     ( TokenBundle )
 import Cardano.Wallet.Primitive.Types.TokenBundle.Gen
@@ -28,8 +30,7 @@ import Cardano.Wallet.Primitive.Types.TokenMap.Gen
 import Cardano.Wallet.Primitive.Types.UTxOIndex.Gen
     ( genUTxOIndex, shrinkUTxOIndex )
 import Cardano.Wallet.Primitive.Types.UTxOIndex.Internal
-    ( Asset (..)
-    , BundleCategory (..)
+    ( BundleCategory (..)
     , InvariantStatus (..)
     , SelectionFilter (..)
     , UTxOIndex
@@ -79,6 +80,7 @@ import Test.QuickCheck.Quid
 import Test.Utils.Laws
     ( testLawsMany )
 
+import qualified Cardano.Wallet.CoinSelection.Asset as Asset
 import qualified Cardano.Wallet.Primitive.Types.TokenBundle as TokenBundle
 import qualified Cardano.Wallet.Primitive.Types.UTxOIndex.Internal as UTxOIndex
 import qualified Data.Foldable as F
@@ -293,7 +295,7 @@ prop_insert_assets u b i =
     UTxOIndex.assets (UTxOIndex.insert u b i)
         `Set.intersection` insertedAssets === insertedAssets
   where
-    insertedAssets = UTxOIndex.tokenBundleAssets b
+    insertedAssets = Asset.tokenBundleAssets b
 
 prop_insert_balance
     :: u ~ Size 4 TestUTxO => u -> TokenBundle -> UTxOIndex u -> Property
@@ -555,9 +557,9 @@ prop_selectRandomWithPriority i =
         result <- run $ UTxOIndex.selectRandomWithPriority i
             [SelectPairWith a1, SelectPairWith a2]
         case result of
-            Just ((_, b), _) | b `UTxOIndex.tokenBundleHasAsset` a1 -> do
+            Just ((_, b), _) | b `Asset.tokenBundleHasAsset` a1 -> do
                 assert haveMatchForAsset1
-            Just ((_, b), _) | b `UTxOIndex.tokenBundleHasAsset` a2 -> do
+            Just ((_, b), _) | b `Asset.tokenBundleHasAsset` a2 -> do
                 assert (not haveMatchForAsset1)
                 assert haveMatchForAsset2
             _ -> do

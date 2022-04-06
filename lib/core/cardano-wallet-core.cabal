@@ -184,6 +184,7 @@ library
       Cardano.Wallet.Api.Server.Tls
       Cardano.Wallet.Api.Types
       Cardano.Wallet.CoinSelection
+      Cardano.Wallet.CoinSelection.Asset
       Cardano.Wallet.CoinSelection.Internal
       Cardano.Wallet.CoinSelection.Internal.Balance
       Cardano.Wallet.CoinSelection.Internal.Collateral

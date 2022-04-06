@@ -1,11 +1,8 @@
-{-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE DeriveTraversable #-}
-{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE OverloadedLabels #-}
 {-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE StandaloneDeriving #-}
 {- HLINT ignore "Use &&" -}
 
 -- |
@@ -84,12 +81,6 @@ module Cardano.Wallet.Primitive.Types.UTxOIndex.Internal
     -- Internal Interface
     ----------------------------------------------------------------------------
 
-    -- * Assets
-    , Asset (..)
-    , tokenBundleAssets
-    , tokenBundleAssetCount
-    , tokenBundleHasAsset
-
     -- * Token bundle categorization
     , BundleCategory (..)
     , categorizeTokenBundle
@@ -106,10 +97,10 @@ module Cardano.Wallet.Primitive.Types.UTxOIndex.Internal
 import Prelude hiding
     ( filter, lookup, null )
 
+import Cardano.Wallet.CoinSelection.Asset
+    ( Asset (..) )
 import Cardano.Wallet.Primitive.Types.TokenBundle
     ( TokenBundle )
-import Cardano.Wallet.Primitive.Types.TokenMap
-    ( AssetId )
 import Control.DeepSeq
     ( NFData )
 import Control.Monad.Extra
@@ -137,8 +128,8 @@ import Data.Set.Strict.NonEmptySet
 import GHC.Generics
     ( Generic )
 
+import qualified Cardano.Wallet.CoinSelection.Asset as Asset
 import qualified Cardano.Wallet.Primitive.Types.TokenBundle as TokenBundle
-import qualified Cardano.Wallet.Primitive.Types.TokenMap as TokenMap
 import qualified Data.Foldable as F
 import qualified Data.List as L
 import qualified Data.List.NonEmpty as NE
@@ -472,63 +463,6 @@ selectRandomWithPriority i =
 --------------------------------------------------------------------------------
 
 --------------------------------------------------------------------------------
--- Assets
---------------------------------------------------------------------------------
-
--- | A type capable of representing any asset, including both ada and non-ada
---   assets.
---
--- TODO: ADP-1449
--- Move this type away from the 'UTxOIndex' module and replace all usages of it
--- with a type parameter.
---
-data Asset
-    = AssetLovelace
-    | Asset AssetId
-    deriving (Eq, Generic, Ord, Read, Show)
-
-deriving instance NFData Asset
-
--- | Returns the set of assets associated with a given 'TokenBundle'.
---
--- Both ada and non-ada assets are included in the set returned.
---
--- TODO: ADP-1449
--- Move this function away from the 'UTxOIndex' module once the type of assets
--- has been generalized.
---
-tokenBundleAssets :: TokenBundle -> Set Asset
-tokenBundleAssets b = Set.union
-    (Set.fromList [AssetLovelace | TokenBundle.coin b /= mempty])
-    (Set.map Asset (TokenBundle.getAssets b))
-
--- | Returns the number of assets associated with a given 'TokenBundle'.
---
--- Both ada and non-ada assets are included in the total count returned.
---
--- TODO: ADP-1449
--- Move this function away from the 'UTxOIndex' module once the type of assets
--- has been generalized.
---
-tokenBundleAssetCount :: TokenBundle -> Int
-tokenBundleAssetCount b = (+)
-    (if TokenBundle.coin b /= mempty then 1 else 0)
-    (TokenMap.size (TokenBundle.tokens b))
-
--- | Indicates whether or not a given bundle includes a given asset.
---
--- Both ada and non-ada assets can be queried.
---
--- TODO: ADP-1449
--- Move this function away from the 'UTxOIndex' module once the type of assets
--- has been generalized.
---
-tokenBundleHasAsset :: TokenBundle -> Asset -> Bool
-tokenBundleHasAsset b = \case
-    AssetLovelace -> TokenBundle.coin b /= mempty
-    Asset assetId -> TokenBundle.hasQuantity b assetId
-
---------------------------------------------------------------------------------
 -- Utilities
 --------------------------------------------------------------------------------
 
@@ -550,7 +484,7 @@ categorizeTokenBundle b = case F.toList bundleAssets of
     [a1, a2] -> BundleWithTwoAssets (a1, a2)
     _        -> BundleWithMultipleAssets bundleAssets
   where
-    bundleAssets = tokenBundleAssets b
+    bundleAssets = Asset.tokenBundleAssets b
 
 -- Inserts an entry, but without checking the following pre-condition:
 --
@@ -726,18 +660,18 @@ indexIsMinimal i = F.and
     ]
   where
     entryHasAsset :: Asset -> u -> Bool
-    entryHasAsset a = entryMatches (`tokenBundleHasAsset` a)
+    entryHasAsset a = entryMatches (`Asset.tokenBundleHasAsset` a)
 
     entryHasOneAsset :: Asset -> u -> Bool
     entryHasOneAsset a = entryMatches $ \b -> and
-        [ b `tokenBundleHasAsset` a
-        , tokenBundleAssetCount b == 1
+        [ b `Asset.tokenBundleHasAsset` a
+        , Asset.tokenBundleAssetCount b == 1
         ]
 
     entryHasTwoAssetsWith :: Asset -> u -> Bool
     entryHasTwoAssetsWith a = entryMatches $ \b -> and
-        [ b `tokenBundleHasAsset` a
-        , tokenBundleAssetCount b == 2
+        [ b `Asset.tokenBundleHasAsset` a
+        , Asset.tokenBundleAssetCount b == 2
         ]
 
     entryMatches :: (TokenBundle -> Bool) -> u -> Bool
@@ -793,4 +727,4 @@ assetsConsistent i = and
         `Set.isSubsetOf` balanceAssets
     ]
   where
-    balanceAssets = tokenBundleAssets (balance i)
+    balanceAssets = Asset.tokenBundleAssets (balance i)

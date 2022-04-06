@@ -244,6 +244,7 @@ import Test.Utils.Laws
 import Test.Utils.Pretty
     ( Pretty (..) )
 
+import qualified Cardano.Wallet.CoinSelection.Asset as Asset
 import qualified Cardano.Wallet.CoinSelection.Internal.Context as SC
 import qualified Cardano.Wallet.Primitive.Types.Coin as Coin
 import qualified Cardano.Wallet.Primitive.Types.TokenBundle as TokenBundle
@@ -4430,14 +4431,9 @@ unitTests lbl cases =
 utxoIndexNonAdaAssets :: UTxOIndex u -> Set AssetId
 utxoIndexNonAdaAssets
     = Set.fromList
-    . Maybe.mapMaybe toNonAdaAsset
+    . Maybe.mapMaybe Asset.toAssetId
     . Set.toList
     . UTxOIndex.assets
-
-toNonAdaAsset :: WalletAsset -> Maybe AssetId
-toNonAdaAsset = \case
-    WalletAssetLovelace -> Nothing
-    WalletAsset assetId -> Just assetId
 
 --------------------------------------------------------------------------------
 -- Selection contexts

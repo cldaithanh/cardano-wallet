@@ -8,6 +8,7 @@ module Cardano.Wallet.CoinSelection.Asset
     , tokenBundleAssets
     , tokenBundleAssetCount
     , tokenBundleHasAsset
+    , toAssetId
     )
     where
 
@@ -76,3 +77,13 @@ tokenBundleHasAsset :: TokenBundle -> WalletAsset -> Bool
 tokenBundleHasAsset b = \case
     WalletAssetLovelace -> TokenBundle.coin b /= mempty
     WalletAsset assetId -> TokenBundle.hasQuantity b assetId
+
+-- | Extract the asset identifier for an asset, if one is available.
+--
+-- TODO: ADP-1449
+-- Move this function to the wallet-specific 'CoinSelection' module.
+--
+toAssetId :: WalletAsset -> Maybe AssetId
+toAssetId = \case
+    WalletAssetLovelace -> Nothing
+    WalletAsset assetId -> Just assetId

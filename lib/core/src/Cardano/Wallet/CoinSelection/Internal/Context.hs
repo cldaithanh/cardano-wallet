@@ -20,6 +20,8 @@ import Prelude
 
 import Fmt
     ( Buildable )
+import GHC.Generics
+    ( Generic )
 
 -- | Provides a shared context for types used by coin selection.
 --
@@ -27,6 +29,9 @@ class
     ( Buildable (Address c)
     , Buildable (Asset c)
     , Buildable (UTxO c)
+    , Generic (Address c)
+    , Generic (Asset c)
+    , Generic (UTxO c)
     , Ord (Address c)
     , Ord (Asset c)
     , Ord (UTxO c)

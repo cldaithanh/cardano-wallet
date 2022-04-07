@@ -55,6 +55,7 @@ module Cardano.Wallet.Api
 
     , ShelleyTransactions
         , ConstructTransaction
+        , ConstructNoSchemaTransaction
         , SignTransaction
         , ListTransactions
         , GetTransaction
@@ -299,6 +300,7 @@ import Servant.API.Verbs
     )
 
 import qualified Cardano.Wallet.Primitive.Types as W
+import Cardano.Wallet.Api.Types.SchemaMetadata (MetadataSchema(MetadataDetailedSchema, MetadataNoSchema))
 
 type ApiV2 n apiPool = "v2" :> Api n apiPool
 
@@ -534,6 +536,7 @@ type SelectCoins n = "wallets"
 
 type ShelleyTransactions n =
          ConstructTransaction n
+    :<|> ConstructNoSchemaTransaction n
     :<|> SignTransaction n
     :<|> ListTransactions n
     :<|> GetTransaction n
@@ -548,8 +551,15 @@ type ShelleyTransactions n =
 type ConstructTransaction n = "wallets"
     :> Capture "walletId" (ApiT WalletId)
     :> "transactions-construct"
-    :> ReqBody '[JSON] (ApiConstructTransactionDataT n)
-    :> PostAccepted '[JSON] (ApiConstructTransactionT n)
+    :> ReqBody '[JSON] (ApiConstructTransactionDataT n 'MetadataDetailedSchema)
+    :> PostAccepted '[JSON] (ApiConstructTransactionT n )
+
+-- | https://input-output-hk.github.io/cardano-wallet/api/#operation/constructNoSchemaTransaction
+type ConstructNoSchemaTransaction n = "wallets"
+    :> Capture "walletId" (ApiT WalletId)
+    :> "transactions-construct-no-schema"
+    :> ReqBody '[JSON] (ApiConstructTransactionDataT n 'MetadataNoSchema)
+    :> PostAccepted '[JSON] (ApiConstructTransactionT n )
 
 -- | https://input-output-hk.github.io/cardano-wallet/api/#operation/signTransaction
 type SignTransaction n = "wallets"
@@ -884,8 +894,8 @@ type ByronTransactions n =
 type ConstructByronTransaction n = "byron-wallets"
     :> Capture "walletId" (ApiT WalletId)
     :> "transactions-construct"
-    :> ReqBody '[JSON] (ApiConstructTransactionDataT n)
-    :> PostAccepted '[JSON] (ApiConstructTransactionT n)
+    :> ReqBody '[JSON] (ApiConstructTransactionDataT n 'MetadataDetailedSchema)
+    :> PostAccepted '[JSON] (ApiConstructTransactionT n )
 
 -- | https://input-output-hk.github.io/cardano-wallet/api/#operation/signByronTransaction
 type SignByronTransaction n = "byron-wallets"

@@ -122,6 +122,7 @@ import UnliftIO.Exception
     ( throwString )
 
 import qualified Data.Aeson as Aeson
+import Cardano.Wallet.Api.Types.SchemaMetadata (MetadataSchema(MetadataDetailedSchema, MetadataNoSchema))
 
 {-------------------------------------------------------------------------------
                               Server Interaction
@@ -170,6 +171,7 @@ data TransactionClient = TransactionClient
         -> ClientM ApiSerialisedTransaction
     , postTransaction
         :: ApiT WalletId
+        -- -> Maybe Bool
         -> PostTransactionOldDataT Aeson.Value
         -> ClientM (ApiTransactionT Aeson.Value)
     , postTransactionFee
@@ -189,7 +191,11 @@ data TransactionClient = TransactionClient
         -> ClientM (ApiTransactionT Aeson.Value)
     , constructTransaction
         :: ApiT WalletId
-        -> ApiConstructTransactionDataT Aeson.Value
+        -> ApiConstructTransactionDataT Aeson.Value 'MetadataDetailedSchema
+        -> ClientM (ApiConstructTransactionT Aeson.Value)
+    , constructNoSchemaTransaction
+        :: ApiT WalletId
+        -> ApiConstructTransactionDataT Aeson.Value 'MetadataNoSchema
         -> ClientM (ApiConstructTransactionT Aeson.Value)
     , balanceTransaction
         :: ApiT WalletId
@@ -312,6 +318,7 @@ transactionClient
 transactionClient =
     let
         _constructTransaction
+            :<|> _constructNoSchemaTransaction
             :<|> _signTransaction
             :<|> _listTransactions
             :<|> _getTransaction
@@ -335,6 +342,7 @@ transactionClient =
             , deleteTransaction = _deleteTransaction
             , getTransaction = _getTransaction
             , constructTransaction = _constructTransaction
+            , constructNoSchemaTransaction = _constructNoSchemaTransaction
             , balanceTransaction = _balanceTransaction
             , decodeTransaction = _decodeTransaction
             , submitTransaction = _submitTransaction
@@ -369,6 +377,7 @@ byronTransactionClient =
         , deleteTransaction = _deleteTransaction
         , getTransaction = _getTransaction
         , constructTransaction = _constructTransaction
+        , constructNoSchemaTransaction = error "no schema metadata transaction endpoint not supported for byron"
         , balanceTransaction = error "balance transaction endpoint not supported for byron"
         , decodeTransaction = error "decode transaction endpoint not supported for byron"
         , submitTransaction = error "submit transaction endpoint not supported for byron"
@@ -468,7 +477,7 @@ type instance ApiCoinSelectionT Aeson.Value = Aeson.Value
 type instance ApiSelectCoinsDataT Aeson.Value = Aeson.Value
 type instance ApiTransactionT Aeson.Value = Aeson.Value
 type instance ApiConstructTransactionT Aeson.Value = Aeson.Value
-type instance ApiConstructTransactionDataT Aeson.Value = Aeson.Value
+type instance ApiConstructTransactionDataT Aeson.Value j = Aeson.Value
 type instance PostTransactionOldDataT Aeson.Value = Aeson.Value
 type instance PostTransactionFeeOldDataT Aeson.Value = Aeson.Value
 type instance ApiPutAddressesDataT Aeson.Value = Aeson.Value

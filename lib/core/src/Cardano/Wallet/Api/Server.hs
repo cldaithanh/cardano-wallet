@@ -662,6 +662,7 @@ import qualified Data.Text as T
 import qualified Data.Text.Encoding as T
 import qualified Network.Wai.Handler.Warp as Warp
 import qualified Network.Wai.Handler.WarpTLS as Warp
+import Cardano.Wallet.Api.Types.SchemaMetadata (schemaTxMetadataIso)
 
 -- | How the server should listen for incoming requests.
 data Listen
@@ -2164,8 +2165,10 @@ postTransactionFeeOld ctx (ApiT wid) body = do
         minCoins <- liftIO (W.calcMinimumCoinValues @_ @k wrk (F.toList outs))
         liftHandler $ mkApiFee Nothing minCoins <$> W.estimateFee runSelection
 
+
+
 constructTransaction
-    :: forall ctx s k n.
+    :: forall ctx s k n j.
         ( ctx ~ ApiLayer s k
         , Bounded (Index (AddressIndexDerivationType k) 'AddressK)
         , GenChange s
@@ -2176,14 +2179,14 @@ constructTransaction
         , Typeable s
         , WalletKey k
         )
-    => ctx
+    =>  ctx
     -> ArgGenChange s
     -> IO (Set PoolId)
     -> (PoolId -> IO PoolLifeCycleStatus)
     -> ApiT WalletId
-    -> ApiConstructTransactionData n
+    -> ApiConstructTransactionData n j
     -> Handler (ApiConstructTransaction n)
-constructTransaction ctx genChange knownPools getPoolStatus (ApiT wid) body = do
+constructTransaction ctx  genChange knownPools getPoolStatus (ApiT wid) body = do
     let isNoPayload =
             isNothing (body ^. #payments) &&
             isNothing (body ^. #withdrawal) &&
@@ -2215,7 +2218,7 @@ constructTransaction ctx genChange knownPools getPoolStatus (ApiT wid) body = do
     when notall0Haccount $
         liftHandler $ throwE ErrConstructTxMultiaccountNotSupported
 
-    let md = body ^? #metadata . traverse . #getApiT
+    let md = body ^? #metadata . traverse .  schemaTxMetadataIso
     let mTTL = Nothing --TODO: ADP-1189
 
     (wdrl, _) <-

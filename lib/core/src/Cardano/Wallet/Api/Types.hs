@@ -475,6 +475,7 @@ import qualified Data.Map as Map
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as T
 import qualified Data.Text.Read as T
+import Cardano.Wallet.Api.Types.SchemaMetadata
 
 {-------------------------------------------------------------------------------
                                Styles of Wallets
@@ -939,11 +940,14 @@ data ApiMultiDelegationAction
     deriving (Eq, Generic, Show)
     deriving anyclass NFData
 
+
+
+
 -- | Input parameters for transaction construction.
-data ApiConstructTransactionData (n :: NetworkDiscriminant) = ApiConstructTransactionData
+data ApiConstructTransactionData (n :: NetworkDiscriminant) (j :: MetadataSchema) = ApiConstructTransactionData
     { payments :: !(Maybe (ApiPaymentDestination n))
     , withdrawal :: !(Maybe ApiWithdrawalPostData)
-    , metadata :: !(Maybe (ApiT TxMetadata))
+    , metadata :: !(Maybe (SchemaTxMetadata j))
     , mintBurn :: !(Maybe (NonEmpty (ApiMintBurnData n)))
     , delegations :: !(Maybe (NonEmpty ApiMultiDelegationAction))
     , validityInterval :: !(Maybe ApiValidityInterval)
@@ -2886,9 +2890,9 @@ instance EncodeAddress t => ToJSON (ApiPaymentDestination t) where
     toJSON (ApiPaymentAddresses addrs) = toJSON addrs
     toJSON (ApiPaymentAll addrs) = toJSON addrs
 
-instance DecodeAddress t => FromJSON (ApiConstructTransactionData t) where
+instance (FromJSON (SchemaTxMetadata j), DecodeAddress t) => FromJSON (ApiConstructTransactionData t j) where
     parseJSON = genericParseJSON defaultRecordTypeOptions
-instance EncodeAddress t => ToJSON (ApiConstructTransactionData t) where
+instance (ToJSON (SchemaTxMetadata j), EncodeAddress t) => ToJSON (ApiConstructTransactionData t j) where
     toJSON = genericToJSON defaultRecordTypeOptions
 
 instance DecodeAddress n => FromJSON (ApiExternalInput n) where
@@ -3259,6 +3263,8 @@ instance FromJSON (ApiT TxMetadata) where
 
 instance ToJSON (ApiT TxMetadata) where
     toJSON = metadataToJson TxMetadataJsonDetailedSchema . getApiT
+
+
 
 instance FromJSON ApiTxMetadata where
     parseJSON Aeson.Null = pure $ ApiTxMetadata Nothing
@@ -3870,8 +3876,8 @@ type family ApiAddressIdT (n :: k) :: Type
 type family ApiCoinSelectionT (n :: k) :: Type
 type family ApiSelectCoinsDataT (n :: k) :: Type
 type family ApiTransactionT (n :: k) :: Type
-type family ApiConstructTransactionT (n :: k) :: Type
-type family ApiConstructTransactionDataT (n :: k) :: Type
+type family ApiConstructTransactionT (n :: k)  :: Type
+type family ApiConstructTransactionDataT (n :: k) (j :: MetadataSchema):: Type
 type family PostTransactionOldDataT (n :: k) :: Type
 type family PostTransactionFeeOldDataT (n :: k) :: Type
 type family ApiWalletMigrationPlanPostDataT (n :: k) :: Type
@@ -3901,12 +3907,11 @@ type instance ApiSelectCoinsDataT (n :: NetworkDiscriminant) =
 type instance ApiTransactionT (n :: NetworkDiscriminant) =
     ApiTransaction n
 
-type instance ApiConstructTransactionT (n :: NetworkDiscriminant) =
-    ApiConstructTransaction n
+type instance ApiConstructTransactionT (n :: NetworkDiscriminant)  =
+    ApiConstructTransaction n 
 
-type instance ApiConstructTransactionDataT (n :: NetworkDiscriminant) =
-    ApiConstructTransactionData n
-
+type instance ApiConstructTransactionDataT (n :: NetworkDiscriminant) j =
+    ApiConstructTransactionData n  j
 type instance PostTransactionOldDataT (n :: NetworkDiscriminant) =
     PostTransactionOldData n
 type instance PostTransactionFeeOldDataT (n :: NetworkDiscriminant) =

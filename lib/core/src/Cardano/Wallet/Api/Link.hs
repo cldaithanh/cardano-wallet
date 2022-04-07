@@ -82,6 +82,7 @@ module Cardano.Wallet.Api.Link
     , deleteTransaction
     , getTransaction
     , createUnsignedTransaction
+    , createUnsignedNoSchemaTransaction
     , signTransaction
     , balanceTransaction
     , decodeTransaction
@@ -685,6 +686,20 @@ createUnsignedTransaction w = discriminate @style
   where
     wid = w ^. typed @(ApiT WalletId)
 
+createUnsignedNoSchemaTransaction
+    :: forall style w.
+        ( HasCallStack
+        , HasType (ApiT WalletId) w
+        , Discriminate style
+        )
+    => w
+    -> (Method, Text)
+createUnsignedNoSchemaTransaction w = discriminate @style
+    (endpoint @(Api.ConstructNoSchemaTransaction Net) (wid &))
+    (notSupported "Byron") 
+    (notSupported "Shared") -- TODO: [ADP-909] should be supported in the final version of Transaction Workflow.
+  where
+    wid = w ^. typed @(ApiT WalletId)
 signTransaction
     :: forall style w.
         ( HasCallStack

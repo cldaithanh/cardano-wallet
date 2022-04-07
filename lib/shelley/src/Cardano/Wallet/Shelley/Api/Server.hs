@@ -312,6 +312,7 @@ server byron icarus shelley multisig spl ntp =
     shelleyTransactions :: Server (ShelleyTransactions n)
     shelleyTransactions =
              constructTransaction shelley (delegationAddress @n) (knownPools spl) (getPoolLifeCycleStatus spl)
+        :<|> constructTransaction shelley (delegationAddress @n) (knownPools spl) (getPoolLifeCycleStatus spl)
         :<|> signTransaction shelley
         :<|> listTransactions shelley
         :<|> getTransaction shelley

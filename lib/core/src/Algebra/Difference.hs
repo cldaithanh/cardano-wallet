@@ -37,6 +37,15 @@ class Difference a where
 -- Laws
 --------------------------------------------------------------------------------
 
+-- TODO: Add code coverage.
+--
+-- This is most important, because we need to know whether the laws and our
+-- instances are actually correct.
+
+-- TODO: Use more conventional names.
+-- TODO: Make laws groups for subclasses inherit laws groups for superclasses.
+-- TODO: Add sections.
+
 law_Difference_Eq_Monoid_1
     :: (Difference a, Eq a, Monoid a) => a -> Bool
 law_Difference_Eq_Monoid_1 a =
@@ -61,7 +70,12 @@ law_Difference_PartialOrd_1 a1 a2
 
 law_Difference_PartialOrd_Semigroup_1
     :: (Difference a, PartialOrd a, Semigroup a) => a -> a -> Bool
-law_Difference_PartialOrd_Semigroup_1 a1 a2
+law_Difference_PartialOrd_Semigroup_1 a1 a2 =
+    ((a1 <> a2) `difference` a2) `leq` a1
+
+law_Difference_PartialOrd_Semigroup_2
+    :: (Difference a, PartialOrd a, Semigroup a) => a -> a -> Bool
+law_Difference_PartialOrd_Semigroup_2 a1 a2
     | a1 `leq` a2 = (a2 `difference` a1) <> a1 == a2
     | a2 `leq` a1 = (a1 `difference` a2) <> a2 == a1
     | otherwise = True
@@ -82,7 +96,12 @@ law_Difference_Ord_1 a1 a2
 
 law_Difference_Ord_Semigroup_1
     :: (Difference a, Ord a, Semigroup a) => a -> a -> Bool
-law_Difference_Ord_Semigroup_1 a1 a2
+law_Difference_Ord_Semigroup_1 a1 a2 =
+    ((a1 <> a2) `difference` a2) == a1
+
+law_Difference_Ord_Semigroup_2
+    :: (Difference a, Ord a, Semigroup a) => a -> a -> Bool
+law_Difference_Ord_Semigroup_2 a1 a2
     | a1 <= a2 = (a2 `difference` a1) <> a1 == a2
     | a2 <= a1 = (a1 `difference` a2) <> a2 == a1
     | otherwise = True
@@ -141,6 +160,8 @@ laws_Difference_PartialOrd_Semigroup
 laws_Difference_PartialOrd_Semigroup _ = Laws "Difference PartialOrd Semigroup"
     [ ( "Difference PartialOrd Semigroup #1"
       , property (law_Difference_PartialOrd_Semigroup_1 @a))
+    , ( "Difference PartialOrd Semigroup #2"
+      , property (law_Difference_PartialOrd_Semigroup_2 @a))
     ]
 
 laws_Difference_PartialOrd_Monoid
@@ -168,6 +189,8 @@ laws_Difference_Ord_Semigroup
 laws_Difference_Ord_Semigroup _ = Laws "Difference Ord Semigroup"
     [ ( "Difference Ord Semigroup #1"
       , property (law_Difference_Ord_Semigroup_1 @a))
+    , ( "Difference Ord Semigroup #2"
+      , property (law_Difference_Ord_Semigroup_2 @a))
     ]
 
 laws_Difference_Ord_Monoid

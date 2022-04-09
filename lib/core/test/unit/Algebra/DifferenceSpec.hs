@@ -9,7 +9,15 @@ module Algebra.DifferenceSpec
 import Prelude
 
 import Algebra.Difference
-    ( Difference (..), differenceLaws, differenceOrdLaws )
+    ( Difference (..)
+    , laws_Difference_Eq_Monoid
+    , laws_Difference_PartialOrd
+    , laws_Difference_PartialOrd_Semigroup
+    , laws_Difference_PartialOrd_Monoid
+    , laws_Difference_Ord
+    , laws_Difference_Ord_Semigroup
+    , laws_Difference_Ord_Monoid
+    , )
 import Data.Set
     ( Set )
 import Numeric.Natural
@@ -27,11 +35,16 @@ spec :: Spec
 spec =
     parallel $ describe "Class instances obey laws" $ do
         testLawsMany @(Sum Natural)
-            [ differenceLaws
-            , differenceOrdLaws
+            [ laws_Difference_Eq_Monoid
+            , laws_Difference_Ord
+            , laws_Difference_Ord_Semigroup
+            , laws_Difference_Ord_Monoid
             ]
         testLawsMany @(Set Int)
-            [ differenceLaws
+            [ laws_Difference_Eq_Monoid
+            , laws_Difference_PartialOrd
+            , laws_Difference_PartialOrd_Semigroup
+            , laws_Difference_PartialOrd_Monoid
             ]
 
 newtype Sum a = Sum a

@@ -7,7 +7,11 @@ module Cardano.Wallet.CoinSelection.Internal.Types.ValueSpec
 import Prelude
 
 import Algebra.Difference
-    ( differenceLaws, differenceOrdLaws )
+    ( laws_Difference_Eq_Monoid
+    , laws_Difference_Ord
+    , laws_Difference_Ord_Semigroup
+    , laws_Difference_Ord_Monoid
+    )
 import Algebra.Equipartition
     ( equipartitionLaws )
 import Algebra.Partition
@@ -37,9 +41,7 @@ spec :: Spec
 spec =
     parallel $ describe "Class instances obey laws" $ do
         testLawsMany @Value
-            [ differenceLaws
-            , differenceOrdLaws
-            , equipartitionLaws
+            [ equipartitionLaws
             , eqLaws
             , monoidLaws
             , ordLaws
@@ -49,6 +51,10 @@ spec =
             , showReadLaws
             , subtractLaws
             , subtractOrdLaws
+            , laws_Difference_Eq_Monoid
+            , laws_Difference_Ord
+            , laws_Difference_Ord_Semigroup
+            , laws_Difference_Ord_Monoid
             ]
 
 instance Arbitrary Value where

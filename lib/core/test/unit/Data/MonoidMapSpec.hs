@@ -9,7 +9,11 @@ module Data.MonoidMapSpec
 import Prelude
 
 import Algebra.Difference
-    ( differenceLaws, differencePartialOrdLaws )
+    ( laws_Difference_Eq_Monoid
+    , laws_Difference_PartialOrd
+    , laws_Difference_PartialOrd_Semigroup
+    , laws_Difference_PartialOrd_Monoid
+    )
 import Algebra.Equipartition
     ( equipartitionLaws )
 import Algebra.Partition
@@ -47,9 +51,7 @@ spec :: Spec
 spec =
     parallel $ describe "Class instances obey laws" $ do
         testLawsMany @(MonoidMap Int (Sum Natural))
-            [ differenceLaws
-            , differencePartialOrdLaws
-            , eqLaws
+            [ eqLaws
             , isListLaws
             , monoidLaws
             , partialOrdLaws
@@ -59,6 +61,10 @@ spec =
             , showReadLaws
             , subtractLaws
             , subtractPartialOrdLaws
+            , laws_Difference_Eq_Monoid
+            , laws_Difference_PartialOrd
+            , laws_Difference_PartialOrd_Semigroup
+            , laws_Difference_PartialOrd_Monoid
             ]
         testLawsMany @(Keys (MonoidMap Int (Sum Natural)))
             [ equipartitionLaws

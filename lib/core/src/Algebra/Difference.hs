@@ -37,33 +37,61 @@ class Difference a where
 -- Laws
 --------------------------------------------------------------------------------
 
-differenceLaw_empty
+law_Difference_Eq_Monoid_1
     :: (Difference a, Eq a, Monoid a) => a -> Bool
-differenceLaw_empty a = a `difference` mempty == a
+law_Difference_Eq_Monoid_1 a =
+    mempty `difference` a == mempty
 
-differenceLaw_self
+law_Difference_Eq_Monoid_2
     :: (Difference a, Eq a, Monoid a) => a -> Bool
-differenceLaw_self a = a `difference` a == mempty
+law_Difference_Eq_Monoid_2 a =
+    a `difference` mempty == a
 
-differencePartialOrdLaw_lessThanOrEqual
+law_Difference_Eq_Monoid_3
+    :: (Difference a, Eq a, Monoid a) => a -> Bool
+law_Difference_Eq_Monoid_3 a =
+    a `difference` a == mempty
+
+law_Difference_PartialOrd_1
+    :: (Difference a, PartialOrd a) => a -> a -> Bool
+law_Difference_PartialOrd_1 a1 a2
+    | a1 `leq` a2 = (a2 `difference` a1) `leq` a2
+    | a2 `leq` a1 = (a1 `difference` a2) `leq` a1
+    | otherwise = True
+
+law_Difference_PartialOrd_Semigroup_1
     :: (Difference a, PartialOrd a, Semigroup a) => a -> a -> Bool
-differencePartialOrdLaw_lessThanOrEqual a1 a2
-    | a1 `leq` a2 = ((a2 `difference` a1) <> a1) == a2
-    | a2 `leq` a1 = ((a1 `difference` a2) <> a2) == a1
+law_Difference_PartialOrd_Semigroup_1 a1 a2
+    | a1 `leq` a2 = (a2 `difference` a1) <> a1 == a2
+    | a2 `leq` a1 = (a1 `difference` a2) <> a2 == a1
     | otherwise = True
 
-differenceOrdLaw_lessThanOrEqual
+law_Difference_PartialOrd_Monoid_1
+    :: (Difference a, PartialOrd a, Monoid a) => a -> a -> Bool
+law_Difference_PartialOrd_Monoid_1 a1 a2
+    | a1 `leq` a2 = a1 `difference` a2 == mempty
+    | a2 `leq` a1 = a2 `difference` a1 == mempty
+    | otherwise = True
+
+law_Difference_Ord_1
+    :: (Difference a, Ord a) => a -> a -> Bool
+law_Difference_Ord_1 a1 a2
+    | a1 <= a2 = (a2 `difference` a1) <= a2
+    | a2 <= a1 = (a1 `difference` a2) <= a1
+    | otherwise = True
+
+law_Difference_Ord_Semigroup_1
     :: (Difference a, Ord a, Semigroup a) => a -> a -> Bool
-differenceOrdLaw_lessThanOrEqual a1 a2
-    | a1 <= a2 = ((a2 `difference` a1) <> a1) == a2
-    | a2 <= a1 = ((a1 `difference` a2) <> a2) == a1
+law_Difference_Ord_Semigroup_1 a1 a2
+    | a1 <= a2 = (a2 `difference` a1) <> a1 == a2
+    | a2 <= a1 = (a1 `difference` a2) <> a2 == a1
     | otherwise = True
 
-differenceOrdLaw_greaterThan
-    :: (Difference a, Monoid a, Ord a) => a -> a -> Bool
-differenceOrdLaw_greaterThan a1 a2
-    | a1 > a2 = (a2 `difference` a1) == mempty
-    | a2 > a1 = (a1 `difference` a2) == mempty
+law_Difference_Ord_Monoid_1
+    :: (Difference a, Ord a, Monoid a) => a -> a -> Bool
+law_Difference_Ord_Monoid_1 a1 a2
+    | a1 <= a2 = a1 `difference` a2 == mempty
+    | a2 <= a1 = a2 `difference` a1 == mempty
     | otherwise = True
 
 --------------------------------------------------------------------------------
@@ -84,33 +112,69 @@ deriving instance Difference a => Difference (Sum a)
 -- Testing
 --------------------------------------------------------------------------------
 
-differenceLaws
-    :: forall a. (Arbitrary a, Difference a, Eq a, Monoid a, Show a)
+laws_Difference_Eq_Monoid
+    :: forall a. (Arbitrary a, Show a, Difference a, Eq a, Monoid a)
     => Proxy a
     -> Laws
-differenceLaws _ = Laws "Difference"
-    [ ( "Empty"
-      , property (differenceLaw_empty @a))
-    , ( "Self"
-      , property (differenceLaw_self @a))
+laws_Difference_Eq_Monoid _ = Laws "Difference Eq Monoid"
+    [ ( "Difference Eq Monoid #1"
+      , property (law_Difference_Eq_Monoid_1 @a))
+    , ( "Difference Eq Monoid #2"
+      , property (law_Difference_Eq_Monoid_2 @a))
+    , ( "Difference Eq Monoid #3"
+      , property (law_Difference_Eq_Monoid_3 @a))
     ]
 
-differencePartialOrdLaws
-    :: forall a. (Arbitrary a, Difference a, PartialOrd a, Semigroup a, Show a)
+laws_Difference_PartialOrd
+    :: forall a. (Arbitrary a, Show a, Difference a, PartialOrd a)
     => Proxy a
     -> Laws
-differencePartialOrdLaws _ = Laws "Difference/PartialOrd"
-    [ ( "LessThanOrEqual"
-      , property (differencePartialOrdLaw_lessThanOrEqual @a))
+laws_Difference_PartialOrd _ = Laws "Difference PartialOrd"
+    [ ( "Difference PartialOrd #1"
+      , property (law_Difference_PartialOrd_1 @a))
     ]
 
-differenceOrdLaws
-    :: forall a. (Arbitrary a, Difference a, Monoid a, Ord a, Show a)
+laws_Difference_PartialOrd_Semigroup
+    :: forall a. (Arbitrary a, Show a, Difference a, PartialOrd a, Semigroup a)
     => Proxy a
     -> Laws
-differenceOrdLaws _ = Laws "Difference/Ord"
-    [ ( "LessThanOrEqual"
-      , property (differenceOrdLaw_lessThanOrEqual @a))
-    , ( "GreaterThan"
-      , property (differenceOrdLaw_greaterThan @a))
+laws_Difference_PartialOrd_Semigroup _ = Laws "Difference PartialOrd Semigroup"
+    [ ( "Difference PartialOrd Semigroup #1"
+      , property (law_Difference_PartialOrd_Semigroup_1 @a))
+    ]
+
+laws_Difference_PartialOrd_Monoid
+    :: forall a. (Arbitrary a, Show a, Difference a, PartialOrd a, Monoid a)
+    => Proxy a
+    -> Laws
+laws_Difference_PartialOrd_Monoid _ = Laws "Difference PartialOrd Monoid"
+    [ ( "Difference PartialOrd Monoid #1"
+      , property (law_Difference_PartialOrd_Monoid_1 @a))
+    ]
+
+laws_Difference_Ord
+    :: forall a. (Arbitrary a, Show a, Difference a, Ord a)
+    => Proxy a
+    -> Laws
+laws_Difference_Ord _ = Laws "Difference Ord"
+    [ ( "Difference Ord #1"
+      , property (law_Difference_Ord_1 @a))
+    ]
+
+laws_Difference_Ord_Semigroup
+    :: forall a. (Arbitrary a, Show a, Difference a, Ord a, Semigroup a)
+    => Proxy a
+    -> Laws
+laws_Difference_Ord_Semigroup _ = Laws "Difference Ord Semigroup"
+    [ ( "Difference Ord Semigroup #1"
+      , property (law_Difference_Ord_Semigroup_1 @a))
+    ]
+
+laws_Difference_Ord_Monoid
+    :: forall a. (Arbitrary a, Show a, Difference a, Ord a, Monoid a)
+    => Proxy a
+    -> Laws
+laws_Difference_Ord_Monoid _ = Laws "Difference Ord Monoid"
+    [ ( "Difference Ord Monoid #1"
+      , property (law_Difference_Ord_Monoid_1 @a))
     ]

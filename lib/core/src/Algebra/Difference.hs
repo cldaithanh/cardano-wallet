@@ -37,6 +37,26 @@ class Difference a where
 -- Laws
 --------------------------------------------------------------------------------
 
+--              Natural
+--
+-- difference   | a >   b = a - b
+--              | a <=  b = 0
+--
+-- union        | a >   b = a {1,2,3,4,5} {1,2,3,4,5,6,7}
+--              | a <=  b = b
+--
+-- intersection | a >   b = b
+--              | a <=  b = a
+--
+-- symmetricDifference | a >   b = a
+--                     | a <=  b = b
+--
+-- With the above formulation, we don't have an add operation.
+--
+a `difference` b == a `intersection`
+
+
+
 -- TODO: Add code coverage.
 --
 -- This is most important, because we need to know whether the laws and our

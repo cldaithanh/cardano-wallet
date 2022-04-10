@@ -65,8 +65,8 @@ law_Difference_PartialOrd_1 a1 a2
 law_Difference_PartialOrd_2
     :: (Difference a, PartialOrd a) => a -> a -> Bool
 law_Difference_PartialOrd_2 a1 a2
-    | a1 `geq` a2 = let a3 = a1 `difference` a2 in a1 `difference` a3 == a2
-    | a2 `geq` a1 = let a3 = a2 `difference` a1 in a2 `difference` a3 == a1
+    | a1 `geq` a2 = a1 `difference` (a1 `difference` a2) == a2
+    | a2 `geq` a1 = a2 `difference` (a2 `difference` a1) == a1
     | otherwise = True
 
 --------------------------------------------------------------------------------
@@ -110,8 +110,8 @@ law_Difference_Ord_1 a1 a2
 law_Difference_Ord_2
     :: (Difference a, Ord a) => a -> a -> Bool
 law_Difference_Ord_2 a1 a2
-    | a1 >= a2 = let a3 = a1 `difference` a2 in a1 `difference` a3 == a2
-    | a2 >= a1 = let a3 = a2 `difference` a1 in a2 `difference` a3 == a1
+    | a1 >= a2 = a1 `difference` (a1 `difference` a2) == a2
+    | a2 >= a1 = a2 `difference` (a2 `difference` a1) == a1
     | otherwise = True
 
 --------------------------------------------------------------------------------

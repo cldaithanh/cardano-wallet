@@ -9,7 +9,7 @@ module Algebra.Difference
 import Prelude
 
 import Algebra.PartialOrd
-    ( PartialOrd (..) )
+    ( PartialOrd (..), partialOrdEq )
 import Data.Monoid
     ( Sum (..) )
 import Data.Proxy
@@ -58,15 +58,15 @@ law_Difference_Eq_Monoid_3 a =
 law_Difference_PartialOrd_1
     :: (Difference a, PartialOrd a) => a -> a -> Bool
 law_Difference_PartialOrd_1 a1 a2
-    | a1 `geq` a2 = a1 `geq` (a1 `difference` a2)
-    | a2 `geq` a1 = a2 `geq` (a2 `difference` a1)
+    | a1 `ge` a2 = a1 `ge` (a1 `difference` a2)
+    | a2 `ge` a1 = a2 `ge` (a2 `difference` a1)
     | otherwise = True
 
 law_Difference_PartialOrd_2
     :: (Difference a, PartialOrd a) => a -> a -> Bool
 law_Difference_PartialOrd_2 a1 a2
-    | a1 `geq` a2 = a1 `difference` (a1 `difference` a2) == a2
-    | a2 `geq` a1 = a2 `difference` (a2 `difference` a1) == a1
+    | a1 `ge` a2 = a1 `difference` (a1 `difference` a2) == a2
+    | a2 `ge` a1 = a2 `difference` (a2 `difference` a1) == a1
     | otherwise = True
 
 --------------------------------------------------------------------------------
@@ -76,13 +76,13 @@ law_Difference_PartialOrd_2 a1 a2
 law_Difference_PartialOrd_Semigroup_1
     :: (Difference a, PartialOrd a, Semigroup a) => a -> a -> Bool
 law_Difference_PartialOrd_Semigroup_1 a1 a2 =
-    a1 `geq` ((a1 <> a2) `difference` a2)
+    a1 `ge` ((a1 <> a2) `difference` a2)
 
 law_Difference_PartialOrd_Semigroup_2
     :: (Difference a, PartialOrd a, Semigroup a) => a -> a -> Bool
 law_Difference_PartialOrd_Semigroup_2 a1 a2
-    | a1 `geq` a2 = (a1 `difference` a2) <> a2 == a1
-    | a2 `geq` a1 = (a2 `difference` a1) <> a1 == a2
+    | a1 `ge` a2 = (a1 `difference` a2) <> a2 == a1
+    | a2 `ge` a1 = (a2 `difference` a1) <> a1 == a2
     | otherwise = True
 
 --------------------------------------------------------------------------------
@@ -92,8 +92,8 @@ law_Difference_PartialOrd_Semigroup_2 a1 a2
 law_Difference_PartialOrd_Monoid_1
     :: (Difference a, PartialOrd a, Monoid a) => a -> a -> Bool
 law_Difference_PartialOrd_Monoid_1 a1 a2
-    | a1 `leq` a2 = a1 `difference` a2 == mempty
-    | a2 `leq` a1 = a2 `difference` a1 == mempty
+    | a1 `le` a2 = a1 `difference` a2 == mempty
+    | a2 `le` a1 = a2 `difference` a1 == mempty
     | otherwise = True
 
 --------------------------------------------------------------------------------
@@ -182,8 +182,9 @@ laws_Difference_PartialOrd _ = Laws "Difference PartialOrd"
     toProperty :: (a -> a -> Bool) -> Property
     toProperty fn = property
         $ \a1 a2 -> checkCoverage
-        $ cover 5 (a1 `geq` a2) "a1 `geq` a2"
-        $ cover 5 (a2 `geq` a1) "a2 `geq` a1"
+        $ cover 1 (a1 `lt` a2) "a1 `lt` a2"
+        $ cover 1 (a1 `eq` a2) "a1 `eq` a2"
+        $ cover 1 (a1 `gt` a2) "a1 `gt` a2"
         $ fn a1 a2
 
 laws_Difference_PartialOrd_Semigroup
@@ -200,8 +201,9 @@ laws_Difference_PartialOrd_Semigroup _ = Laws "Difference PartialOrd Semigroup"
     toProperty :: (a -> a -> Bool) -> Property
     toProperty fn = property
         $ \a1 a2 -> checkCoverage
-        $ cover 5 (a1 `geq` a2) "a1 `geq` a2"
-        $ cover 5 (a2 `geq` a1) "a2 `geq` a1"
+        $ cover 1 (a1 `lt` a2) "a1 `lt` a2"
+        $ cover 1 (a1 `eq` a2) "a1 `eq` a2"
+        $ cover 1 (a1 `gt` a2) "a1 `gt` a2"
         $ fn a1 a2
 
 laws_Difference_PartialOrd_Monoid
@@ -216,8 +218,8 @@ laws_Difference_PartialOrd_Monoid _ = Laws "Difference PartialOrd Monoid"
     toProperty :: (a -> a -> Bool) -> Property
     toProperty fn = property
         $ \a1 a2 -> checkCoverage
-        $ cover 0.1 (a1 `geq` a2 && a2 /= mempty) "a1 `geq` a2 && a2 /= mempty"
-        $ cover 0.1 (a2 `geq` a1 && a1 /= mempty) "a2 `geq` a1 && a1 /= mempty"
+        $ cover 0.1 (a1 `gt` a2 && a2 /= mempty) "a1 `gt` a2 && a2 /= mempty"
+        $ cover 0.1 (a2 `gt` a1 && a1 /= mempty) "a2 `gt` a1 && a1 /= mempty"
         $ fn a1 a2
 
 laws_Difference_Ord
@@ -234,8 +236,9 @@ laws_Difference_Ord _ = Laws "Difference Ord"
     toProperty :: (a -> a -> Bool) -> Property
     toProperty fn = property
         $ \a1 a2 -> checkCoverage
-        $ cover 5 (a1 >= a2) "a1 >= a2"
-        $ cover 5 (a2 >= a1) "a2 >= a1"
+        $ cover 1 (a1 <  a2) "a1 <  a2"
+        $ cover 1 (a1 == a2) "a1 == a2"
+        $ cover 1 (a1 >  a2) "a1 >  a2"
         $ fn a1 a2
 
 laws_Difference_Ord_Semigroup
@@ -252,8 +255,9 @@ laws_Difference_Ord_Semigroup _ = Laws "Difference Ord Semigroup"
     toProperty :: (a -> a -> Bool) -> Property
     toProperty fn = property
         $ \a1 a2 -> checkCoverage
-        $ cover 5 (a1 >= a2) "a1 >= a2"
-        $ cover 5 (a2 >= a1) "a2 >= a1"
+        $ cover 1 (a1 <  a2) "a1 <  a2"
+        $ cover 1 (a1 == a2) "a1 == a2"
+        $ cover 1 (a1 >  a2) "a1 >  a2"
         $ fn a1 a2
 
 laws_Difference_Ord_Monoid
@@ -268,8 +272,8 @@ laws_Difference_Ord_Monoid _ = Laws "Difference Ord Monoid"
     toProperty :: (a -> a -> Bool) -> Property
     toProperty fn = property
         $ \a1 a2 -> checkCoverage
-        $ cover 0.1 (a1 >= a2 && a2 /= mempty) "a1 >= a2 && a2 /= mempty"
-        $ cover 0.1 (a2 >= a1 && a1 /= mempty) "a2 >= a1 && a1 /= mempty"
+        $ cover 0.1 (a1 > a2 && a2 /= mempty) "a1 > a2 && a2 /= mempty"
+        $ cover 0.1 (a2 > a1 && a1 /= mempty) "a2 > a1 && a1 /= mempty"
         $ fn a1 a2
 
 --------------------------------------------------------------------------------
@@ -290,5 +294,17 @@ deriving instance Difference a => Difference (Sum a)
 -- Utilities
 --------------------------------------------------------------------------------
 
-geq :: PartialOrd a => a -> a -> Bool
-a1 `geq` a2 = a2 `leq` a1
+lt :: PartialOrd a => a -> a -> Bool
+lt a1 a2 = le a1 a2 && not (eq a1 a2)
+
+le :: PartialOrd a => a -> a -> Bool
+le = leq
+
+eq :: PartialOrd a => a -> a -> Bool
+eq = partialOrdEq
+
+ge :: PartialOrd a => a -> a -> Bool
+ge a1 a2 = le a2 a1
+
+gt :: PartialOrd a => a -> a -> Bool
+gt a1 a2 = ge a1 a2 && not (eq a1 a2)

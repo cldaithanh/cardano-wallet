@@ -45,6 +45,14 @@ class Difference a where
 -- TODO: Use more conventional names.
 -- TODO: Make laws groups for subclasses inherit laws groups for superclasses.
 -- TODO: Add sections.
+-- TODO: Add `geq`
+--
+-- | a1 `leq` a2 = let a3 = a2 `difference` a1 in a2 `difference` a3 == a1
+-- | a2 `leq` a1 = let a3 = a1 `difference` a2 in a1 `difference` a3 == a2
+--
+--  A minus b = c implies a minus c = b, if b leq a.
+--
+
 
 law_Difference_Eq_Monoid_1
     :: (Difference a, Eq a, Monoid a) => a -> Bool
@@ -64,20 +72,27 @@ law_Difference_Eq_Monoid_3 a =
 law_Difference_PartialOrd_1
     :: (Difference a, PartialOrd a) => a -> a -> Bool
 law_Difference_PartialOrd_1 a1 a2
-    | a1 `leq` a2 = (a2 `difference` a1) `leq` a2
-    | a2 `leq` a1 = (a1 `difference` a2) `leq` a1
+    | a1 `geq` a2 = a1 `geq` (a1 `difference` a2)
+    | a2 `geq` a1 = a2 `geq` (a2 `difference` a1)
+    | otherwise = True
+
+law_Difference_PartialOrd_2
+    :: (Difference a, PartialOrd a) => a -> a -> Bool
+law_Difference_PartialOrd_2 a1 a2
+    | a1 `geq` a2 = let a3 = a1 `difference` a2 in a1 `difference` a3 == a2
+    | a2 `geq` a1 = let a3 = a2 `difference` a1 in a2 `difference` a3 == a1
     | otherwise = True
 
 law_Difference_PartialOrd_Semigroup_1
     :: (Difference a, PartialOrd a, Semigroup a) => a -> a -> Bool
 law_Difference_PartialOrd_Semigroup_1 a1 a2 =
-    ((a1 <> a2) `difference` a2) `leq` a1
+    a1 `geq` ((a1 <> a2) `difference` a2)
 
 law_Difference_PartialOrd_Semigroup_2
     :: (Difference a, PartialOrd a, Semigroup a) => a -> a -> Bool
 law_Difference_PartialOrd_Semigroup_2 a1 a2
-    | a1 `leq` a2 = (a2 `difference` a1) <> a1 == a2
-    | a2 `leq` a1 = (a1 `difference` a2) <> a2 == a1
+    | a1 `geq` a2 = (a1 `difference` a2) <> a2 == a1
+    | a2 `geq` a1 = (a2 `difference` a1) <> a1 == a2
     | otherwise = True
 
 law_Difference_PartialOrd_Monoid_1
@@ -90,20 +105,27 @@ law_Difference_PartialOrd_Monoid_1 a1 a2
 law_Difference_Ord_1
     :: (Difference a, Ord a) => a -> a -> Bool
 law_Difference_Ord_1 a1 a2
-    | a1 <= a2 = (a2 `difference` a1) <= a2
-    | a2 <= a1 = (a1 `difference` a2) <= a1
+    | a1 >= a2 = a1 >= (a1 `difference` a2)
+    | a2 >= a1 = a2 >= (a2 `difference` a1)
+    | otherwise = True
+
+law_Difference_Ord_2
+    :: (Difference a, Ord a) => a -> a -> Bool
+law_Difference_Ord_2 a1 a2
+    | a1 >= a2 = let a3 = a1 `difference` a2 in a1 `difference` a3 == a2
+    | a2 >= a1 = let a3 = a2 `difference` a1 in a2 `difference` a3 == a1
     | otherwise = True
 
 law_Difference_Ord_Semigroup_1
     :: (Difference a, Ord a, Semigroup a) => a -> a -> Bool
 law_Difference_Ord_Semigroup_1 a1 a2 =
-    ((a1 <> a2) `difference` a2) == a1
+    a1 == ((a1 <> a2) `difference` a2)
 
 law_Difference_Ord_Semigroup_2
     :: (Difference a, Ord a, Semigroup a) => a -> a -> Bool
 law_Difference_Ord_Semigroup_2 a1 a2
-    | a1 <= a2 = (a2 `difference` a1) <> a1 == a2
-    | a2 <= a1 = (a1 `difference` a2) <> a2 == a1
+    | a1 >= a2 = (a1 `difference` a2) <> a2 == a1
+    | a2 >= a1 = (a2 `difference` a1) <> a1 == a2
     | otherwise = True
 
 law_Difference_Ord_Monoid_1
@@ -151,6 +173,8 @@ laws_Difference_PartialOrd
 laws_Difference_PartialOrd _ = Laws "Difference PartialOrd"
     [ ( "Difference PartialOrd #1"
       , property (law_Difference_PartialOrd_1 @a))
+    , ( "Difference PartialOrd #2"
+      , property (law_Difference_PartialOrd_2 @a))
     ]
 
 laws_Difference_PartialOrd_Semigroup
@@ -180,6 +204,8 @@ laws_Difference_Ord
 laws_Difference_Ord _ = Laws "Difference Ord"
     [ ( "Difference Ord #1"
       , property (law_Difference_Ord_1 @a))
+    , ( "Difference Ord #2"
+      , property (law_Difference_Ord_2 @a))
     ]
 
 laws_Difference_Ord_Semigroup
@@ -201,3 +227,10 @@ laws_Difference_Ord_Monoid _ = Laws "Difference Ord Monoid"
     [ ( "Difference Ord Monoid #1"
       , property (law_Difference_Ord_Monoid_1 @a))
     ]
+
+--------------------------------------------------------------------------------
+-- Utilities
+--------------------------------------------------------------------------------
+
+geq :: PartialOrd a => a -> a -> Bool
+a1 `geq` a2 = a2 `leq` a1

@@ -34,25 +34,8 @@ class Difference a where
     difference :: a -> a -> a
 
 --------------------------------------------------------------------------------
--- Laws
+-- Laws: Difference Eq Monoid
 --------------------------------------------------------------------------------
-
--- TODO: Add code coverage.
---
--- This is most important, because we need to know whether the laws and our
--- instances are actually correct.
-
--- TODO: Use more conventional names.
--- TODO: Make laws groups for subclasses inherit laws groups for superclasses.
--- TODO: Add sections.
--- TODO: Add `geq`
---
--- | a1 `leq` a2 = let a3 = a2 `difference` a1 in a2 `difference` a3 == a1
--- | a2 `leq` a1 = let a3 = a1 `difference` a2 in a1 `difference` a3 == a2
---
---  A minus b = c implies a minus c = b, if b leq a.
---
-
 
 law_Difference_Eq_Monoid_1
     :: (Difference a, Eq a, Monoid a) => a -> Bool
@@ -69,6 +52,10 @@ law_Difference_Eq_Monoid_3
 law_Difference_Eq_Monoid_3 a =
     a `difference` a == mempty
 
+--------------------------------------------------------------------------------
+-- Laws: Difference PartialOrd
+--------------------------------------------------------------------------------
+
 law_Difference_PartialOrd_1
     :: (Difference a, PartialOrd a) => a -> a -> Bool
 law_Difference_PartialOrd_1 a1 a2
@@ -83,6 +70,10 @@ law_Difference_PartialOrd_2 a1 a2
     | a2 `geq` a1 = let a3 = a2 `difference` a1 in a2 `difference` a3 == a1
     | otherwise = True
 
+--------------------------------------------------------------------------------
+-- Laws: Difference PartialOrd Semigroup
+--------------------------------------------------------------------------------
+
 law_Difference_PartialOrd_Semigroup_1
     :: (Difference a, PartialOrd a, Semigroup a) => a -> a -> Bool
 law_Difference_PartialOrd_Semigroup_1 a1 a2 =
@@ -95,12 +86,20 @@ law_Difference_PartialOrd_Semigroup_2 a1 a2
     | a2 `geq` a1 = (a2 `difference` a1) <> a1 == a2
     | otherwise = True
 
+--------------------------------------------------------------------------------
+-- Laws: Difference PartialOrd Monoid
+--------------------------------------------------------------------------------
+
 law_Difference_PartialOrd_Monoid_1
     :: (Difference a, PartialOrd a, Monoid a) => a -> a -> Bool
 law_Difference_PartialOrd_Monoid_1 a1 a2
     | a1 `leq` a2 = a1 `difference` a2 == mempty
     | a2 `leq` a1 = a2 `difference` a1 == mempty
     | otherwise = True
+
+--------------------------------------------------------------------------------
+-- Laws: Difference Ord
+--------------------------------------------------------------------------------
 
 law_Difference_Ord_1
     :: (Difference a, Ord a) => a -> a -> Bool
@@ -116,6 +115,10 @@ law_Difference_Ord_2 a1 a2
     | a2 >= a1 = let a3 = a2 `difference` a1 in a2 `difference` a3 == a1
     | otherwise = True
 
+--------------------------------------------------------------------------------
+-- Laws: Difference Ord Semigroup
+--------------------------------------------------------------------------------
+
 law_Difference_Ord_Semigroup_1
     :: (Difference a, Ord a, Semigroup a) => a -> a -> Bool
 law_Difference_Ord_Semigroup_1 a1 a2 =
@@ -128,6 +131,10 @@ law_Difference_Ord_Semigroup_2 a1 a2
     | a2 >= a1 = (a2 `difference` a1) <> a1 == a2
     | otherwise = True
 
+--------------------------------------------------------------------------------
+-- Laws: Difference Ord Monoid
+--------------------------------------------------------------------------------
+
 law_Difference_Ord_Monoid_1
     :: (Difference a, Ord a, Monoid a) => a -> a -> Bool
 law_Difference_Ord_Monoid_1 a1 a2
@@ -136,21 +143,7 @@ law_Difference_Ord_Monoid_1 a1 a2
     | otherwise = True
 
 --------------------------------------------------------------------------------
--- Instances
---------------------------------------------------------------------------------
-
-instance Difference Natural where
-    n1 `difference` n2
-        | n1 >= n2 = n1 - n2
-        | otherwise = 0
-
-instance Ord a => Difference (Set a) where
-    difference = Set.difference
-
-deriving instance Difference a => Difference (Sum a)
-
---------------------------------------------------------------------------------
--- Testing
+-- Tests
 --------------------------------------------------------------------------------
 
 laws_Difference_Eq_Monoid
@@ -227,6 +220,20 @@ laws_Difference_Ord_Monoid _ = Laws "Difference Ord Monoid"
     [ ( "Difference Ord Monoid #1"
       , property (law_Difference_Ord_Monoid_1 @a))
     ]
+
+--------------------------------------------------------------------------------
+-- Instances
+--------------------------------------------------------------------------------
+
+instance Difference Natural where
+    n1 `difference` n2
+        | n1 >= n2 = n1 - n2
+        | otherwise = 0
+
+instance Ord a => Difference (Set a) where
+    difference = Set.difference
+
+deriving instance Difference a => Difference (Sum a)
 
 --------------------------------------------------------------------------------
 -- Utilities

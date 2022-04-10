@@ -1,3 +1,4 @@
+{-# LANGUAGE DerivingVia #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE TypeApplications #-}
@@ -14,10 +15,11 @@ import Algebra.Difference
     , laws_Difference_PartialOrd
     , laws_Difference_PartialOrd_Semigroup
     , laws_Difference_PartialOrd_Monoid
-    , laws_Difference_Ord
-    , laws_Difference_Ord_Semigroup
-    , laws_Difference_Ord_Monoid
     , )
+import Algebra.Lattice.Ordered
+    ( Ordered (..) )
+import Algebra.PartialOrd
+    ( PartialOrd (..) )
 import Data.Set
     ( Set )
 import Numeric.Natural
@@ -36,9 +38,9 @@ spec =
     parallel $ describe "Class instances obey laws" $ do
         testLawsMany @(Sum Natural)
             [ laws_Difference_Eq_Monoid
-            , laws_Difference_Ord
-            , laws_Difference_Ord_Semigroup
-            , laws_Difference_Ord_Monoid
+            , laws_Difference_PartialOrd
+            , laws_Difference_PartialOrd_Semigroup
+            , laws_Difference_PartialOrd_Monoid
             ]
         testLawsMany @(Set Int)
             [ laws_Difference_Eq_Monoid
@@ -49,6 +51,7 @@ spec =
 
 newtype Sum a = Sum a
     deriving (Arbitrary, Difference, Eq, Ord, Show)
+    deriving PartialOrd via (Ordered a)
 
 instance Monoid (Sum Natural) where
     mempty = Sum 0

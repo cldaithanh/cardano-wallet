@@ -11,6 +11,10 @@ import Algebra.Difference
     ( Difference )
 import Algebra.Equipartition
     ( Equipartition )
+import Algebra.Lattice.Ordered
+    ( Ordered (..) )
+import Algebra.PartialOrd
+    ( PartialOrd )
 import Algebra.Partition
     ( Partition )
 import Algebra.Subtract
@@ -26,6 +30,7 @@ import Quiet
 
 newtype Value = Value {unValue :: Natural}
     deriving (Eq, Generic, Ord)
+    deriving PartialOrd via (Ordered Natural)
     deriving (Read, Show) via (Quiet Value)
     deriving newtype (Difference, Equipartition, Partition, Subtract)
     deriving (Monoid, Semigroup) via (Sum Natural)

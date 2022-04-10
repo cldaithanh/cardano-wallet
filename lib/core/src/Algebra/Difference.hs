@@ -140,9 +140,9 @@ laws_Difference_PartialOrd _ = Laws "Difference PartialOrd"
     toProperty :: (a -> a -> Bool) -> Property
     toProperty fn = property
         $ \a1 a2 -> checkCoverage
-        $ cover 1 (a1 <  a2) "a1 <  a2"
+        $ cover 2 (a1 <  a2) "a1 <  a2"
         $ cover 1 (a1 == a2) "a1 == a2"
-        $ cover 1 (a1 >  a2) "a1 >  a2"
+        $ cover 2 (a1 >  a2) "a1 >  a2"
         $ fn a1 a2
 
 laws_Difference_PartialOrd_Semigroup
@@ -159,9 +159,9 @@ laws_Difference_PartialOrd_Semigroup _ = Laws "Difference PartialOrd Semigroup"
     toProperty :: (a -> a -> Bool) -> Property
     toProperty fn = property
         $ \a1 a2 -> checkCoverage
-        $ cover 1 (a1 <  a2) "a1 <  a2"
+        $ cover 2 (a1 <  a2) "a1 <  a2"
         $ cover 1 (a1 == a2) "a1 == a2"
-        $ cover 1 (a1 >  a2) "a1 >  a2"
+        $ cover 2 (a1 >  a2) "a1 >  a2"
         $ fn a1 a2
 
 laws_Difference_PartialOrd_Monoid
@@ -176,8 +176,8 @@ laws_Difference_PartialOrd_Monoid _ = Laws "Difference PartialOrd Monoid"
     toProperty :: (a -> a -> Bool) -> Property
     toProperty fn = property
         $ \a1 a2 -> checkCoverage
-        $ cover 0.1 (a1 > a2 && a2 /= mempty) "a1 > a2 && a2 /= mempty"
-        $ cover 0.1 (a2 > a1 && a1 /= mempty) "a2 > a1 && a1 /= mempty"
+        $ cover 0.2 (a1 > a2 && a2 /= mempty) "a1 > a2 && a2 /= mempty"
+        $ cover 0.2 (a2 > a1 && a1 /= mempty) "a2 > a1 && a1 /= mempty"
         $ fn a1 a2
 
 --------------------------------------------------------------------------------

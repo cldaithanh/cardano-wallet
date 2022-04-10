@@ -167,6 +167,7 @@ library
       Algebra.Difference
       Algebra.Equipartition
       Algebra.Partition
+      Algebra.SetLike
       Algebra.Subtract
       Cardano.Byron.Codec.Cbor
       Cardano.DB.Sqlite

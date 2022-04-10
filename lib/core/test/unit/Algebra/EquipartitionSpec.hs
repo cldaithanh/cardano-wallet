@@ -39,10 +39,7 @@ import Test.Hspec
 import Test.Hspec.Extra
     ( parallel )
 import Test.Hspec.Unit
-    ( UnitTestData2
-    , unitTestData2
-    , unitTestSpec
-    )
+    ( UnitTestData2, unitTestData2, unitTestSpec )
 import Test.QuickCheck
     ( Arbitrary (..)
     , pattern Fn

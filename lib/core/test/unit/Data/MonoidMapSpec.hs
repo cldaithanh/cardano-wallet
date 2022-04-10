@@ -11,8 +11,8 @@ import Prelude
 import Algebra.Difference
     ( laws_Difference_Eq_Monoid
     , laws_Difference_PartialOrd
-    , laws_Difference_PartialOrd_Semigroup
     , laws_Difference_PartialOrd_Monoid
+    , laws_Difference_PartialOrd_Semigroup
     )
 import Algebra.Equipartition
     ( equipartitionLaws )

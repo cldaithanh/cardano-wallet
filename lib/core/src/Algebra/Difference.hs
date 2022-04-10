@@ -7,7 +7,7 @@ module Algebra.Difference
     where
 
 import Prelude hiding
-    ( (<), (<=), (>=), (>) )
+    ( (<), (<=), (>), (>=) )
 
 import Algebra.Lattice.Ordered
     ( Ordered (..) )

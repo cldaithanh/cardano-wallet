@@ -33,13 +33,6 @@ class Difference a where
     difference :: a -> a -> a
 
 --------------------------------------------------------------------------------
--- Laws
---------------------------------------------------------------------------------
-
--- TODO: When testing laws, also test inherited laws for superclasses, because
--- we can get better coverage.
-
---------------------------------------------------------------------------------
 -- Laws: Difference Eq Monoid
 --------------------------------------------------------------------------------
 
@@ -151,6 +144,9 @@ law_Difference_Ord_Monoid_1 a1 a2
 --------------------------------------------------------------------------------
 -- Tests
 --------------------------------------------------------------------------------
+
+-- TODO: When testing laws, also test inherited laws for superclasses, because
+-- we can get better coverage.
 
 laws_Difference_Eq_Monoid
     :: forall a. (Arbitrary a, Show a, Difference a, Eq a, Monoid a)

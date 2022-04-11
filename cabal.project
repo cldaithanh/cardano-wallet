@@ -48,6 +48,7 @@ packages:
   , lib/cli/
   , lib/launcher/
   , lib/numeric/
+  , lib/primitive-types/
   , lib/text-class/
   , lib/test-utils/
   , lib/shelley/

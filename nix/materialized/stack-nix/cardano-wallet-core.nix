@@ -54,6 +54,7 @@
           (hsPkgs."cardano-ledger-shelley" or (errorHandler.buildDepError "cardano-ledger-shelley"))
           (hsPkgs."cardano-ledger-alonzo" or (errorHandler.buildDepError "cardano-ledger-alonzo"))
           (hsPkgs."cardano-slotting" or (errorHandler.buildDepError "cardano-slotting"))
+          (hsPkgs."cardano-wallet-primitive-types" or (errorHandler.buildDepError "cardano-wallet-primitive-types"))
           (hsPkgs."cborg" or (errorHandler.buildDepError "cborg"))
           (hsPkgs."containers" or (errorHandler.buildDepError "containers"))
           (hsPkgs."contra-tracer" or (errorHandler.buildDepError "contra-tracer"))
@@ -223,14 +224,8 @@
           "Cardano/Wallet/Primitive/Passphrase/Types"
           "Cardano/Wallet/Primitive/Types"
           "Cardano/Wallet/Primitive/Types/Address"
-          "Cardano/Wallet/Primitive/Types/Coin"
-          "Cardano/Wallet/Primitive/Types/Hash"
           "Cardano/Wallet/Primitive/Types/Redeemer"
           "Cardano/Wallet/Primitive/Types/RewardAccount"
-          "Cardano/Wallet/Primitive/Types/TokenBundle"
-          "Cardano/Wallet/Primitive/Types/TokenMap"
-          "Cardano/Wallet/Primitive/Types/TokenPolicy"
-          "Cardano/Wallet/Primitive/Types/TokenQuantity"
           "Cardano/Wallet/Primitive/Types/Tx"
           "Cardano/Wallet/Primitive/Types/UTxO"
           "Cardano/Wallet/Primitive/Types/UTxOIndex"
@@ -250,7 +245,6 @@
           "Data/Function/Utils"
           "Data/Time/Text"
           "Data/Time/Utils"
-          "Data/Quantity"
           "Data/Vector/Shuffle"
           "Network/Ntp"
           "Network/Wai/Middleware/ServerError"
@@ -260,12 +254,7 @@
           "Cardano/Wallet/CoinSelection/Gen"
           "Cardano/Wallet/CoinSelection/Internal/Balance/Gen"
           "Cardano/Wallet/Primitive/Types/Address/Gen"
-          "Cardano/Wallet/Primitive/Types/Coin/Gen"
           "Cardano/Wallet/Primitive/Types/RewardAccount/Gen"
-          "Cardano/Wallet/Primitive/Types/TokenBundle/Gen"
-          "Cardano/Wallet/Primitive/Types/TokenMap/Gen"
-          "Cardano/Wallet/Primitive/Types/TokenPolicy/Gen"
-          "Cardano/Wallet/Primitive/Types/TokenQuantity/Gen"
           "Cardano/Wallet/Primitive/Types/Tx/Gen"
           "Cardano/Wallet/Primitive/Types/UTxO/Gen"
           "Cardano/Wallet/Primitive/Types/UTxOIndex/Gen"
@@ -297,6 +286,7 @@
             (hsPkgs."cardano-ledger-shelley-test" or (errorHandler.buildDepError "cardano-ledger-shelley-test"))
             (hsPkgs."cardano-wallet-core" or (errorHandler.buildDepError "cardano-wallet-core"))
             (hsPkgs."cardano-wallet-launcher" or (errorHandler.buildDepError "cardano-wallet-launcher"))
+            (hsPkgs."cardano-wallet-primitive-types" or (errorHandler.buildDepError "cardano-wallet-primitive-types"))
             (hsPkgs."cardano-wallet-test-utils" or (errorHandler.buildDepError "cardano-wallet-test-utils"))
             (hsPkgs."cardano-sl-x509" or (errorHandler.buildDepError "cardano-sl-x509"))
             (hsPkgs."cardano-slotting" or (errorHandler.buildDepError "cardano-slotting"))
@@ -384,6 +374,8 @@
             ];
           buildable = true;
           modules = [
+            "Cardano/Wallet/Primitive/Types/CoinSpec"
+            "Data/QuantitySpec"
             "Cardano/Api/GenSpec"
             "Cardano/Byron/Codec/CborSpec"
             "Cardano/DB/Sqlite/DeleteSpec"
@@ -434,7 +426,6 @@
             "Cardano/Wallet/Primitive/SlottingSpec"
             "Cardano/Wallet/Primitive/SyncProgressSpec"
             "Cardano/Wallet/Primitive/Types/AddressSpec"
-            "Cardano/Wallet/Primitive/Types/CoinSpec"
             "Cardano/Wallet/Primitive/Types/HashSpec"
             "Cardano/Wallet/Primitive/Types/TokenBundleSpec"
             "Cardano/Wallet/Primitive/Types/TokenMapSpec"
@@ -454,7 +445,6 @@
             "Control/Concurrent/ConciergeSpec"
             "Control/Monad/Random/ExtraSpec"
             "Data/Function/UtilsSpec"
-            "Data/QuantitySpec"
             "Data/Time/TextSpec"
             "Data/Time/UtilsSpec"
             "Data/Vector/ShuffleSpec"

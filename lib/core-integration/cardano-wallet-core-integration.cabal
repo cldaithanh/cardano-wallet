@@ -51,6 +51,7 @@ library
     , cardano-wallet-cli
     , cardano-wallet-core
     , cardano-wallet-launcher
+    , cardano-wallet-primitive-types
     , cardano-wallet-test-utils
     , cborg
     , command

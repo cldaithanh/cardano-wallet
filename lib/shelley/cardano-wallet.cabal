@@ -55,6 +55,7 @@ library
     , cardano-wallet-cli
     , cardano-wallet-core
     , cardano-wallet-launcher
+    , cardano-wallet-primitive-types
     , cardano-wallet-test-utils
     , cborg
     , containers
@@ -135,6 +136,7 @@ executable cardano-wallet
     , cardano-wallet-cli
     , cardano-wallet-core
     , cardano-wallet-launcher
+    , cardano-wallet-primitive-types
     , cardano-wallet
     , contra-tracer
     , iohk-monitoring
@@ -167,6 +169,7 @@ executable local-cluster
     , cardano-wallet-core
     , cardano-wallet-core-integration
     , cardano-wallet-launcher
+    , cardano-wallet-primitive-types
     , cardano-wallet
     , contra-tracer
     , iohk-monitoring
@@ -234,6 +237,7 @@ test-suite unit
     , cardano-wallet
     , cardano-wallet-core
     , cardano-wallet-launcher
+    , cardano-wallet-primitive-types
     , cardano-wallet-test-utils
     , cardano-ledger-shelley-ma
     , cardano-ledger-alonzo
@@ -300,6 +304,7 @@ test-suite integration
     , cardano-wallet-core
     , cardano-wallet-core-integration
     , cardano-wallet-launcher
+    , cardano-wallet-primitive-types
     , cardano-wallet
     , cardano-wallet-test-utils
     , contra-tracer

@@ -22,8 +22,6 @@ module Cardano.Wallet.Primitive.Types.Hash
 
 import Prelude
 
-import Cardano.Wallet.Util
-    ( mapFirst )
 import Control.DeepSeq
     ( NFData (..) )
 import Crypto.Hash
@@ -114,3 +112,11 @@ mockHash = Hash . blake2b256 . B8.pack . show
      blake2b256 :: ByteString -> ByteString
      blake2b256 =
          BA.convert . hash @_ @Blake2b_256
+
+-- | Applies a function to the first element of a list.
+--
+-- Does nothing if the list is empty.
+--
+mapFirst :: (a -> a) -> [a] -> [a]
+mapFirst _     [] = []
+mapFirst fn (h:q) = fn h:q

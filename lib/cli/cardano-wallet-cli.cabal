@@ -37,6 +37,7 @@ library
     , cardano-addresses
     , cardano-addresses-cli
     , cardano-wallet-core
+    , cardano-wallet-primitive-types
     , directory
     , filepath
     , fmt
@@ -69,6 +70,7 @@ test-suite unit
       base
     , cardano-wallet-cli
     , cardano-wallet-core
+    , cardano-wallet-primitive-types
     , cardano-wallet-test-utils
     , containers
     , filepath

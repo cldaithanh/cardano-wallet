@@ -1,0 +1,110 @@
+name:                cardano-wallet-primitive-types
+version:             2022.1.18
+synopsis:            Primitive types for the wallet backend.
+description:         Please see README.md
+homepage:            https://github.com/input-output-hk/cardano-wallet
+author:              IOHK Engineering Team
+maintainer:          operations@iohk.io
+copyright:           2018-2022 IOHK
+license:             Apache-2.0
+category:            Web
+build-type:          Simple
+extra-source-files:  specifications/api/swagger.yaml
+cabal-version:       >=1.10
+
+flag release
+    description: Enable optimization and `-Werror`
+    default: False
+    manual: True
+
+flag scrypt
+    description: Enable compatibility support for legacy wallet passwords.
+    default: True
+
+library
+  default-language:
+      Haskell2010
+  default-extensions:
+      NoImplicitPrelude
+      OverloadedStrings
+  ghc-options:
+      -Wall
+      -Wcompat
+      -fwarn-redundant-constraints
+  if (flag(release))
+    ghc-options: -O2 -Werror
+  if (flag(scrypt))
+    cpp-options: -DHAVE_SCRYPT
+    build-depends: scrypt
+  build-depends:
+      aeson
+    , base
+    , bech32
+    , bech32-th
+    , bytestring
+    , cardano-numeric
+    , cardano-wallet-test-utils
+    , containers
+    , cryptonite
+    , deepseq
+    , fmt
+    , hashable
+    , int-cast
+    , lattices
+    , memory
+    , network-uri
+    , nothunks
+    , QuickCheck
+    , quiet
+    , scientific
+    , strict-non-empty-containers
+    , text
+    , text-class
+  hs-source-dirs:
+      src
+  exposed-modules:
+      Cardano.Wallet.Primitive.Types.Coin
+      Cardano.Wallet.Primitive.Types.Coin.Gen
+      Cardano.Wallet.Primitive.Types.Hash
+      Cardano.Wallet.Primitive.Types.TokenBundle
+      Cardano.Wallet.Primitive.Types.TokenBundle.Gen
+      Cardano.Wallet.Primitive.Types.TokenMap
+      Cardano.Wallet.Primitive.Types.TokenMap.Gen
+      Cardano.Wallet.Primitive.Types.TokenPolicy
+      Cardano.Wallet.Primitive.Types.TokenPolicy.Gen
+      Cardano.Wallet.Primitive.Types.TokenQuantity
+      Cardano.Wallet.Primitive.Types.TokenQuantity.Gen
+      Data.Quantity
+  other-modules:
+      Paths_cardano_wallet_primitive_types
+
+test-suite unit
+  default-language:
+      Haskell2010
+  default-extensions:
+      NoImplicitPrelude
+      OverloadedStrings
+  ghc-options:
+      -threaded -rtsopts
+      -Wall
+      "-with-rtsopts=-M2G"
+      "-with-rtsopts=-N4"
+  if (flag(release))
+    ghc-options: -O2 -Werror
+  build-depends:
+      base
+    , cardano-wallet-primitive-types
+    , hspec >= 2.8.2
+    , hspec-core >= 2.8.2
+  build-tool-depends:
+      hspec-discover:hspec-discover
+  type:
+      exitcode-stdio-1.0
+  hs-source-dirs:
+      test/unit
+  main-is:
+      core-unit-test.hs
+  other-modules:
+      Cardano.Wallet.Primitive.Types.CoinSpec
+      Data.QuantitySpec
+      Spec

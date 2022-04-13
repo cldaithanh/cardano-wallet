@@ -68,7 +68,9 @@ library
     , int-cast
     , io-classes
     , iohk-monitoring
+    , lifted-async
     , memory
+    , monad-control
     , mtl
     , network
     , network-mux
@@ -83,7 +85,11 @@ library
     , ouroboros-network-framework
     , random
     , retry
+    , safe-money
+    , scientific
+    , semialign
     , serialise
+    , servant-client
     , servant-server
     , strict-containers
     , strict-non-empty-containers
@@ -92,6 +98,8 @@ library
     , text-class
     , time
     , transformers
+    , transformers-base
+    , these
     , typed-process
     , unliftio
     , unliftio-core

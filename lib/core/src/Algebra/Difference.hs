@@ -6,13 +6,12 @@
 module Algebra.Difference
     where
 
-import Prelude hiding
-    ( (<), (<=), (>), (>=) )
-
 import Algebra.Lattice.Ordered
     ( Ordered (..) )
 import Algebra.PartialOrd
     ( PartialOrd (..) )
+import Algebra.PartialOrd.Operators
+    ( PartialOrdOperators (..) )
 import Data.Monoid
     ( Sum (..) )
 import Data.Proxy
@@ -21,6 +20,10 @@ import Data.Set
     ( Set )
 import Numeric.Natural
     ( Natural )
+import Prelude hiding
+    ( Ord (..) )
+import Prelude
+    ( Ord )
 import Test.QuickCheck
     ( Arbitrary, Property, checkCoverage, cover, property )
 import Test.QuickCheck.Classes
@@ -189,23 +192,7 @@ instance Difference Natural where
         | Ordered n1 >= Ordered n2 = n1 - n2
         | otherwise = 0
 
-instance Prelude.Ord a => Difference (Set a) where
+instance Ord a => Difference (Set a) where
     difference = Set.difference
 
 deriving instance Difference a => Difference (Sum a)
-
---------------------------------------------------------------------------------
--- Utilities
---------------------------------------------------------------------------------
-
-(<) :: PartialOrd a => a -> a -> Bool
-a1 < a2 = a1 <= a2 && a1 /= a2
-
-(<=) :: PartialOrd a => a -> a -> Bool
-a1 <= a2 = a1 `leq` a2
-
-(>=) :: PartialOrd a => a -> a -> Bool
-a1 >= a2 = a2 `leq` a1
-
-(>) :: PartialOrd a => a -> a -> Bool
-a1 > a2 = a1 >= a2 && a1 /= a2

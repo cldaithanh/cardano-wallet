@@ -3,6 +3,7 @@
 
 module Data.List.AsList
     ( AsList (..)
+    , asList
     ) where
 
 import Data.List.NonEmpty
@@ -16,8 +17,9 @@ class AsList t where
     type Item t
     toList :: t -> [Item t]
     fromList :: [Item t] -> Maybe t
-    asList :: ([Item t] -> [Item t]) -> t -> Maybe t
-    asList f = fromList . f . toList
+
+asList :: AsList t => ([Item t] -> [Item t]) -> t -> Maybe t
+asList f = fromList . f . toList
 
 instance AsList (NonEmpty a) where
     type Item (NonEmpty a) = a

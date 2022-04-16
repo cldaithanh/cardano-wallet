@@ -22,7 +22,7 @@ import Algebra.PartialOrd
 import Control.Monad
     ( (<=<) )
 import Data.List.AsList
-    ( AsList (..) )
+    ( AsList (..), asList )
 import Prelude hiding
     ( Ord (..) )
 import Safe

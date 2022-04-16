@@ -33,6 +33,7 @@ library
     , lattices
     , QuickCheck
     , quickcheck-classes
+    , quiet
     , safe
   hs-source-dirs:
       src
@@ -41,6 +42,7 @@ library
       Algebra.Equipartition
       Algebra.PartialOrd.Instances
       Algebra.PartialOrd.Operators
+      Algebra.PartialOrd.Ordered
       Algebra.Partition
       Algebra.SetLike
       Algebra.Subtract

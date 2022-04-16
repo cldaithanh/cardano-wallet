@@ -1,6 +1,9 @@
 {-# LANGUAGE DerivingVia #-}
+{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TypeApplications #-}
+{-# LANGUAGE ViewPatterns #-}
 {- HLINT ignore "Use camelCase" -}
 
 module Algebra.Difference
@@ -12,6 +15,8 @@ import Algebra.PartialOrd.Instances
     ()
 import Algebra.PartialOrd.Operators
     ( PartialOrdOperators (..) )
+import Algebra.PartialOrd.Ordered
+    ( Ordered, ordered )
 import Data.Monoid
     ( Sum (..) )
 import Data.Proxy
@@ -38,7 +43,6 @@ import qualified Data.Set as Set
 -- Add property:
 --    a >= b => (a `difference` c) >= (b `difference` c)
 
-
 --------------------------------------------------------------------------------
 -- Class
 --------------------------------------------------------------------------------
@@ -62,39 +66,33 @@ law_Difference_Monoid_3 :: Difference a => a -> Bool
 law_Difference_Monoid_3 a =
     a `difference` a == mempty
 
-law_Difference_PartialOrd_1 :: Difference a => a -> a -> Bool
-law_Difference_PartialOrd_1 a1 a2
-    | a1 >= a2 = a1 >= (a1 `difference` a2)
-    | a2 >= a1 = a2 >= (a2 `difference` a1)
-    | otherwise = True
+law_Difference_PartialOrd_Semigroup_1 :: Difference a => (a, a) -> Bool
+law_Difference_PartialOrd_Semigroup_1 (a1, a2) =
+    ((a1 <> a2) `difference` a2) <= a1
 
-law_Difference_PartialOrd_2 :: Difference a => a -> a -> Bool
-law_Difference_PartialOrd_2 a1 a2
-    | a1 >= a2 = a1 `difference` (a1 `difference` a2) == a2
-    | a2 >= a1 = a2 `difference` (a2 `difference` a1) == a1
-    | otherwise = True
+law_Difference_PartialOrd_1 :: Difference a => Ordered (a, a) -> Bool
+law_Difference_PartialOrd_1 (ordered -> (a1, a2)) =
+    (a2 `difference` a1) <= a2
 
-law_Difference_PartialOrd_Semigroup_1 :: Difference a => a -> a -> Bool
-law_Difference_PartialOrd_Semigroup_1 a1 a2 =
-    a1 >= ((a1 <> a2) `difference` a2)
+law_Difference_PartialOrd_2 :: Difference a => Ordered (a, a) -> Bool
+law_Difference_PartialOrd_2 (ordered -> (a1, a2)) =
+    a2 `difference` (a2 `difference` a1) == a1
 
-law_Difference_PartialOrd_Semigroup_2 :: Difference a => a -> a -> Bool
-law_Difference_PartialOrd_Semigroup_2 a1 a2
-    | a1 >= a2 = (a1 `difference` a2) <> a2 == a1
-    | a2 >= a1 = (a2 `difference` a1) <> a1 == a2
-    | otherwise = True
+law_Difference_PartialOrd_Semigroup_2 :: Difference a => Ordered (a, a) -> Bool
+law_Difference_PartialOrd_Semigroup_2 (ordered -> (a1, a2)) =
+    (a2 `difference` a1) <> a1 == a2
 
-law_Difference_PartialOrd_Monoid_1 :: Difference a => a -> a -> Bool
-law_Difference_PartialOrd_Monoid_1 a1 a2
-    | a1 <= a2 = a1 `difference` a2 == mempty
-    | a2 <= a1 = a2 `difference` a1 == mempty
-    | otherwise = True
+law_Difference_PartialOrd_Monoid_1 :: Difference a => Ordered (a, a) -> Bool
+law_Difference_PartialOrd_Monoid_1 (ordered -> (a1, a2)) =
+    a1 `difference` a2 == mempty
 
-law_wibble :: Difference a => a -> a -> a -> Bool
-law_wibble a1 a2 a3
-    | a1 <= a2 = (a1 `difference` a3) <= (a2 `difference` a3)
-    | a1 >= a2 = (a1 `difference` a3) >= (a2 `difference` a3)
-    | otherwise = True
+law_Difference_PartialOrd_Monoid_2 :: Difference a => Ordered (a, a) -> Bool
+law_Difference_PartialOrd_Monoid_2 (ordered -> (a1, a2)) =
+    a2 `difference` a1 >= mempty
+
+law_wibble :: Difference a => Ordered (a, a) -> a -> Bool
+law_wibble (ordered -> (a1, a2)) a3 =
+    (a1 `difference` a3) <= (a2 `difference` a3)
 
 --------------------------------------------------------------------------------
 -- Tests
@@ -106,23 +104,25 @@ differenceLaws
     -> Laws
 differenceLaws _ = Laws "Difference"
     [ ( "Difference Monoid #1"
-      , unaryProperty law_Difference_Monoid_1)
+      , property $ law_Difference_Monoid_1 @a)
     , ( "Difference Monoid #2"
-      , unaryProperty law_Difference_Monoid_2)
+      , property $ law_Difference_Monoid_2 @a)
     , ( "Difference Monoid #3"
-      , unaryProperty law_Difference_Monoid_3)
+      , property $ law_Difference_Monoid_3 @a)
     , ( "Difference PartialOrd #1"
-      , binaryProperty law_Difference_PartialOrd_1)
+      , property $ law_Difference_PartialOrd_1 @a)
     , ( "Difference PartialOrd #2"
-      , binaryProperty law_Difference_PartialOrd_2)
+      , property $ law_Difference_PartialOrd_2 @a)
     , ( "Difference PartialOrd Semigroup #1"
-      , binaryProperty law_Difference_PartialOrd_Semigroup_1)
+      , property $ law_Difference_PartialOrd_Semigroup_1 @a)
     , ( "Difference PartialOrd Semigroup #2"
-      , binaryProperty law_Difference_PartialOrd_Semigroup_2)
+      , property $ law_Difference_PartialOrd_Semigroup_2 @a)
     , ( "Difference PartialOrd Monoid #1"
-      , binaryProperty law_Difference_PartialOrd_Monoid_1)
+      , property $ law_Difference_PartialOrd_Monoid_1 @a)
+    , ( "Difference PartialOrd Monoid #2"
+      , property $ law_Difference_PartialOrd_Monoid_2 @a)
     , ( "Wibble"
-      , ternaryProperty law_wibble)
+      , property $ law_wibble @a)
     ]
   where
     unaryProperty :: (a -> Bool) -> Property

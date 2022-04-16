@@ -11,7 +11,9 @@ module Algebra.PartialOrd.Ordered
 import Algebra.PartialOrd
     ( PartialOrd (..) )
 import Control.Monad
-    ( (<=<) )
+    ( (<=<), guard )
+import Data.Functor
+    ( ($>) )
 import Data.List.AsList
     ( AsList (..), asList )
 import Safe
@@ -32,12 +34,10 @@ instance (Arbitrary t, AsList t, Monoid (Item t), PartialOrd (Item t)) =>
     arbitrary = arbitrary `suchThatMap` buildOrdered
 
 assertOrdered :: (AsList t, PartialOrd (Item t)) => t -> Maybe (Ordered t)
-assertOrdered t
-    | isOrdered t = Just (Ordered t)
-    | otherwise = Nothing
+assertOrdered t = guard (isOrdered t) $> Ordered t
 
 buildOrdered
-    :: (AsList t, Monoid (Item t), PartialOrd (Item t))
+    :: (AsList t, PartialOrd (Item t), Semigroup (Item t))
     => t
     -> Maybe (Ordered t)
 buildOrdered = assertOrdered <=< asList (L.scanl1 (<>))

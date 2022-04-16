@@ -32,23 +32,26 @@ import Test.QuickCheck
 
 import qualified Data.List as L
 
-newtype Ordered f = Ordered {ordered :: f}
+newtype Ordered t = Ordered {ordered :: t}
     deriving newtype (Eq, Show)
 
-instance (Arbitrary t, AsList a t, Monoid a, PartialOrd a) =>
+instance (Arbitrary t, AsList t, Monoid (Item t), PartialOrd (Item t)) =>
     Arbitrary (Ordered t)
   where
     arbitrary = arbitrary `suchThatMap` buildOrdered
 
-assertOrdered :: (AsList a t, PartialOrd a) => t -> Maybe (Ordered t)
+assertOrdered :: (AsList t, PartialOrd (Item t)) => t -> Maybe (Ordered t)
 assertOrdered t
     | isOrdered (toList t) = Just (Ordered t)
     | otherwise = Nothing
 
-buildOrdered :: (AsList a t, Monoid a, PartialOrd a) => t -> Maybe (Ordered t)
+buildOrdered
+    :: (AsList t, Monoid (Item t), PartialOrd (Item t))
+    => t
+    -> Maybe (Ordered t)
 buildOrdered = assertOrdered <=< asList (L.scanl1 (<>))
 
-isOrdered :: (AsList a t, PartialOrd a) => t -> Bool
+isOrdered :: (AsList t, PartialOrd (Item t)) => t -> Bool
 isOrdered = all (uncurry leq) . consecutivePairs . toList
   where
     consecutivePairs :: [a] -> [(a, a)]

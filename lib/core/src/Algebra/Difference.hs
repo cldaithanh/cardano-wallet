@@ -1,6 +1,7 @@
-{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE DerivingVia #-}
+{-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE StandaloneDeriving #-}
+{-# OPTIONS_GHC -fno-warn-orphans #-}
 {- HLINT ignore "Use camelCase" -}
 
 module Algebra.Difference
@@ -30,73 +31,50 @@ import Test.QuickCheck.Classes
     ( Laws (..) )
 
 import qualified Data.Set as Set
+import qualified Prelude
 
 --------------------------------------------------------------------------------
 -- Class
 --------------------------------------------------------------------------------
 
-class Difference a where
+class (Monoid a, PartialOrd a) => Difference a where
     difference :: a -> a -> a
 
---------------------------------------------------------------------------------
--- Laws: Difference Eq Monoid
---------------------------------------------------------------------------------
-
-law_Difference_Eq_Monoid_1
-    :: (Difference a, Eq a, Monoid a) => a -> Bool
-law_Difference_Eq_Monoid_1 a =
+law_Difference_Monoid_1 :: Difference a => a -> Bool
+law_Difference_Monoid_1 a =
     mempty `difference` a == mempty
 
-law_Difference_Eq_Monoid_2
-    :: (Difference a, Eq a, Monoid a) => a -> Bool
-law_Difference_Eq_Monoid_2 a =
+law_Difference_Monoid_2 :: Difference a => a -> Bool
+law_Difference_Monoid_2 a =
     a `difference` mempty == a
 
-law_Difference_Eq_Monoid_3
-    :: (Difference a, Eq a, Monoid a) => a -> Bool
-law_Difference_Eq_Monoid_3 a =
+law_Difference_Monoid_3 :: Difference a => a -> Bool
+law_Difference_Monoid_3 a =
     a `difference` a == mempty
 
---------------------------------------------------------------------------------
--- Laws: Difference PartialOrd
---------------------------------------------------------------------------------
-
-law_Difference_PartialOrd_1
-    :: (Difference a, PartialOrd a) => a -> a -> Bool
+law_Difference_PartialOrd_1 :: Difference a => a -> a -> Bool
 law_Difference_PartialOrd_1 a1 a2
     | a1 >= a2 = a1 >= (a1 `difference` a2)
     | a2 >= a1 = a2 >= (a2 `difference` a1)
     | otherwise = True
 
-law_Difference_PartialOrd_2
-    :: (Difference a, PartialOrd a) => a -> a -> Bool
+law_Difference_PartialOrd_2 :: Difference a => a -> a -> Bool
 law_Difference_PartialOrd_2 a1 a2
     | a1 >= a2 = a1 `difference` (a1 `difference` a2) == a2
     | a2 >= a1 = a2 `difference` (a2 `difference` a1) == a1
     | otherwise = True
 
---------------------------------------------------------------------------------
--- Laws: Difference PartialOrd Semigroup
---------------------------------------------------------------------------------
-
-law_Difference_PartialOrd_Semigroup_1
-    :: (Difference a, PartialOrd a, Semigroup a) => a -> a -> Bool
+law_Difference_PartialOrd_Semigroup_1 :: Difference a => a -> a -> Bool
 law_Difference_PartialOrd_Semigroup_1 a1 a2 =
     a1 >= ((a1 <> a2) `difference` a2)
 
-law_Difference_PartialOrd_Semigroup_2
-    :: (Difference a, PartialOrd a, Semigroup a) => a -> a -> Bool
+law_Difference_PartialOrd_Semigroup_2 :: Difference a => a -> a -> Bool
 law_Difference_PartialOrd_Semigroup_2 a1 a2
     | a1 >= a2 = (a1 `difference` a2) <> a2 == a1
     | a2 >= a1 = (a2 `difference` a1) <> a1 == a2
     | otherwise = True
 
---------------------------------------------------------------------------------
--- Laws: Difference PartialOrd Monoid
---------------------------------------------------------------------------------
-
-law_Difference_PartialOrd_Monoid_1
-    :: (Difference a, PartialOrd a, Monoid a) => a -> a -> Bool
+law_Difference_PartialOrd_Monoid_1 :: Difference a => a -> a -> Bool
 law_Difference_PartialOrd_Monoid_1 a1 a2
     | a1 <= a2 = a1 `difference` a2 == mempty
     | a2 <= a1 = a2 `difference` a1 == mempty
@@ -106,93 +84,56 @@ law_Difference_PartialOrd_Monoid_1 a1 a2
 -- Tests
 --------------------------------------------------------------------------------
 
--- TODO: When testing laws, also test inherited laws for superclasses, because
--- we can get better coverage.
-
-laws_Difference_Eq_Monoid
-    :: forall a. (Arbitrary a, Show a, Difference a, Eq a, Monoid a)
+differenceLaws
+    :: forall a. (Arbitrary a, Show a, Difference a)
     => Proxy a
     -> Laws
-laws_Difference_Eq_Monoid _ = Laws "Difference Eq Monoid"
-    [ ( "Difference Eq Monoid #1"
-      , toProperty law_Difference_Eq_Monoid_1)
-    , ( "Difference Eq Monoid #2"
-      , toProperty law_Difference_Eq_Monoid_2)
-    , ( "Difference Eq Monoid #3"
-      , toProperty law_Difference_Eq_Monoid_3)
+differenceLaws _ = Laws "Difference"
+    [ ( "Difference Monoid #1"
+      , unaryProperty law_Difference_Monoid_1)
+    , ( "Difference Monoid #2"
+      , unaryProperty law_Difference_Monoid_2)
+    , ( "Difference Monoid #3"
+      , unaryProperty law_Difference_Monoid_3)
+    , ( "Difference PartialOrd #1"
+      , binaryProperty law_Difference_PartialOrd_1)
+    , ( "Difference PartialOrd #2"
+      , binaryProperty law_Difference_PartialOrd_2)
+    , ( "Difference PartialOrd Semigroup #1"
+      , binaryProperty law_Difference_PartialOrd_Semigroup_1)
+    , ( "Difference PartialOrd Semigroup #2"
+      , binaryProperty law_Difference_PartialOrd_Semigroup_2)
+    , ( "Difference PartialOrd Monoid #1"
+      , binaryProperty law_Difference_PartialOrd_Monoid_1)
     ]
   where
-    toProperty :: (a -> Bool) -> Property
-    toProperty fn = property
+    unaryProperty :: (a -> Bool) -> Property
+    unaryProperty fn = property
         $ \a -> checkCoverage
         $ cover 1  (a == mempty) "a == mempty"
         $ cover 50 (a /= mempty) "a /= mempty"
         $ fn a
-
-laws_Difference_PartialOrd
-    :: forall a. (Arbitrary a, Show a, Difference a, PartialOrd a)
-    => Proxy a
-    -> Laws
-laws_Difference_PartialOrd _ = Laws "Difference PartialOrd"
-    [ ( "Difference PartialOrd #1"
-      , toProperty law_Difference_PartialOrd_1)
-    , ( "Difference PartialOrd #2"
-      , toProperty law_Difference_PartialOrd_2)
-    ]
-  where
-    toProperty :: (a -> a -> Bool) -> Property
-    toProperty fn = property
+    binaryProperty :: (a -> a -> Bool) -> Property
+    binaryProperty fn = property
         $ \a1 a2 -> checkCoverage
-        $ cover 2 (a1 <  a2) "a1 <  a2"
-        $ cover 1 (a1 == a2) "a1 == a2"
-        $ cover 2 (a1 >  a2) "a1 >  a2"
-        $ fn a1 a2
-
-laws_Difference_PartialOrd_Semigroup
-    :: forall a. (Arbitrary a, Show a, Difference a, PartialOrd a, Semigroup a)
-    => Proxy a
-    -> Laws
-laws_Difference_PartialOrd_Semigroup _ = Laws "Difference PartialOrd Semigroup"
-    [ ( "Difference PartialOrd Semigroup #1"
-      , toProperty law_Difference_PartialOrd_Semigroup_1)
-    , ( "Difference PartialOrd Semigroup #2"
-      , toProperty law_Difference_PartialOrd_Semigroup_2)
-    ]
-  where
-    toProperty :: (a -> a -> Bool) -> Property
-    toProperty fn = property
-        $ \a1 a2 -> checkCoverage
-        $ cover 2 (a1 <  a2) "a1 <  a2"
-        $ cover 1 (a1 == a2) "a1 == a2"
-        $ cover 2 (a1 >  a2) "a1 >  a2"
-        $ fn a1 a2
-
-laws_Difference_PartialOrd_Monoid
-    :: forall a. (Arbitrary a, Show a, Difference a, PartialOrd a, Monoid a)
-    => Proxy a
-    -> Laws
-laws_Difference_PartialOrd_Monoid _ = Laws "Difference PartialOrd Monoid"
-    [ ( "Difference PartialOrd Monoid #1"
-      , toProperty law_Difference_PartialOrd_Monoid_1)
-    ]
-  where
-    toProperty :: (a -> a -> Bool) -> Property
-    toProperty fn = property
-        $ \a1 a2 -> checkCoverage
-        $ cover 0.2 (a1 > a2 && a2 /= mempty) "a1 > a2 && a2 /= mempty"
-        $ cover 0.2 (a2 > a1 && a1 /= mempty) "a2 > a1 && a1 /= mempty"
+        $ cover 2 (a1 <  a2) "a1 < a2"
+        $ cover 1 (a1 == a2) "a1 = a2"
+        $ cover 2 (a1 >  a2) "a1 > a2"
+        $ cover 0.2 (a1 > a2 && a2 > mempty) "a1 > a2 && a2 > mempty"
+        $ cover 0.2 (a2 > a1 && a1 > mempty) "a2 > a1 && a1 > mempty"
         $ fn a1 a2
 
 --------------------------------------------------------------------------------
 -- Instances
 --------------------------------------------------------------------------------
 
-instance Difference Natural where
-    n1 `difference` n2
-        | Ordered n1 >= Ordered n2 = n1 - n2
+instance Difference (Sum Natural) where
+    Sum n1 `difference` Sum n2
+        | Ordered n1 >= Ordered n2 = Sum (n1 - n2)
         | otherwise = 0
+
+instance PartialOrd (Sum Natural) where
+    leq = (Prelude.<=)
 
 instance Ord a => Difference (Set a) where
     difference = Set.difference
-
-deriving instance Difference a => Difference (Sum a)

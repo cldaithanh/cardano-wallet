@@ -30,7 +30,8 @@ import Quiet
 
 newtype Value = Value {unValue :: Natural}
     deriving (Eq, Generic, Ord)
+    deriving Difference via (Sum Natural)
     deriving PartialOrd via (Ordered Natural)
     deriving (Read, Show) via (Quiet Value)
-    deriving newtype (Difference, Equipartition, Partition, Subtract)
+    deriving newtype (Equipartition, Partition, Subtract)
     deriving (Monoid, Semigroup) via (Sum Natural)

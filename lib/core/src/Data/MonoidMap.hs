@@ -97,7 +97,8 @@ newtype Values a = Values
 -- Instances
 --------------------------------------------------------------------------------
 
-instance (Ord k, Difference v, Eq v, Monoid v) => Difference (MonoidMap k v)
+instance (Ord k, Difference v, Eq v, Monoid v, Ord v) =>
+    Difference (MonoidMap k v)
   where
     m1 `difference` m2 = F.foldl' reduce m1 (toList m2)
       where

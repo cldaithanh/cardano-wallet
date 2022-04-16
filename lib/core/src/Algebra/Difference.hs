@@ -38,6 +38,10 @@ import qualified Data.Set as Set
 class (Monoid a, PartialOrd a) => Difference a where
     difference :: a -> a -> a
 
+--------------------------------------------------------------------------------
+-- Laws
+--------------------------------------------------------------------------------
+
 law_Difference_Monoid_1 :: Difference a => a -> Bool
 law_Difference_Monoid_1 a =
     mempty `difference` a == mempty

@@ -54,17 +54,47 @@ class (Monoid a, PartialOrd a) => Difference a where
 -- Laws
 --------------------------------------------------------------------------------
 
-law_Difference_Monoid_1 :: Difference a => a -> Bool
-law_Difference_Monoid_1 a =
+differenceLaw_1 :: Difference a => a -> Bool
+differenceLaw_1 a =
     mempty `difference` a == mempty
 
-law_Difference_Monoid_2 :: Difference a => a -> Bool
-law_Difference_Monoid_2 a =
+differenceLaw_2 :: Difference a => a -> Bool
+differenceLaw_2 a =
     a `difference` mempty == a
 
-law_Difference_Monoid_3 :: Difference a => a -> Bool
-law_Difference_Monoid_3 a =
+differenceLaw_3 :: Difference a => a -> Bool
+differenceLaw_3 a =
     a `difference` a == mempty
+
+differenceLaw_4 :: Difference a => Ordered (a, a) -> Bool
+differenceLaw_4 (ordered -> (a1, a2)) =
+    a1 `difference` a2 == mempty
+
+differenceLaw_6 :: Difference a => Ordered (a, a) -> Bool
+differenceLaw_6 (ordered -> (a1, a2)) =
+    a2 `difference` (a2 `difference` a1) == a1
+
+differenceLaw_7 :: Difference a => Ordered (a, a, a) -> Bool
+differenceLaw_7 (ordered -> (a1, a2, a3)) =
+    (a2 `difference` a1) <= (a3 `difference` a1)
+
+differenceLaw_8 :: Difference a => Ordered (a, a) -> Bool
+differenceLaw_8 (ordered -> (a1, a2)) =
+    a2 `difference` a1 <= a2
+
+differenceLaw_9 :: Difference a => Ordered (a, a) -> Bool
+differenceLaw_9 (ordered -> (a1, a2)) =
+    (a2 `difference` a1) <> a1 == a2
+
+
+
+law_wibble :: Difference a => Ordered (a, a) -> a -> Bool
+law_wibble (ordered -> (a1, a2)) a3 =
+    (a1 `difference` a3) <= (a2 `difference` a3)
+
+differenceLaw_inverse :: Difference a => Ordered (a, a) -> Bool
+differenceLaw_inverse (ordered -> (lo, hi)) =
+    hi `difference` (hi `difference` lo) == lo
 
 law_Difference_PartialOrd_Semigroup_1 :: Difference a => (a, a) -> Bool
 law_Difference_PartialOrd_Semigroup_1 (a1, a2) =
@@ -74,9 +104,7 @@ law_Difference_PartialOrd_1 :: Difference a => Ordered (a, a) -> Bool
 law_Difference_PartialOrd_1 (ordered -> (a1, a2)) =
     (a2 `difference` a1) <= a2
 
-law_Difference_PartialOrd_2 :: Difference a => Ordered (a, a) -> Bool
-law_Difference_PartialOrd_2 (ordered -> (a1, a2)) =
-    a2 `difference` (a2 `difference` a1) == a1
+
 
 law_Difference_PartialOrd_Semigroup_2 :: Difference a => Ordered (a, a) -> Bool
 law_Difference_PartialOrd_Semigroup_2 (ordered -> (a1, a2)) =
@@ -90,9 +118,7 @@ law_Difference_PartialOrd_Monoid_2 :: Difference a => Ordered (a, a) -> Bool
 law_Difference_PartialOrd_Monoid_2 (ordered -> (a1, a2)) =
     a2 `difference` a1 >= mempty
 
-law_wibble :: Difference a => Ordered (a, a) -> a -> Bool
-law_wibble (ordered -> (a1, a2)) a3 =
-    (a1 `difference` a3) <= (a2 `difference` a3)
+
 
 --------------------------------------------------------------------------------
 -- Tests
@@ -103,16 +129,28 @@ differenceLaws
     => Proxy a
     -> Laws
 differenceLaws _ = Laws "Difference"
-    [ ( "Difference Monoid #1"
-      , property $ law_Difference_Monoid_1 @a)
-    , ( "Difference Monoid #2"
-      , property $ law_Difference_Monoid_2 @a)
-    , ( "Difference Monoid #3"
-      , property $ law_Difference_Monoid_3 @a)
+    [ ( "#1"
+      , property $ differenceLaw_1 @a)
+    , ( "#2"
+      , property $ differenceLaw_2 @a)
+    , ( "#3"
+      , property $ differenceLaw_3 @a)
+    , ( "#4"
+      , property $ differenceLaw_4 @a)
+    , ( "#6"
+      , property $ differenceLaw_6 @a)
+    , ( "#7"
+      , property $ differenceLaw_7 @a)
+    , ( "#8"
+      , property $ differenceLaw_8 @a)
+    , ( "#9"
+      , property $ differenceLaw_9 @a)
     , ( "Difference PartialOrd #1"
       , property $ law_Difference_PartialOrd_1 @a)
-    , ( "Difference PartialOrd #2"
-      , property $ law_Difference_PartialOrd_2 @a)
+    , ( "Inverse"
+      , property $ differenceLaw_inverse @a)
+    , ( "Inverse #2"
+      , property $ differenceLaw_6 @a)
     , ( "Difference PartialOrd Semigroup #1"
       , property $ law_Difference_PartialOrd_Semigroup_1 @a)
     , ( "Difference PartialOrd Semigroup #2"

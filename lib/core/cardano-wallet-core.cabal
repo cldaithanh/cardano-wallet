@@ -164,13 +164,6 @@ library
   hs-source-dirs:
       src
   exposed-modules:
-      Algebra.Difference
-      Algebra.Equipartition
-      Algebra.PartialOrd.Instances
-      Algebra.PartialOrd.Operators
-      Algebra.Partition
-      Algebra.SetLike
-      Algebra.Subtract
       Cardano.Byron.Codec.Cbor
       Cardano.DB.Sqlite
       Cardano.DB.Sqlite.Delete
@@ -436,10 +429,6 @@ test-suite unit
   main-is:
       core-unit-test.hs
   other-modules:
-      Algebra.DifferenceSpec
-      Algebra.EquipartitionSpec
-      Algebra.PartitionSpec
-      Algebra.SubtractSpec
       Cardano.Api.GenSpec
       Cardano.Byron.Codec.CborSpec
       Cardano.DB.Sqlite.DeleteSpec

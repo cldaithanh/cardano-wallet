@@ -29,11 +29,21 @@ library
     ghc-options: -O2 -Werror
   build-depends:
       base
+    , containers
     , lattices
+    , QuickCheck
+    , quickcheck-classes
     , safe
   hs-source-dirs:
       src
   exposed-modules:
+      Algebra.Difference
+      Algebra.Equipartition
+      Algebra.PartialOrd.Instances
+      Algebra.PartialOrd.Operators
+      Algebra.Partition
+      Algebra.SetLike
+      Algebra.Subtract
       Cardano.Numeric.Util
 
 test-suite unit
@@ -50,6 +60,8 @@ test-suite unit
   build-depends:
       base
     , cardano-numeric
+    , cardano-wallet-test-utils
+    , containers
     , hspec
     , QuickCheck
   build-tool-depends:
@@ -61,4 +73,8 @@ test-suite unit
   main-is:
       numeric-unit-test.hs
   other-modules:
+      Algebra.DifferenceSpec
+      Algebra.EquipartitionSpec
+      Algebra.PartitionSpec
+      Algebra.SubtractSpec
       Cardano.Numeric.UtilSpec

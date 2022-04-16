@@ -31,6 +31,14 @@ import Test.QuickCheck.Classes
 
 import qualified Data.Set as Set
 
+-- TODO:
+--
+-- Express pre-conditions in laws
+-- Add nullary property (mempty `difference` mempty == mempty)
+-- Add property:
+--    a >= b => (a `difference` c) >= (b `difference` c)
+
+
 --------------------------------------------------------------------------------
 -- Class
 --------------------------------------------------------------------------------
@@ -82,6 +90,12 @@ law_Difference_PartialOrd_Monoid_1 a1 a2
     | a2 <= a1 = a2 `difference` a1 == mempty
     | otherwise = True
 
+law_wibble :: Difference a => a -> a -> a -> Bool
+law_wibble a1 a2 a3
+    | a1 <= a2 = (a1 `difference` a3) <= (a2 `difference` a3)
+    | a1 >= a2 = (a1 `difference` a3) >= (a2 `difference` a3)
+    | otherwise = True
+
 --------------------------------------------------------------------------------
 -- Tests
 --------------------------------------------------------------------------------
@@ -107,6 +121,8 @@ differenceLaws _ = Laws "Difference"
       , binaryProperty law_Difference_PartialOrd_Semigroup_2)
     , ( "Difference PartialOrd Monoid #1"
       , binaryProperty law_Difference_PartialOrd_Monoid_1)
+    , ( "Wibble"
+      , ternaryProperty law_wibble)
     ]
   where
     unaryProperty :: (a -> Bool) -> Property
@@ -124,6 +140,10 @@ differenceLaws _ = Laws "Difference"
         $ cover 0.2 (a1 > a2 && a2 > mempty) "a1 > a2 && a2 > mempty"
         $ cover 0.2 (a2 > a1 && a1 > mempty) "a2 > a1 && a1 > mempty"
         $ fn a1 a2
+    ternaryProperty :: (a -> a -> a -> Bool) -> Property
+    ternaryProperty fn = property
+        $ \a1 a2 a3 -> checkCoverage
+        $ fn a1 a2 a3
 
 --------------------------------------------------------------------------------
 -- Instances

@@ -1,16 +1,7 @@
 {-# LANGUAGE DerivingStrategies #-}
 {-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE FunctionalDependencies #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
-{-# LANGUAGE LambdaCase #-}
-{-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE MultiWayIf #-}
-{-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE StandaloneDeriving #-}
-{-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE UndecidableInstances #-}
-{-# OPTIONS_GHC -fno-warn-orphans #-}
 
 module Algebra.PartialOrd.Ordered
     ( Ordered
@@ -23,12 +14,12 @@ import Control.Monad
     ( (<=<) )
 import Data.List.AsList
     ( AsList (..), asList )
-import Prelude hiding
-    ( Ord (..) )
 import Safe
     ( tailMay )
 import Test.QuickCheck
     ( Arbitrary (..), suchThatMap )
+
+import Prelude
 
 import qualified Data.List as L
 

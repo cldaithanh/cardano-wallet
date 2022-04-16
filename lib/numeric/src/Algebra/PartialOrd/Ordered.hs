@@ -34,7 +34,10 @@ import qualified Data.Foldable as F
 import qualified Data.List as L
 import qualified Data.List.NonEmpty as NE
 
-newtype Ordered f = Ordered {ordered :: f}
+newtype Ordered f = Ordered {
+    -- we keep the unordered version so we can shrink
+    -- unordered :: f
+    ordered :: f}
     deriving newtype (Eq, Show)
 
 class MaybeOrdered f where
@@ -98,11 +101,12 @@ mapMaybeOrdered :: (a -> Maybe b) -> Ordered a -> Maybe (Ordered b)
 mapMaybeOrdered f = fmap Ordered . f . ordered
 
 maybeOrderedList :: PartialOrd a => [a] -> Maybe [a]
-maybeOrderedList as
-    | isOrdered result = Just result
+maybeOrderedList unsorted
+    | isOrdered unsorted = Just unsorted
+    | isOrdered   sorted = Just   sorted
     | otherwise = Nothing
   where
-    result = flip L.sortBy as $ \a1 a2 -> if
+    sorted = flip L.sortBy unsorted $ \a1 a2 -> if
         | a1 <  a2  -> LT
         | a1 == a2  -> EQ
         | otherwise -> GT

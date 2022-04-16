@@ -33,7 +33,7 @@ instance (Arbitrary t, AsList t, Monoid (Item t), PartialOrd (Item t)) =>
 
 assertOrdered :: (AsList t, PartialOrd (Item t)) => t -> Maybe (Ordered t)
 assertOrdered t
-    | isOrdered (toList t) = Just (Ordered t)
+    | isOrdered t = Just (Ordered t)
     | otherwise = Nothing
 
 buildOrdered

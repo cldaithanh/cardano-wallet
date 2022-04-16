@@ -166,6 +166,7 @@ library
   exposed-modules:
       Algebra.Difference
       Algebra.Equipartition
+      Algebra.PartialOrd.Instances
       Algebra.PartialOrd.Operators
       Algebra.Partition
       Algebra.SetLike

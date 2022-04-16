@@ -1,16 +1,15 @@
 {-# LANGUAGE DerivingVia #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE ScopedTypeVariables #-}
-{-# OPTIONS_GHC -fno-warn-orphans #-}
 {- HLINT ignore "Use camelCase" -}
 
 module Algebra.Difference
     where
 
-import Algebra.Lattice.Ordered
-    ( Ordered (..) )
 import Algebra.PartialOrd
     ( PartialOrd (..) )
+import Algebra.PartialOrd.Instances
+    ()
 import Algebra.PartialOrd.Operators
     ( PartialOrdOperators (..) )
 import Data.Monoid
@@ -31,7 +30,6 @@ import Test.QuickCheck.Classes
     ( Laws (..) )
 
 import qualified Data.Set as Set
-import qualified Prelude
 
 --------------------------------------------------------------------------------
 -- Class
@@ -129,11 +127,8 @@ differenceLaws _ = Laws "Difference"
 
 instance Difference (Sum Natural) where
     Sum n1 `difference` Sum n2
-        | Ordered n1 >= Ordered n2 = Sum (n1 - n2)
+        | n1 >= n2 = Sum (n1 - n2)
         | otherwise = 0
-
-instance PartialOrd (Sum Natural) where
-    leq = (Prelude.<=)
 
 instance Ord a => Difference (Set a) where
     difference = Set.difference

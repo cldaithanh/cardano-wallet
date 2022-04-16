@@ -43,6 +43,7 @@ library
       Algebra.PartialOrd.Instances
       Algebra.PartialOrd.Operators
       Algebra.PartialOrd.Ordered
+      Algebra.PartialOrd.Ordered.Internal
       Algebra.Partition
       Algebra.SetLike
       Algebra.Subtract

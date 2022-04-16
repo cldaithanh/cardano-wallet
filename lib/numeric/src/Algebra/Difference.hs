@@ -86,7 +86,8 @@ differenceLaw_9 :: Difference a => Ordered (a, a) -> Bool
 differenceLaw_9 (ordered -> (a1, a2)) =
     (a2 `difference` a1) <> a1 == a2
 
-
+--
+--
 
 law_wibble :: Difference a => Ordered (a, a) -> a -> Bool
 law_wibble (ordered -> (a1, a2)) a3 =

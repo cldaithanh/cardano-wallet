@@ -58,82 +58,45 @@ class (Monoid a, PartialOrd a) => Difference a where
 -- Laws
 --------------------------------------------------------------------------------
 
-differenceLaw_1 :: Difference a => a -> Bool
-differenceLaw_1 a =
+differenceLaw_empty_1 :: Difference a => a -> Bool
+differenceLaw_empty_1 a =
     mempty `difference` a == mempty
 
-differenceLaw_2 :: Difference a => a -> Bool
-differenceLaw_2 a =
+differenceLaw_empty_2 :: Difference a => a -> Bool
+differenceLaw_empty_2 a =
     a `difference` mempty == a
 
-differenceLaw_3 :: Difference a => a -> Bool
-differenceLaw_3 a =
+differenceLaw_empty_3 :: Difference a => a -> Bool
+differenceLaw_empty_3 a =
     a `difference` a == mempty
 
-differenceLaw_10 :: Difference a => (a, a) -> Bool
-differenceLaw_10 (a1, a2) =
-    a1 `difference` (a1 `difference` a2) == a2 `difference` (a2 `difference` a1)
-
-differenceLaw_4 :: Difference a => Ordered (a, a) -> Bool
-differenceLaw_4 (ordered -> (a1, a2)) =
+differenceLaw_inequality_1 :: Difference a => Ordered (a, a) -> Bool
+differenceLaw_inequality_1 (ordered -> (a1, a2)) =
     a1 `difference` a2 == mempty
 
-differenceLaw_8 :: Difference a => Ordered (a, a) -> Bool
-differenceLaw_8 (ordered -> (a1, a2)) =
+differenceLaw_inequality_2 :: Difference a => Ordered (a, a) -> Bool
+differenceLaw_inequality_2 (ordered -> (a1, a2)) =
     a2 `difference` a1 <= a2
 
-differenceLaw_9 :: Difference a => Ordered (a, a) -> Bool
-differenceLaw_9 (ordered -> (a1, a2)) =
-    (a2 `difference` a1) <> a1 == a2
-
-differenceLaw_6 :: Difference a => Ordered (a, a) -> Bool
-differenceLaw_6 (ordered -> (a1, a2)) =
-    a2 `difference` (a2 `difference` a1) == a1
-
-differenceLaw_7 :: Difference a => Ordered (a, a, a) -> Bool
-differenceLaw_7 (ordered -> (a1, a2, a3)) =
+differenceLaw_inequality_3 :: Difference a => Ordered (a, a, a) -> Bool
+differenceLaw_inequality_3 (ordered -> (a1, a2, a3)) =
     (a2 `difference` a1) <= (a3 `difference` a1)
 
-differenceLaw_5 :: Difference a => Ordered (a, a, a) -> Bool
-differenceLaw_5 (ordered -> (a1, a2, a3)) =
+differenceLaw_distribution :: Difference a => Ordered (a, a, a) -> Bool
+differenceLaw_distribution (ordered -> (a1, a2, a3)) =
     (a3 `difference` a2) `difference` a1 == a3 `difference` (a2 <> a1)
 
-
-
---
---
-
-law_wibble :: Difference a => Ordered (a, a) -> a -> Bool
-law_wibble (ordered -> (a1, a2)) a3 =
-    (a1 `difference` a3) <= (a2 `difference` a3)
-
-differenceLaw_inverse :: Difference a => Ordered (a, a) -> Bool
-differenceLaw_inverse (ordered -> (lo, hi)) =
-    hi `difference` (hi `difference` lo) == lo
-
-law_Difference_PartialOrd_Semigroup_1 :: Difference a => (a, a) -> Bool
-law_Difference_PartialOrd_Semigroup_1 (a1, a2) =
-    ((a1 <> a2) `difference` a2) <= a1
-
-law_Difference_PartialOrd_1 :: Difference a => Ordered (a, a) -> Bool
-law_Difference_PartialOrd_1 (ordered -> (a1, a2)) =
-    (a2 `difference` a1) <= a2
-
-
-
-law_Difference_PartialOrd_Semigroup_2 :: Difference a => Ordered (a, a) -> Bool
-law_Difference_PartialOrd_Semigroup_2 (ordered -> (a1, a2)) =
+differenceLaw_identity :: Difference a => Ordered (a, a) -> Bool
+differenceLaw_identity (ordered -> (a1, a2)) =
     (a2 `difference` a1) <> a1 == a2
 
-law_Difference_PartialOrd_Monoid_1 :: Difference a => Ordered (a, a) -> Bool
-law_Difference_PartialOrd_Monoid_1 (ordered -> (a1, a2)) =
-    a1 `difference` a2 == mempty
+differenceLaw_inversion :: Difference a => Ordered (a, a) -> Bool
+differenceLaw_inversion (ordered -> (a1, a2)) =
+    a2 `difference` (a2 `difference` a1) == a1
 
-law_Difference_PartialOrd_Monoid_2 :: Difference a => Ordered (a, a) -> Bool
-law_Difference_PartialOrd_Monoid_2 (ordered -> (a1, a2)) =
-    a2 `difference` a1 >= mempty
-
-
+differenceLaw_symmetry :: Difference a => (a, a) -> Bool
+differenceLaw_symmetry (a1, a2) =
+    a1 `difference` (a1 `difference` a2) == a2 `difference` (a2 `difference` a1)
 
 --------------------------------------------------------------------------------
 -- Tests
@@ -144,44 +107,30 @@ differenceLaws
     => Proxy a
     -> Laws
 differenceLaws _ = Laws "Difference"
-    [ ( "#1"
-      , property $ differenceLaw_1 @a)
-    , ( "#2"
-      , property $ differenceLaw_2 @a)
-    , ( "#3"
-      , property $ differenceLaw_3 @a)
-    , ( "#4"
-      , property $ differenceLaw_4 @a)
-    , ( "#5"
-      , property $ differenceLaw_5 @a)
-    , ( "#6"
-      , property $ differenceLaw_6 @a)
-    , ( "#7"
-      , property $ differenceLaw_7 @a)
-    , ( "#8"
-      , property $ differenceLaw_8 @a)
-    , ( "#9"
-      , property $ differenceLaw_9 @a)
-    , ( "#10"
-      , property $ differenceLaw_10 @a)
-    , ( "Difference PartialOrd #1"
-      , property $ law_Difference_PartialOrd_1 @a)
-    , ( "Inverse"
-      , property $ differenceLaw_inverse @a)
-    , ( "Inverse #2"
-      , property $ differenceLaw_6 @a)
-    , ( "Difference PartialOrd Semigroup #1"
-      , property $ law_Difference_PartialOrd_Semigroup_1 @a)
-    , ( "Difference PartialOrd Semigroup #2"
-      , property $ law_Difference_PartialOrd_Semigroup_2 @a)
-    , ( "Difference PartialOrd Monoid #1"
-      , property $ law_Difference_PartialOrd_Monoid_1 @a)
-    , ( "Difference PartialOrd Monoid #2"
-      , property $ law_Difference_PartialOrd_Monoid_2 @a)
-    , ( "Wibble"
-      , property $ law_wibble @a)
+    [ makeLaw "Empty #1"
+        (property $ differenceLaw_empty_1 @a)
+    , makeLaw "Empty #2"
+        (property $ differenceLaw_empty_2 @a)
+    , makeLaw "Empty #3"
+        (property $ differenceLaw_empty_3 @a)
+    , makeLaw "Inequality #1"
+        (property $ differenceLaw_inequality_1 @a)
+    , makeLaw "Inequality #2"
+        (property $ differenceLaw_inequality_2 @a)
+    , makeLaw "Inequality #3"
+        (property $ differenceLaw_inequality_3 @a)
+    , makeLaw "Distribution"
+        (property $ differenceLaw_distribution @a)
+    , makeLaw "Identity"
+        (property $ differenceLaw_identity @a)
+    , makeLaw "Inversion"
+        (property $ differenceLaw_inversion @a)
+    , makeLaw "Symmetry"
+        (property $ differenceLaw_symmetry @a)
     ]
   where
+    makeLaw title law = (title, law)
+
     unaryProperty :: (a -> Bool) -> Property
     unaryProperty fn = property
         $ \a -> checkCoverage

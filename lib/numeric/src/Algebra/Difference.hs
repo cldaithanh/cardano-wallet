@@ -90,7 +90,9 @@ differenceLaw_5 :: Difference a => Ordered (a, a, a) -> Bool
 differenceLaw_5 (ordered -> (a1, a2, a3)) =
     (a3 `difference` a2) `difference` a1 == a3 `difference` (a2 <> a1)
 
-
+differenceLaw_10 :: Difference a => (a, a) -> Bool
+differenceLaw_10 (a1, a2) =
+    a1 `difference` (a1 `difference` a2) == a2 `difference` (a2 `difference` a1)
 
 --
 --
@@ -154,6 +156,8 @@ differenceLaws _ = Laws "Difference"
       , property $ differenceLaw_8 @a)
     , ( "#9"
       , property $ differenceLaw_9 @a)
+    , ( "#10"
+      , property $ differenceLaw_10 @a)
     , ( "Difference PartialOrd #1"
       , property $ law_Difference_PartialOrd_1 @a)
     , ( "Inverse"

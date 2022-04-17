@@ -78,6 +78,8 @@ import Test.QuickCheck.Quid
     ( Hexadecimal (..), Quid, Size (..) )
 import Test.Utils.Laws
     ( testLawsMany )
+import Test.Utils.Laws.PartialOrd
+    ( partialOrdLaws )
 
 import qualified Cardano.Wallet.Primitive.Types.TokenBundle as TokenBundle
 import qualified Cardano.Wallet.Primitive.Types.UTxOIndex.Internal as UTxOIndex
@@ -93,6 +95,7 @@ spec =
     parallel $ describe "Class instances obey laws" $ do
         testLawsMany @(UTxOIndex TestUTxO)
             [ eqLaws
+            , partialOrdLaws
             ]
 
     parallel $ describe

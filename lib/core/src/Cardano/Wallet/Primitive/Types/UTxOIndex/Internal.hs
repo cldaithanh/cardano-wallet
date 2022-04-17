@@ -106,6 +106,8 @@ module Cardano.Wallet.Primitive.Types.UTxOIndex.Internal
 import Prelude hiding
     ( filter, lookup, null )
 
+import Algebra.PartialOrd
+    ( PartialOrd (..) )
 import Cardano.Wallet.Primitive.Types.TokenBundle
     ( TokenBundle )
 import Cardano.Wallet.Primitive.Types.TokenMap
@@ -195,6 +197,9 @@ data UTxOIndex u = UTxOIndex
     deriving (Eq, Generic, Read, Show)
 
 instance NFData u => NFData (UTxOIndex u)
+
+instance Ord u => PartialOrd (UTxOIndex u) where
+    i1 `leq` i2 = universe i1 `Map.isSubmapOf` universe i2
 
 --------------------------------------------------------------------------------
 -- Construction

@@ -1,6 +1,7 @@
 {-# LANGUAGE DerivingVia #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE ViewPatterns #-}
@@ -17,6 +18,8 @@ import Algebra.PartialOrd.Operators
     ( PartialOrdOperators (..) )
 import Algebra.PartialOrd.Ordered
     ( Ordered, ordered )
+import Data.Map.Strict
+    ( Map )
 import Data.Monoid
     ( Sum (..) )
 import Data.Proxy
@@ -34,6 +37,7 @@ import Test.QuickCheck
 import Test.QuickCheck.Classes
     ( Laws (..) )
 
+import qualified Data.Map.Strict as Map
 import qualified Data.Set as Set
 
 -- TODO:
@@ -66,6 +70,10 @@ differenceLaw_3 :: Difference a => a -> Bool
 differenceLaw_3 a =
     a `difference` a == mempty
 
+differenceLaw_10 :: Difference a => (a, a) -> Bool
+differenceLaw_10 (a1, a2) =
+    a1 `difference` (a1 `difference` a2) == a2 `difference` (a2 `difference` a1)
+
 differenceLaw_4 :: Difference a => Ordered (a, a) -> Bool
 differenceLaw_4 (ordered -> (a1, a2)) =
     a1 `difference` a2 == mempty
@@ -90,9 +98,7 @@ differenceLaw_5 :: Difference a => Ordered (a, a, a) -> Bool
 differenceLaw_5 (ordered -> (a1, a2, a3)) =
     (a3 `difference` a2) `difference` a1 == a3 `difference` (a2 <> a1)
 
-differenceLaw_10 :: Difference a => (a, a) -> Bool
-differenceLaw_10 (a1, a2) =
-    a1 `difference` (a1 `difference` a2) == a2 `difference` (a2 `difference` a1)
+
 
 --
 --
@@ -207,3 +213,20 @@ instance Difference (Sum Natural) where
 
 instance Ord a => Difference (Set a) where
     difference = Set.difference
+
+newtype SetDifference a = SetDifference a
+    deriving (Eq, Semigroup, Monoid)
+
+instance (Ord k, Eq v) => PartialOrd (SetDifference (Map k v)) where
+    SetDifference m1 `leq` SetDifference m2 =
+        m1 `Map.isSubmapOf` m2
+
+instance (Ord k, Ord v) => Difference (SetDifference (Map k v)) where
+    SetDifference m1 `difference` SetDifference m2 = SetDifference $
+        setToMap (mapToSet m1 `difference` mapToSet m2)
+      where
+        mapToSet :: Map k v -> Set (k, v)
+        mapToSet = Set.fromList . Map.toList
+
+        setToMap :: Set (k, v) -> Map k v
+        setToMap = Map.fromList . Set.toList

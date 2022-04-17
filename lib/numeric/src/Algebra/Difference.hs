@@ -66,14 +66,6 @@ differenceLaw_3 :: Difference a => a -> Bool
 differenceLaw_3 a =
     a `difference` a == mempty
 
-differenceLaw_6 :: Difference a => Ordered (a, a) -> Bool
-differenceLaw_6 (ordered -> (a1, a2)) =
-    a2 `difference` (a2 `difference` a1) == a1
-
-differenceLaw_9 :: Difference a => Ordered (a, a) -> Bool
-differenceLaw_9 (ordered -> (a1, a2)) =
-    (a2 `difference` a1) <> a1 == a2
-
 differenceLaw_4 :: Difference a => Ordered (a, a) -> Bool
 differenceLaw_4 (ordered -> (a1, a2)) =
     a1 `difference` a2 == mempty
@@ -82,13 +74,23 @@ differenceLaw_8 :: Difference a => Ordered (a, a) -> Bool
 differenceLaw_8 (ordered -> (a1, a2)) =
     a2 `difference` a1 <= a2
 
-differenceLaw_5 :: Difference a => Ordered (a, a, a) -> Bool
-differenceLaw_5 (ordered -> (a1, a2, a3)) =
-    (a3 `difference` a2) `difference` a1 == a3 `difference` (a2 <> a1)
+differenceLaw_9 :: Difference a => Ordered (a, a) -> Bool
+differenceLaw_9 (ordered -> (a1, a2)) =
+    (a2 `difference` a1) <> a1 == a2
+
+differenceLaw_6 :: Difference a => Ordered (a, a) -> Bool
+differenceLaw_6 (ordered -> (a1, a2)) =
+    a2 `difference` (a2 `difference` a1) == a1
 
 differenceLaw_7 :: Difference a => Ordered (a, a, a) -> Bool
 differenceLaw_7 (ordered -> (a1, a2, a3)) =
     (a2 `difference` a1) <= (a3 `difference` a1)
+
+differenceLaw_5 :: Difference a => Ordered (a, a, a) -> Bool
+differenceLaw_5 (ordered -> (a1, a2, a3)) =
+    (a3 `difference` a2) `difference` a1 == a3 `difference` (a2 <> a1)
+
+
 
 --
 --

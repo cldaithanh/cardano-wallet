@@ -23,7 +23,7 @@ module Algebra.PartialOrd.Ordered
 import Algebra.PartialOrd
     ( PartialOrd (..) )
 import Control.Monad
-    ( (<=<), guard )
+    ( guard, (<=<) )
 import Data.Functor
     ( ($>) )
 import Data.List.AsList

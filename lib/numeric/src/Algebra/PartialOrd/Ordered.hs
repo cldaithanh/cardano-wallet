@@ -10,7 +10,7 @@ module Algebra.PartialOrd.Ordered
       Ordered
     , ordered
 
-    -- * Asserting that structures are ordered.
+    -- * Verifying that structures are ordered.
     , MaybeOrdered
     , asOrdered
     , isOrdered
@@ -53,7 +53,7 @@ newtype Ordered t = Ordered {ordered :: t}
     deriving newtype (Eq, Show)
 
 --------------------------------------------------------------------------------
--- Asserting that structures are ordered.
+-- Verifying that structures are ordered.
 --------------------------------------------------------------------------------
 
 type MaybeOrdered t = (AsList t, PartialOrd (Item t))

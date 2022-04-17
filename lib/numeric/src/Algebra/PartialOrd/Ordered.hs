@@ -29,7 +29,7 @@ import Data.Functor
 import Data.List.AsList
     ( AsList (..), asList )
 import Data.Maybe
-    ( catMaybes )
+    ( mapMaybe )
 import Safe
     ( tailMay )
 import Test.QuickCheck
@@ -104,4 +104,4 @@ buildOrdered = asOrdered <=< asList (L.scanl1 (<>))
 
 instance (Arbitrary t, BuildOrdered t) => Arbitrary (Ordered t) where
     arbitrary = arbitrary `suchThatMap` buildOrdered
-    shrink = catMaybes . fmap asOrdered . shrink . ordered
+    shrink = mapMaybe asOrdered . shrink . ordered

@@ -82,6 +82,10 @@ differenceLaw_8 :: Difference a => Ordered (a, a) -> Bool
 differenceLaw_8 (ordered -> (a1, a2)) =
     a2 `difference` a1 <= a2
 
+differenceLaw_5 :: Difference a => Ordered (a, a, a) -> Bool
+differenceLaw_5 (ordered -> (a1, a2, a3)) =
+    (a3 `difference` a2) `difference` a1 == a3 `difference` (a2 <> a1)
+
 differenceLaw_7 :: Difference a => Ordered (a, a, a) -> Bool
 differenceLaw_7 (ordered -> (a1, a2, a3)) =
     (a2 `difference` a1) <= (a3 `difference` a1)
@@ -138,6 +142,8 @@ differenceLaws _ = Laws "Difference"
       , property $ differenceLaw_3 @a)
     , ( "#4"
       , property $ differenceLaw_4 @a)
+    , ( "#5"
+      , property $ differenceLaw_5 @a)
     , ( "#6"
       , property $ differenceLaw_6 @a)
     , ( "#7"

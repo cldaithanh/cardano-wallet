@@ -1,5 +1,6 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE OverloadedLabels #-}
+{-# LANGUAGE TypeApplications #-}
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 {- HLINT ignore "Use camelCase" -}
 
@@ -9,6 +10,8 @@ module Cardano.Wallet.Primitive.Types.UTxOSpec
 
 import Prelude
 
+import Algebra.Difference
+    ( differenceLaws )
 import Cardano.Wallet.Primitive.Types.Address
     ( Address (..) )
 import Cardano.Wallet.Primitive.Types.Address.Gen
@@ -51,6 +54,10 @@ import Test.QuickCheck
     , property
     , (===)
     )
+import Test.Utils.Laws
+    ( testLawsMany )
+import Test.Utils.Laws.PartialOrd
+    ( partialOrdLaws )
 
 import qualified Cardano.Wallet.Primitive.Types.UTxO as UTxO
 import qualified Data.List as L
@@ -60,6 +67,12 @@ import qualified Data.Set as Set
 spec :: Spec
 spec =
     describe "Cardano.Wallet.Primitive.Types.UTxOSpec" $ do
+
+    parallel $ describe "Class instances obey laws" $ do
+        testLawsMany @UTxO
+            [ differenceLaws
+            , partialOrdLaws
+            ]
 
     parallel $ describe "delta encoding" $ do
         it "DeltaUTXO is a semigroup compatible with `apply`" $

@@ -1,5 +1,5 @@
 {-# LANGUAGE DeriveGeneric #-}
-{-# LANGUAGE DerivingStrategies #-}
+{-# LANGUAGE DerivingVia #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE OverloadedLabels #-}
@@ -57,6 +57,10 @@ module Cardano.Wallet.Primitive.Types.UTxO
 import Prelude hiding
     ( filter, lookup, null )
 
+import Algebra.Difference
+    ( Difference (..), SetDifference (..) )
+import Algebra.PartialOrd
+    ( PartialOrd (..) )
 import Cardano.Wallet.Primitive.Types.Address
     ( Address )
 import Cardano.Wallet.Primitive.Types.TokenBundle
@@ -101,6 +105,7 @@ import qualified Data.Set as Set
 newtype UTxO = UTxO { unUTxO :: Map TxIn TxOut }
     deriving stock (Show, Generic, Eq, Ord)
     deriving newtype (Semigroup, Monoid)
+    deriving (Difference, PartialOrd) via (SetDifference (Map TxIn TxOut))
 
 instance NFData UTxO
 
@@ -127,9 +132,6 @@ balance =
   where
     fn :: TokenBundle -> TxOut -> TokenBundle
     fn tot out = tot `TB.add` view #tokens out
-
-difference :: UTxO -> UTxO -> UTxO
-difference a b = a `excluding` Map.keysSet (unUTxO b)
 
 -- | Indicates whether a pair of UTxO sets are disjoint.
 --

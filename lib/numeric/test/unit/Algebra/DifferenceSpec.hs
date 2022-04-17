@@ -21,7 +21,7 @@ import Test.Hspec
 import Test.Hspec.Extra
     ( parallel )
 import Test.QuickCheck
-    ( Arbitrary (..), arbitrarySizedIntegral )
+    ( Arbitrary (..), arbitrarySizedNatural, shrinkIntegral )
 import Test.Utils.Laws
     ( testLawsMany )
 
@@ -36,4 +36,5 @@ spec =
             ]
 
 instance Arbitrary Natural where
-    arbitrary = fromIntegral . abs <$> arbitrarySizedIntegral @Int
+    arbitrary = arbitrarySizedNatural
+    shrink = shrinkIntegral

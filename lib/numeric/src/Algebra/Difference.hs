@@ -3,7 +3,6 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE ViewPatterns #-}
 {- HLINT ignore "Use camelCase" -}
 
@@ -18,6 +17,8 @@ import Algebra.PartialOrd.Operators
     ( PartialOrdOperators (..) )
 import Algebra.PartialOrd.Ordered
     ( Ordered, ordered )
+import Data.Function
+    ( (&) )
 import Data.Map.Strict
     ( Map )
 import Data.Monoid
@@ -39,13 +40,6 @@ import Test.QuickCheck.Classes
 
 import qualified Data.Map.Strict as Map
 import qualified Data.Set as Set
-
--- TODO:
---
--- Express pre-conditions in laws
--- Add nullary property (mempty `difference` mempty == mempty)
--- Add property:
---    a >= b => (a `difference` c) >= (b `difference` c)
 
 --------------------------------------------------------------------------------
 -- Class
@@ -99,7 +93,7 @@ differenceLaw_symmetry (a1, a2) =
     a1 `difference` (a1 `difference` a2) == a2 `difference` (a2 `difference` a1)
 
 --------------------------------------------------------------------------------
--- Tests
+-- Test support
 --------------------------------------------------------------------------------
 
 differenceLaws
@@ -108,48 +102,56 @@ differenceLaws
     -> Laws
 differenceLaws _ = Laws "Difference"
     [ makeLaw "Empty #1"
-        (property $ differenceLaw_empty_1 @a)
+        $ makeProperty1 differenceLaw_empty_1
     , makeLaw "Empty #2"
-        (property $ differenceLaw_empty_2 @a)
+        $ makeProperty1 differenceLaw_empty_2
     , makeLaw "Empty #3"
-        (property $ differenceLaw_empty_3 @a)
+        $ makeProperty1 differenceLaw_empty_3
     , makeLaw "Inequality #1"
-        (property $ differenceLaw_inequality_1 @a)
+        $ makePropertyOrdered2 differenceLaw_inequality_1
     , makeLaw "Inequality #2"
-        (property $ differenceLaw_inequality_2 @a)
+        $ makePropertyOrdered2 differenceLaw_inequality_2
     , makeLaw "Inequality #3"
-        (property $ differenceLaw_inequality_3 @a)
+        $ makePropertyOrdered3 differenceLaw_inequality_3
     , makeLaw "Distribution"
-        (property $ differenceLaw_distribution @a)
+        $ makePropertyOrdered3 differenceLaw_distribution
     , makeLaw "Identity"
-        (property $ differenceLaw_identity @a)
+        $ makePropertyOrdered2 differenceLaw_identity
     , makeLaw "Inversion"
-        (property $ differenceLaw_inversion @a)
+        $ makePropertyOrdered2 differenceLaw_inversion
     , makeLaw "Symmetry"
-        (property $ differenceLaw_symmetry @a)
+        $ makeProperty2 differenceLaw_symmetry
     ]
   where
-    makeLaw title law = (title, law)
+    makeLaw :: String -> Property -> (String, Property)
+    makeLaw title p = (title, checkCoverage p)
 
-    unaryProperty :: (a -> Bool) -> Property
-    unaryProperty fn = property
-        $ \a -> checkCoverage
-        $ cover 1  (a == mempty) "a == mempty"
-        $ cover 50 (a /= mempty) "a /= mempty"
-        $ fn a
-    binaryProperty :: (a -> a -> Bool) -> Property
-    binaryProperty fn = property
-        $ \a1 a2 -> checkCoverage
-        $ cover 2 (a1 <  a2) "a1 < a2"
-        $ cover 1 (a1 == a2) "a1 = a2"
-        $ cover 2 (a1 >  a2) "a1 > a2"
-        $ cover 0.2 (a1 > a2 && a2 > mempty) "a1 > a2 && a2 > mempty"
-        $ cover 0.2 (a2 > a1 && a1 > mempty) "a2 > a1 && a1 > mempty"
-        $ fn a1 a2
-    ternaryProperty :: (a -> a -> a -> Bool) -> Property
-    ternaryProperty fn = property
-        $ \a1 a2 a3 -> checkCoverage
-        $ fn a1 a2 a3
+    makeProperty1 :: (a -> Bool) -> Property
+    makeProperty1 fn = property
+        $ \a -> fn a
+        & cover 1  (a == mempty) "a == mempty"
+        & cover 50 (a /= mempty) "a /= mempty"
+
+    makeProperty2 :: ((a, a) -> Bool) -> Property
+    makeProperty2 fn = property
+        $ \(a1, a2) -> fn (a1, a2)
+        & cover 50
+            (a1 /= mempty && a2 /= mempty)
+            "a1 /= mempty && a2 /= mempty"
+
+    makePropertyOrdered2 :: (Ordered (a, a) -> Bool) -> Property
+    makePropertyOrdered2 fn = property
+        $ \t@(ordered -> (a1, a2)) -> fn t
+        & cover 50
+            (a1 /= mempty && a2 /= mempty)
+            "a1 /= mempty && a2 /= mempty"
+
+    makePropertyOrdered3 :: (Ordered (a, a, a) -> Bool) -> Property
+    makePropertyOrdered3 fn = property
+        $ \t@(ordered -> (a1, a2, a3)) -> fn t
+        & cover 50
+            (a1 /= mempty && a2 /= mempty && a3 /= mempty)
+            "a1 /= mempty && a2 /= mempty && a3 /= mempty"
 
 --------------------------------------------------------------------------------
 -- Instances

@@ -16,6 +16,8 @@ module Cardano.Wallet.Shelley.CompatibilitySpec
 
 import Prelude
 
+import Algebra.Difference
+    ( Difference (..) )
 import Cardano.Address.Derivation
     ( XPrv, XPub )
 import Cardano.Address.Script
@@ -430,7 +432,7 @@ prop_assessTokenBundleSize_shrink
     -> Property
 prop_assessTokenBundleSize_shrink b1' b2' maxSize =
     assess b1 == TokenBundleSizeWithinLimit ==> conjoin
-        [ assess (b1 `TokenBundle.difference` b2)
+        [ assess (b1 `difference` b2)
             === TokenBundleSizeWithinLimit
         , assess (b1 `TokenBundle.setCoin` txOutMinCoin)
             === TokenBundleSizeWithinLimit

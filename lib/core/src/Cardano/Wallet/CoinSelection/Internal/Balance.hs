@@ -125,6 +125,8 @@ module Cardano.Wallet.CoinSelection.Internal.Balance
 
 import Prelude
 
+import Algebra.Difference
+    ( Difference (..) )
 import Algebra.PartialOrd
     ( PartialOrd (..) )
 import Cardano.Numeric.Util
@@ -344,7 +346,7 @@ data UTxOBalanceSufficiencyInfo = UTxOBalanceSufficiencyInfo
       -- ^ See 'computeUTxOBalanceAvailable'.
     , required :: TokenBundle
       -- ^ See 'computeUTxOBalanceRequired'.
-    , difference :: TokenBundle
+    , difference' :: TokenBundle
       -- ^ The difference between 'available' and 'required'.
     , sufficiency :: UTxOBalanceSufficiency
       -- ^ Whether or not the balance is sufficient.
@@ -386,9 +388,9 @@ computeDeficitInOut params =
     (deficitIn, deficitOut)
   where
     deficitIn =
-        TokenBundle.difference balanceOut balanceIn
+        difference balanceOut balanceIn
     deficitOut =
-        TokenBundle.difference balanceIn balanceOut
+        difference balanceIn balanceOut
     (balanceIn, balanceOut) =
         computeBalanceInOut params
 
@@ -407,7 +409,7 @@ computeUTxOBalanceSufficiency = sufficiency . computeUTxOBalanceSufficiencyInfo
 computeUTxOBalanceSufficiencyInfo
     :: Foldable f => SelectionParamsOf f ctx -> UTxOBalanceSufficiencyInfo
 computeUTxOBalanceSufficiencyInfo params =
-    UTxOBalanceSufficiencyInfo {available, required, difference, sufficiency}
+    UTxOBalanceSufficiencyInfo {available, required, difference', sufficiency}
   where
     available = computeUTxOBalanceAvailable params
     required = computeUTxOBalanceRequired params
@@ -415,10 +417,10 @@ computeUTxOBalanceSufficiencyInfo params =
         if required `leq` available
         then UTxOBalanceSufficient
         else UTxOBalanceInsufficient
-    difference =
+    difference' =
         if sufficiency == UTxOBalanceSufficient
-        then TokenBundle.difference available required
-        else TokenBundle.difference required available
+        then difference available required
+        else difference required available
 
 -- | Indicates whether or not the UTxO balance is sufficient.
 --
@@ -567,9 +569,9 @@ selectionDeltaAllAssets
     :: Foldable f => SelectionResultOf f ctx -> SelectionDelta TokenBundle
 selectionDeltaAllAssets result
     | balanceOut `leq` balanceIn =
-        SelectionSurplus $ TokenBundle.difference balanceIn balanceOut
+        SelectionSurplus $ difference balanceIn balanceOut
     | otherwise =
-        SelectionDeficit $ TokenBundle.difference balanceOut balanceIn
+        SelectionDeficit $ difference balanceOut balanceIn
   where
     balanceIn =
         TokenBundle.fromTokenMap assetsToMint
@@ -734,7 +736,7 @@ data BalanceInsufficientError = BalanceInsufficientError
 -- | Calculate the missing balance from a @BalanceInsufficientError@.
 balanceMissing :: BalanceInsufficientError -> TokenBundle
 balanceMissing (BalanceInsufficientError available required) =
-    TokenBundle.difference required available
+    difference required available
 
 -- | Indicates that a particular output does not have the minimum coin quantity
 --   expected by the protocol.

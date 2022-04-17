@@ -41,7 +41,6 @@ module Cardano.Wallet.Primitive.Types.TokenBundle
     -- * Arithmetic
     , add
     , subtract
-    , difference
 
     -- * Quantities
     , getQuantity
@@ -66,6 +65,8 @@ module Cardano.Wallet.Primitive.Types.TokenBundle
 import Prelude hiding
     ( subtract )
 
+import Algebra.Difference
+    ( Difference (..) )
 import Algebra.PartialOrd
     ( PartialOrd (..) )
 import Cardano.Wallet.Primitive.Types.Coin
@@ -134,6 +135,12 @@ data TokenBundle = TokenBundle
 instance TypeError ('Text "Ord not supported for token bundles")
         => Ord TokenBundle where
     compare = error "Ord not supported for token bundles"
+
+instance Difference TokenBundle where
+    TokenBundle c1 m1 `difference` TokenBundle c2 m2 =
+        TokenBundle
+            (Coin.difference c1 c2)
+            (TokenMap.difference m1 m2)
 
 instance PartialOrd TokenBundle where
     b1 `leq` b2 = (&&)
@@ -273,30 +280,6 @@ add (TokenBundle (Coin c1) m1) (TokenBundle (Coin c2) m2) =
 --
 subtract :: TokenBundle -> TokenBundle -> Maybe TokenBundle
 subtract a b = guard (b `leq` a) $> unsafeSubtract a b
-
--- | Analogous to @Set.difference@, return the difference between two token
--- maps.
---
--- The following property holds:
--- prop> x `leq` (x `difference` y) `add` y
---
--- Note that there's a `leq` rather than equality, which we'd expect if this was
--- subtraction of integers. I.e.
---
--- >>> (0 - 1) + 1
--- 0
---
--- whereas
---
--- >>> let oneToken = fromFlatList coin [(aid, TokenQuantity 1)]
--- >>> (mempty `difference` oneToken) `add` oneToken
--- oneToken
---
-difference :: TokenBundle -> TokenBundle -> TokenBundle
-difference (TokenBundle c1 m1) (TokenBundle c2 m2) =
-    TokenBundle
-        (Coin.difference c1 c2)
-        (TokenMap.difference m1 m2)
 
 --------------------------------------------------------------------------------
 -- Quantities

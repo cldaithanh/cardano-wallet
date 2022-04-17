@@ -1009,8 +1009,8 @@ prop_performSelection mockConstraints params coverage =
             (utxoBalanceRequired == errorBalanceRequired)
             "utxoBalanceRequired == errorBalanceRequired" $
         verify
-            (balanceMissing e == view #difference utxoBalanceSufficiencyInfo)
-            "balanceMissing e == view #difference utxoBalanceSufficiencyInfo" $
+            (balanceMissing e == view #difference' utxoBalanceSufficiencyInfo)
+            "balanceMissing e == view #difference' utxoBalanceSufficiencyInfo" $
         property True
       where
         BalanceInsufficientError errorBalanceAvailable errorBalanceRequired = e

@@ -48,49 +48,52 @@ import qualified Data.Set as Set
 class (Monoid a, PartialOrd a) => Difference a where
     difference :: a -> a -> a
 
+(<\>) :: Difference a => a -> a -> a
+(<\>) = difference
+
 --------------------------------------------------------------------------------
 -- Laws
 --------------------------------------------------------------------------------
 
 differenceLaw_empty_1 :: Difference a => a -> Bool
 differenceLaw_empty_1 a =
-    mempty `difference` a == mempty
+    mempty <\> a == mempty
 
 differenceLaw_empty_2 :: Difference a => a -> Bool
 differenceLaw_empty_2 a =
-    a `difference` mempty == a
+    a <\> mempty == a
 
 differenceLaw_empty_3 :: Difference a => a -> Bool
 differenceLaw_empty_3 a =
-    a `difference` a == mempty
+    a <\> a == mempty
 
 differenceLaw_inequality_1 :: Difference a => Ordered (a, a) -> Bool
 differenceLaw_inequality_1 (ordered -> (a1, a2)) =
-    a1 `difference` a2 == mempty
+    a1 <\> a2 == mempty
 
 differenceLaw_inequality_2 :: Difference a => Ordered (a, a) -> Bool
 differenceLaw_inequality_2 (ordered -> (a1, a2)) =
-    a2 `difference` a1 <= a2
+    a2 <\> a1 <= a2
 
 differenceLaw_inequality_3 :: Difference a => Ordered (a, a, a) -> Bool
 differenceLaw_inequality_3 (ordered -> (a1, a2, a3)) =
-    (a2 `difference` a1) <= (a3 `difference` a1)
+    (a2 <\> a1) <= (a3 <\> a1)
 
 differenceLaw_distribution :: Difference a => Ordered (a, a, a) -> Bool
 differenceLaw_distribution (ordered -> (a1, a2, a3)) =
-    (a3 `difference` a2) `difference` a1 == a3 `difference` (a2 <> a1)
+    (a3 <\> a2) <\> a1 == a3 <\> (a2 <> a1)
 
 differenceLaw_identity :: Difference a => Ordered (a, a) -> Bool
 differenceLaw_identity (ordered -> (a1, a2)) =
-    (a2 `difference` a1) <> a1 == a2
+    (a2 <\> a1) <> a1 == a2
 
 differenceLaw_inversion :: Difference a => Ordered (a, a) -> Bool
 differenceLaw_inversion (ordered -> (a1, a2)) =
-    a2 `difference` (a2 `difference` a1) == a1
+    a2 <\> (a2 <\> a1) == a1
 
 differenceLaw_symmetry :: Difference a => (a, a) -> Bool
 differenceLaw_symmetry (a1, a2) =
-    a1 `difference` (a1 `difference` a2) == a2 `difference` (a2 `difference` a1)
+    a1 <\> (a1 <\> a2) == a2 <\> (a2 <\> a1)
 
 --------------------------------------------------------------------------------
 -- Test support
@@ -174,7 +177,7 @@ instance (Ord k, Eq v) => PartialOrd (SetDifference (Map k v)) where
 
 instance (Ord k, Ord v) => Difference (SetDifference (Map k v)) where
     SetDifference m1 `difference` SetDifference m2 = SetDifference $
-        setToMap (mapToSet m1 `difference` mapToSet m2)
+        setToMap (mapToSet m1 <\> mapToSet m2)
       where
         mapToSet :: Map k v -> Set (k, v)
         mapToSet = Set.fromList . Map.toList

@@ -51,25 +51,56 @@ class (Monoid a, PartialOrd a) => Difference a where
 (<\>) :: Difference a => a -> a -> a
 (<\>) = difference
 
+zero :: Difference a => a
+zero = mempty
+
 --------------------------------------------------------------------------------
--- Laws
+-- Fundamental laws
+--------------------------------------------------------------------------------
+
+differenceLaw_d1 :: Difference a => a -> Bool
+differenceLaw_d1 a =
+    a <\> zero == a
+
+differenceLaw_d2 :: Difference a => (a, a) -> Bool
+differenceLaw_d2 (a, b) =
+    (a <\> (b <\> a)) <\> a == zero
+
+differenceLaw_d3 :: Difference a => (a, a) -> Bool
+differenceLaw_d3 (a, b) =
+    a <\> ((a <\> b) <\> (b <\> a)) == b <\> ((b <\> a) <\> (a <\> b))
+
+differenceLaw_d4 :: Difference a => (a, a, a) -> Bool
+differenceLaw_d4 (a, b, c) =
+    (a <\> b) <\> (c <\> b) == (a <\> c) <\> (b <\> c)
+
+differenceLaw_d5_1 :: Difference a => (a, a) -> Bool
+differenceLaw_d5_1 (a, b) =
+    a <\> (a <\> b) == (b <\> (b <\> a)) <\> ((b <\> a) <\> b)
+
+differenceLaw_d5_2 :: Difference a => (a, a) -> Bool
+differenceLaw_d5_2 (a, b) =
+    (a <\> b) <\> a == ((b <\> a) <\> b) <\> (b <\> (b <\> a))
+
+--------------------------------------------------------------------------------
+-- Additional laws
 --------------------------------------------------------------------------------
 
 differenceLaw_empty_1 :: Difference a => a -> Bool
 differenceLaw_empty_1 a =
-    mempty <\> a == mempty
+    zero <\> a == zero
 
 differenceLaw_empty_2 :: Difference a => a -> Bool
 differenceLaw_empty_2 a =
-    a <\> mempty == a
+    a <\> zero == a
 
 differenceLaw_empty_3 :: Difference a => a -> Bool
 differenceLaw_empty_3 a =
-    a <\> a == mempty
+    a <\> a == zero
 
 differenceLaw_inequality_1 :: Difference a => Ordered (a, a) -> Bool
 differenceLaw_inequality_1 (ordered -> (a1, a2)) =
-    a1 <\> a2 == mempty
+    a1 <\> a2 == zero
 
 differenceLaw_inequality_2 :: Difference a => Ordered (a, a) -> Bool
 differenceLaw_inequality_2 (ordered -> (a1, a2)) =
@@ -104,7 +135,21 @@ differenceLaws
     => Proxy a
     -> Laws
 differenceLaws _ = Laws "Difference"
-    [ makeLaw "Empty #1"
+    [ makeLaw "d1"
+        $ makeProperty1 differenceLaw_d1
+    , makeLaw "d2"
+        $ makeProperty2 differenceLaw_d2
+    , makeLaw "d3"
+        $ makeProperty2 differenceLaw_d3
+    , makeLaw "d4"
+        $ makeProperty3 differenceLaw_d4
+    , makeLaw "d5_1"
+        $ makeProperty2 differenceLaw_d5_1
+    , makeLaw "d5_2"
+        $ makeProperty2 differenceLaw_d5_2
+
+
+    , makeLaw "Empty #1"
         $ makeProperty1 differenceLaw_empty_1
     , makeLaw "Empty #2"
         $ makeProperty1 differenceLaw_empty_2
@@ -132,29 +177,36 @@ differenceLaws _ = Laws "Difference"
     makeProperty1 :: (a -> Bool) -> Property
     makeProperty1 fn = property
         $ \a -> fn a
-        & cover 1  (a == mempty) "a == mempty"
-        & cover 50 (a /= mempty) "a /= mempty"
+        & cover 1  (a == zero) "a == zero"
+        & cover 50 (a /= zero) "a /= zero"
 
     makeProperty2 :: ((a, a) -> Bool) -> Property
     makeProperty2 fn = property
         $ \(a1, a2) -> fn (a1, a2)
         & cover 50
-            (a1 /= mempty && a2 /= mempty)
-            "a1 /= mempty && a2 /= mempty"
+            (a1 /= zero && a2 /= zero)
+            "a1 /= zero && a2 /= zero"
+
+    makeProperty3 :: ((a, a, a) -> Bool) -> Property
+    makeProperty3 fn = property
+        $ \(a1, a2, a3) -> fn (a1, a2, a3)
+        & cover 50
+            (a1 /= zero && a2 /= zero && a3 /= zero)
+            "a1 /= zero && a2 /= zero && a3 /= zero"
 
     makePropertyOrdered2 :: (Ordered (a, a) -> Bool) -> Property
     makePropertyOrdered2 fn = property
         $ \t@(ordered -> (a1, a2)) -> fn t
         & cover 50
-            (a1 /= mempty && a2 /= mempty)
-            "a1 /= mempty && a2 /= mempty"
+            (a1 /= zero && a2 /= zero)
+            "a1 /= zero && a2 /= zero"
 
     makePropertyOrdered3 :: (Ordered (a, a, a) -> Bool) -> Property
     makePropertyOrdered3 fn = property
         $ \t@(ordered -> (a1, a2, a3)) -> fn t
         & cover 50
-            (a1 /= mempty && a2 /= mempty && a3 /= mempty)
-            "a1 /= mempty && a2 /= mempty && a3 /= mempty"
+            (a1 /= zero && a2 /= zero && a3 /= zero)
+            "a1 /= zero && a2 /= zero && a3 /= zero"
 
 --------------------------------------------------------------------------------
 -- Instances

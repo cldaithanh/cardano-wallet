@@ -152,7 +152,7 @@ import Cardano.Wallet.Primitive.Types.Address
 import Cardano.Wallet.Primitive.Types.Coin
     ( Coin (..) )
 import Cardano.Wallet.Primitive.Types.Coin.Gen
-    ( genCoin, genCoinPositive, shrinkCoin, shrinkCoinPositive )
+    ( genCoin, shrinkCoin )
 import Cardano.Wallet.Primitive.Types.Hash
     ( Hash (..), mockHash )
 import Cardano.Wallet.Primitive.Types.Redeemer
@@ -1811,8 +1811,8 @@ instance Arbitrary (Hash "Tx") where
 -- transactions.
 --
 instance Arbitrary Coin where
-    arbitrary = genCoinPositive
-    shrink = shrinkCoinPositive
+    arbitrary = genCoin
+    shrink = shrinkCoin
 
 instance Arbitrary TxOut where
     arbitrary =
@@ -2473,20 +2473,6 @@ instance Arbitrary FeePolicy where
         LinearFee . uncurry LinearFunction
             <$> shrink (intercept, slope)
 
-newtype TxBalanceSurplus a = TxBalanceSurplus {unTxBalanceSurplus :: a}
-    deriving (Eq, Show)
-
-instance Arbitrary (TxBalanceSurplus Coin) where
-    -- We want to test cases where the surplus is zero. So it's important that
-    -- we do not restrict ourselves to positive coins here.
-    arbitrary = TxBalanceSurplus <$> frequency
-        [ (8, genCoin)
-        , (4, genCoin & scale (* (2 `power`  4)))
-        , (2, genCoin & scale (* (2 `power`  8)))
-        , (1, genCoin & scale (* (2 `power` 16)))
-        ]
-    shrink = shrinkMapBy TxBalanceSurplus unTxBalanceSurplus shrinkCoin
-
 instance Arbitrary (TxFeeAndChange [TxOut]) where
     arbitrary = do
         fee <- genCoin
@@ -2513,7 +2499,7 @@ prop_distributeSurplus_onSuccess
         -> TxFeeAndChange [TxOut]
         -> prop)
     -> FeePolicy
-    -> TxBalanceSurplus Coin
+    -> Coin
     -> TxFeeAndChange [TxOut]
     -> Property
 prop_distributeSurplus_onSuccess propertyToTest policy txSurplus fc =
@@ -2553,7 +2539,7 @@ prop_distributeSurplus_onSuccess propertyToTest policy txSurplus fc =
         (property . propertyToTest policy surplus fc)
         mResult
   where
-    TxBalanceSurplus surplus = txSurplus
+    surplus = txSurplus
     TxFeeAndChange feeOriginal changeOriginal = fc
 
     mResult :: Either ErrMoreSurplusNeeded (TxFeeAndChange [TxOut])
@@ -2564,7 +2550,7 @@ prop_distributeSurplus_onSuccess propertyToTest policy txSurplus fc =
 -- to the given surplus.
 --
 prop_distributeSurplus_onSuccess_conservesSurplus
-    :: FeePolicy -> TxBalanceSurplus Coin -> TxFeeAndChange [TxOut] -> Property
+    :: FeePolicy -> Coin -> TxFeeAndChange [TxOut] -> Property
 prop_distributeSurplus_onSuccess_conservesSurplus =
     prop_distributeSurplus_onSuccess $ \_policy surplus
         (TxFeeAndChange feeOriginal changeOriginal)
@@ -2580,7 +2566,7 @@ prop_distributeSurplus_onSuccess_conservesSurplus =
 -- fee value should have increased by at least 𝛿c.
 --
 prop_distributeSurplus_onSuccess_coversCostIncrease
-    :: FeePolicy -> TxBalanceSurplus Coin -> TxFeeAndChange [TxOut] -> Property
+    :: FeePolicy -> Coin -> TxFeeAndChange [TxOut] -> Property
 prop_distributeSurplus_onSuccess_coversCostIncrease =
     prop_distributeSurplus_onSuccess $ \policy _surplus
         (TxFeeAndChange feeOriginal changeOriginal)
@@ -2601,7 +2587,7 @@ prop_distributeSurplus_onSuccess_coversCostIncrease =
 -- decrease.
 --
 prop_distributeSurplus_onSuccess_doesNotReduceChangeCoinValues
-    :: FeePolicy -> TxBalanceSurplus Coin -> TxFeeAndChange [TxOut] -> Property
+    :: FeePolicy -> Coin -> TxFeeAndChange [TxOut] -> Property
 prop_distributeSurplus_onSuccess_doesNotReduceChangeCoinValues =
     prop_distributeSurplus_onSuccess $ \_policy _surplus
         (TxFeeAndChange _feeOriginal changeOriginal)
@@ -2614,7 +2600,7 @@ prop_distributeSurplus_onSuccess_doesNotReduceChangeCoinValues =
 -- less than the original value.
 --
 prop_distributeSurplus_onSuccess_doesNotReduceFeeValue
-    :: FeePolicy -> TxBalanceSurplus Coin -> TxFeeAndChange [TxOut] -> Property
+    :: FeePolicy -> Coin -> TxFeeAndChange [TxOut] -> Property
 prop_distributeSurplus_onSuccess_doesNotReduceFeeValue =
     prop_distributeSurplus_onSuccess $ \_policy _surplus
         (TxFeeAndChange feeOriginal _changeOriginal)
@@ -2626,7 +2612,7 @@ prop_distributeSurplus_onSuccess_doesNotReduceFeeValue =
 -- destroy change outputs.
 --
 prop_distributeSurplus_onSuccess_preservesChangeLength
-    :: FeePolicy -> TxBalanceSurplus Coin -> TxFeeAndChange [TxOut] -> Property
+    :: FeePolicy -> Coin -> TxFeeAndChange [TxOut] -> Property
 prop_distributeSurplus_onSuccess_preservesChangeLength =
     prop_distributeSurplus_onSuccess $ \_policy _surplus
         (TxFeeAndChange _feeOriginal changeOriginal)
@@ -2637,7 +2623,7 @@ prop_distributeSurplus_onSuccess_preservesChangeLength =
 -- outputs.
 --
 prop_distributeSurplus_onSuccess_preservesChangeAddresses
-    :: FeePolicy -> TxBalanceSurplus Coin -> TxFeeAndChange [TxOut] -> Property
+    :: FeePolicy -> Coin -> TxFeeAndChange [TxOut] -> Property
 prop_distributeSurplus_onSuccess_preservesChangeAddresses =
     prop_distributeSurplus_onSuccess $ \_policy _surplus
         (TxFeeAndChange _feeOriginal changeOriginal)
@@ -2649,7 +2635,7 @@ prop_distributeSurplus_onSuccess_preservesChangeAddresses =
 -- assets.
 --
 prop_distributeSurplus_onSuccess_preservesChangeNonAdaAssets
-    :: FeePolicy -> TxBalanceSurplus Coin -> TxFeeAndChange [TxOut] -> Property
+    :: FeePolicy -> Coin -> TxFeeAndChange [TxOut] -> Property
 prop_distributeSurplus_onSuccess_preservesChangeNonAdaAssets =
     prop_distributeSurplus_onSuccess $ \_policy _surplus
         (TxFeeAndChange _feeOriginal changeOriginal)
@@ -2670,7 +2656,7 @@ prop_distributeSurplus_onSuccess_preservesChangeNonAdaAssets =
 -- value, as expected.
 --
 prop_distributeSurplus_onSuccess_onlyAdjustsFirstChangeValue
-    :: FeePolicy -> TxBalanceSurplus Coin -> TxFeeAndChange [TxOut] -> Property
+    :: FeePolicy -> Coin -> TxFeeAndChange [TxOut] -> Property
 prop_distributeSurplus_onSuccess_onlyAdjustsFirstChangeValue =
     prop_distributeSurplus_onSuccess $ \_policy _surplus
         (TxFeeAndChange _feeOriginal changeOriginal)
@@ -2688,7 +2674,7 @@ prop_distributeSurplus_onSuccess_onlyAdjustsFirstChangeValue =
 -- original fee and change values.
 --
 prop_distributeSurplus_onSuccess_increasesValuesByDelta
-    :: FeePolicy -> TxBalanceSurplus Coin -> TxFeeAndChange [TxOut] -> Property
+    :: FeePolicy -> Coin -> TxFeeAndChange [TxOut] -> Property
 prop_distributeSurplus_onSuccess_increasesValuesByDelta =
     prop_distributeSurplus_onSuccess $ \policy surplus
         (TxFeeAndChange feeOriginal changeOriginal)

@@ -1089,9 +1089,10 @@ txHistoryFromEntity
     -> [(TxIn, Maybe (TxOut, [TxOutToken]))]
     -> [(TxCollateral, Maybe (TxOut, [TxOutToken]))]
     -> [(TxOut, [TxOutToken])]
+    -> [(TxOut, [TxOutToken])]
     -> [TxWithdrawal]
     -> m [W.TransactionInfo]
-txHistoryFromEntity ti tip metas ins cins outs ws =
+txHistoryFromEntity ti tip metas ins cins outs couts ws =
     mapM mkItem metas
   where
     startTime' = interpretQuery ti . slotToUTCTime
@@ -1111,6 +1112,8 @@ txHistoryFromEntity ti tip metas ins cins outs ws =
             , W.txInfoCollateral =
                 map mkTxCollateral $
                 filter ((== txid) . txCollateralTxId . fst) cins
+            , W.txInfoCollateralChangeOutputs =
+                map mkTxOut $ filter ((== txid) . txOutputTxId . fst) couts
             , W.txInfoInputs =
                 map mkTxIn $ filter ((== txid) . txInputTxId . fst) ins
             , W.txInfoOutputs =

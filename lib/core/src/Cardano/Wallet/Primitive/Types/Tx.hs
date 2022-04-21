@@ -727,6 +727,8 @@ data TransactionInfo = TransactionInfo
     -- ^ Explicit transaction fee
     , txInfoCollateral :: ![(TxIn, Coin, Maybe TxOut)]
     -- ^ Collateral inputs and (maybe) corresponding outputs.
+    , txInfoCollateralChangeOutputs :: ![TxOut]
+    -- ^ Specifies outputs that get created if a transaction script fails.
     , txInfoInputs :: ![(TxIn, Coin, Maybe TxOut)]
     -- ^ Transaction inputs and (maybe) corresponding outputs of the
     -- source. Source information can only be provided for outgoing payments.

@@ -127,11 +127,10 @@ instance (Ord k, Monoid v, PartialOrd v, Reductive v) =>
 instance (Ord k, Monoid v, Monus v, PartialOrd v, Reductive v) =>
     OverlappingGCDMonoid (MonoidMap k v)
   where
-    overlap m1 m2 = fromList $
-        (\k -> (k, overlapOfKey k)) <$> F.toList (keys m1 <> keys m2)
+    overlap m1 m2 = fromList $ overlapOfKey <$> F.toList (keys m1 <> keys m2)
       where
-        overlapOfKey :: k -> v
-        overlapOfKey k = (m1 `get` k) `overlap` (m2 `get` k)
+        overlapOfKey :: k -> (k, v)
+        overlapOfKey k = (k, (m1 `get` k) `overlap` (m2 `get` k))
 
     stripOverlap m1 m2 = (m1 <\> m2, m1 `overlap` m2, m2 <\> m1)
 

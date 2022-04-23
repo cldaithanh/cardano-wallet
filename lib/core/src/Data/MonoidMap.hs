@@ -57,6 +57,10 @@ import Data.List.NonEmpty
     ( NonEmpty )
 import Data.Map.Strict
     ( Map )
+import Data.Monoid.Monus
+    ( Monus (..), OverlappingGCDMonoid (..) )
+import Data.Semigroup.Cancellative
+    ( RightCancellative, LeftCancellative, Cancellative, Commutative, LeftReductive (..), Reductive (..), RightReductive (..) )
 import Data.Set
     ( Set )
 import GHC.Exts
@@ -97,7 +101,58 @@ newtype Values a = Values
 -- Instances
 --------------------------------------------------------------------------------
 
-instance (Ord k, Difference v, Eq v, Monoid v, Ord v) =>
+instance (Ord k, Eq v, Monoid v) =>
+    Commutative (MonoidMap k v)
+
+instance (Ord k, Monoid v, PartialOrd v, Reductive v) =>
+    LeftReductive (MonoidMap k v)
+  where
+    m1 `isPrefixOf` m2 = m1 `leq` m2
+    stripPrefix m1 m2 = m2 </> m1
+
+instance (Ord k, Monoid v, PartialOrd v, Reductive v) =>
+    RightReductive (MonoidMap k v)
+  where
+    m1 `isSuffixOf` m2 = m1 `leq` m2
+    stripSuffix m1 m2 = m2 </> m1
+
+instance (Ord k, Monoid v, PartialOrd v, Reductive v) =>
+    Reductive (MonoidMap k v)
+  where
+    m1 </> m2 = foldM reduce m1 (toList m2)
+      where
+        reduce :: MonoidMap k v -> (k, v) -> Maybe (MonoidMap k v)
+        reduce m (k, v) = adjustF m k (</> v)
+
+instance (Ord k, Monoid v, Monus v, PartialOrd v, Reductive v) =>
+    OverlappingGCDMonoid (MonoidMap k v)
+  where
+    overlap m1 m2 = fromList $
+        (\k -> (k, overlapOfKey k)) <$> F.toList (keys m1 <> keys m2)
+      where
+        overlapOfKey :: k -> v
+        overlapOfKey k = (m1 `get` k) `overlap` (m2 `get` k)
+
+    stripOverlap m1 m2 = (m1 <\> m2, m1 `overlap` m2, m2 <\> m1)
+
+instance (Ord k, Monoid v, Monus v, PartialOrd v, Reductive v) =>
+    Monus (MonoidMap k v)
+  where
+    m1 <\> m2 = F.foldl' reduce m1 (toList m2)
+      where
+        reduce :: MonoidMap k v -> (k, v) -> MonoidMap k v
+        reduce m (k, v) = adjust m k (<\> v)
+
+instance (Ord k, Monoid v, PartialOrd v, Reductive v) =>
+    LeftCancellative (MonoidMap k v)
+
+instance (Ord k, Monoid v, PartialOrd v, Reductive v) =>
+    RightCancellative (MonoidMap k v)
+
+instance (Ord k, Monoid v, PartialOrd v, Reductive v) =>
+    Cancellative (MonoidMap k v)
+
+instance (Ord k, Difference v, Eq v, Monoid v) =>
     Difference (MonoidMap k v)
   where
     m1 `difference` m2 = F.foldl' reduce m1 (toList m2)
@@ -111,7 +166,7 @@ instance (Ord k, Eq v, Monoid v) => Equipartition (Keys (MonoidMap k v))
     equipartitionDistance = equipartitionDistance `on` toMap . unKeys
     equipartitionOrdering = equipartitionOrdering `on` toMap . unKeys
 
-instance (Ord k, Eq v, Equipartition v, Monoid v, Ord v) =>
+instance (Ord k, Eq v, Equipartition v, Monoid v, PartialOrd v) =>
     Equipartition (Values (MonoidMap k v))
   where
     equipartition (Values m) count =
@@ -150,10 +205,10 @@ instance (Ord k, Eq v, Monoid v) => Monoid (MonoidMap k v)
   where
     mempty = MonoidMap Internal.empty
 
-instance (Ord k, Monoid v, Ord v) => PartialOrd (MonoidMap k v)
+instance (Ord k, Monoid v, PartialOrd v) => PartialOrd (MonoidMap k v)
   where
     m1 `leq` m2 = F.all
-        (\a -> get m1 a <= get m2 a)
+        (\a -> get m1 a `leq` get m2 a)
         (keys m1 `Set.union` keys m2)
 
 instance (Ord k, Eq v, Monoid v, Partition v) => Partition (MonoidMap k v)

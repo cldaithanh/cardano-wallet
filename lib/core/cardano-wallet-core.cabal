@@ -96,6 +96,7 @@ library
     , memory
     , MonadRandom
     , monad-logger
+    , monoid-subclasses
     , mtl
     , network
     , network-uri

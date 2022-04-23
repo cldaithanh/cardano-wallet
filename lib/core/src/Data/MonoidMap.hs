@@ -305,6 +305,8 @@ adjustF m k a = set m k <$> a (get m k)
 delete :: (Ord k, Eq v, Monoid v) => MonoidMap k v -> k -> MonoidMap k v
 delete m k = set m k mempty
 
+-- TODO: this might not be reduction, but it is one-sided.
+-- Find a more general name.
 reduceWith
     :: (Ord k, Eq v, Monoid v)
     => (v -> v -> Maybe v)

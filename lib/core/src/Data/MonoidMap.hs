@@ -4,6 +4,7 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeFamilies #-}
+{-# OPTIONS_GHC -Wno-redundant-constraints #-}
 
 module Data.MonoidMap
     (
@@ -101,32 +102,38 @@ newtype Values a = Values
 -- Instances
 --------------------------------------------------------------------------------
 
-instance (Ord k, Eq v, Monoid v) =>
+instance (Ord k, Eq v, Monoid v, Commutative v) =>
     Commutative (MonoidMap k v)
 
-instance (Ord k, Monoid v, PartialOrd v, Reductive v) =>
+-- TODO: Check the ordering of these with something that is not commutative:
+
+instance (Ord k, Eq v, Monoid v, LeftReductive v) =>
     LeftReductive (MonoidMap k v)
   where
-    -- TODO: write this in terms of the values being prefixes
-    m1 `isPrefixOf` m2 = m1 `leq` m2
-    stripPrefix m1 m2 = m2 </> m1
+    isPrefixOf = isSubmapOfBy isPrefixOf
+    stripPrefix = reduceWith stripPrefix
 
-instance (Ord k, Monoid v, PartialOrd v, Reductive v) =>
+instance (Ord k, Eq v, Monoid v, RightReductive v) =>
     RightReductive (MonoidMap k v)
   where
-    -- TODO: write this in terms of the values being suffixes
-    m1 `isSuffixOf` m2 = m1 `leq` m2
-    stripSuffix m1 m2 = m2 </> m1
+    isSuffixOf = isSubmapOfBy isSuffixOf
+    stripSuffix = reduceWith stripSuffix
 
-instance (Ord k, Monoid v, PartialOrd v, Reductive v) =>
+instance (Ord k, Eq v, Monoid v, Reductive v) =>
     Reductive (MonoidMap k v)
   where
-    m1 </> m2 = foldM reduce m1 (toList m2)
-      where
-        reduce :: MonoidMap k v -> (k, v) -> Maybe (MonoidMap k v)
-        reduce m (k, v) = adjustF m k (</> v)
+    (</>) = reduceWith (</>)
 
-instance (Ord k, Monoid v, Monus v, PartialOrd v, Reductive v) =>
+instance (Ord k, Eq v, Monoid v, LeftCancellative v) =>
+    LeftCancellative (MonoidMap k v)
+
+instance (Ord k, Eq v, Monoid v, RightCancellative v) =>
+    RightCancellative (MonoidMap k v)
+
+instance (Ord k, Eq v, Monoid v, Cancellative v) =>
+    Cancellative (MonoidMap k v)
+
+instance (Ord k, Eq v, Monoid v, Monus v, Reductive v) =>
     OverlappingGCDMonoid (MonoidMap k v)
   where
     overlap m1 m2 = fromList $ keyOverlap <$> F.toList (keys m1 <> keys m2)
@@ -136,22 +143,16 @@ instance (Ord k, Monoid v, Monus v, PartialOrd v, Reductive v) =>
 
     stripOverlap m1 m2 = (m1 <\> m2, m1 `overlap` m2, m2 <\> m1)
 
-instance (Ord k, Monoid v, Monus v, PartialOrd v, Reductive v) =>
+-- TODO: reuse the reduceWith function here, but find a way to make reduceWith
+-- work with the identity monad.
+
+instance (Ord k, Eq v, Monoid v, Monus v, Reductive v) =>
     Monus (MonoidMap k v)
   where
     m1 <\> m2 = F.foldl' reduce m1 (toList m2)
       where
         reduce :: MonoidMap k v -> (k, v) -> MonoidMap k v
         reduce m (k, v) = adjust m k (<\> v)
-
-instance (Ord k, Monoid v, PartialOrd v, Reductive v) =>
-    LeftCancellative (MonoidMap k v)
-
-instance (Ord k, Monoid v, PartialOrd v, Reductive v) =>
-    RightCancellative (MonoidMap k v)
-
-instance (Ord k, Monoid v, PartialOrd v, Reductive v) =>
-    Cancellative (MonoidMap k v)
 
 instance (Ord k, Difference v, Eq v, Monoid v) =>
     Difference (MonoidMap k v)
@@ -206,11 +207,10 @@ instance (Ord k, Eq v, Monoid v) => Monoid (MonoidMap k v)
   where
     mempty = MonoidMap Internal.empty
 
-instance (Ord k, Monoid v, PartialOrd v) => PartialOrd (MonoidMap k v)
+instance (Ord k, Monoid v, PartialOrd v) =>
+    PartialOrd (MonoidMap k v)
   where
-    m1 `leq` m2 = F.all
-        (\a -> get m1 a `leq` get m2 a)
-        (keys m1 `Set.union` keys m2)
+    leq = isSubmapOfBy leq
 
 instance (Ord k, Eq v, Monoid v, Partition v) => Partition (MonoidMap k v)
   where
@@ -274,6 +274,14 @@ keys = Map.keysSet . toMap
 size :: MonoidMap k v -> Int
 size = Map.size . toMap
 
+isSubmapOfBy
+    :: Ord k
+    => (v1 -> v2 -> Bool)
+    -> MonoidMap k v1
+    -> MonoidMap k v2
+    -> Bool
+isSubmapOfBy f m1 m2 = Map.isSubmapOfBy f (toMap m1) (toMap m2)
+
 --------------------------------------------------------------------------------
 -- Modification
 --------------------------------------------------------------------------------
@@ -296,6 +304,17 @@ adjustF m k a = set m k <$> a (get m k)
 
 delete :: (Ord k, Eq v, Monoid v) => MonoidMap k v -> k -> MonoidMap k v
 delete m k = set m k mempty
+
+reduceWith
+    :: (Ord k, Eq v, Monoid v)
+    => (v -> v -> Maybe v)
+    -> MonoidMap k v
+    -> MonoidMap k v
+    -> Maybe (MonoidMap k v)
+reduceWith f m1 m2 =
+    foldM reduce m1 (toList m2)
+  where
+    reduce m (k, v) = adjustF m k (f v)
 
 set :: (Ord k, Eq v, Monoid v) => MonoidMap k v -> k -> v -> MonoidMap k v
 set = ((MonoidMap .) .) . Internal.set . unMonoidMap

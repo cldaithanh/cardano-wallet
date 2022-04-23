@@ -107,12 +107,14 @@ instance (Ord k, Eq v, Monoid v) =>
 instance (Ord k, Monoid v, PartialOrd v, Reductive v) =>
     LeftReductive (MonoidMap k v)
   where
+    -- TODO: write this in terms of the values being prefixes
     m1 `isPrefixOf` m2 = m1 `leq` m2
     stripPrefix m1 m2 = m2 </> m1
 
 instance (Ord k, Monoid v, PartialOrd v, Reductive v) =>
     RightReductive (MonoidMap k v)
   where
+    -- TODO: write this in terms of the values being suffixes
     m1 `isSuffixOf` m2 = m1 `leq` m2
     stripSuffix m1 m2 = m2 </> m1
 

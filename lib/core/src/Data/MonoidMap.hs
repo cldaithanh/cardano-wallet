@@ -36,7 +36,7 @@ module Data.MonoidMap
     where
 
 import Prelude hiding
-    ( subtract )
+    ( null, subtract )
 
 import Algebra.Difference
     ( Difference (..) )
@@ -60,8 +60,17 @@ import Data.Map.Strict
     ( Map )
 import Data.Monoid.Monus
     ( Monus (..), OverlappingGCDMonoid (..) )
+import Data.Monoid.Null
+    ( MonoidNull (..) )
 import Data.Semigroup.Cancellative
-    ( RightCancellative, LeftCancellative, Cancellative, Commutative, LeftReductive (..), Reductive (..), RightReductive (..) )
+    ( Cancellative
+    , Commutative
+    , LeftCancellative
+    , LeftReductive (..)
+    , Reductive (..)
+    , RightCancellative
+    , RightReductive (..)
+    )
 import Data.Set
     ( Set )
 import GHC.Exts
@@ -101,6 +110,11 @@ newtype Values a = Values
 --------------------------------------------------------------------------------
 -- Instances
 --------------------------------------------------------------------------------
+
+instance (Ord k, Eq v, Monoid v) =>
+    MonoidNull (MonoidMap k v)
+  where
+    null = null . toMap
 
 instance (Ord k, Eq v, Monoid v, Commutative v) =>
     Commutative (MonoidMap k v)

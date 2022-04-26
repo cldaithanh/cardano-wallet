@@ -2459,13 +2459,18 @@ balanceTransaction ctx genChange (ApiT wid) body = do
         wallet <- liftHandler $ W.readWalletUTxOIndex @_ @s @k wrk wid
         ti <- liftIO $ snapshot $ timeInterpreter $ ctx ^. networkLayer
 
-        let mkPartialTx :: forall era. Cardano.Tx era -> W.PartialTx era
+        let mkPartialTx
+                :: forall era. Cardano.Tx era
+                -> W.PartialTx era
             mkPartialTx tx = W.PartialTx
                     tx
                     (fromExternalInput <$> body ^. #inputs)
                     (fromApiRedeemer <$> body ^. #redeemers)
 
-        let balanceTx :: forall era. Cardano.IsShelleyBasedEra era => W.PartialTx era -> Handler (Cardano.Tx era)
+        let balanceTx
+                :: forall era. Cardano.IsShelleyBasedEra era
+                => W.PartialTx era
+                -> Handler (Cardano.Tx era)
             balanceTx partialTx =
                 liftHandler $ W.balanceTransaction @_ @IO @s @k
                     wrk
@@ -2475,9 +2480,10 @@ balanceTransaction ctx genChange (ApiT wid) body = do
                     wallet
                     partialTx
 
-        let byronNotSupported = ErrByronTxNotSupported
-        anyShelleyTx <- maybeToHandler byronNotSupported $ inAnyShelleyBasedEra $
-                cardanoTx $ getApiT $ body ^. #transaction
+        anyShelleyTx <- maybeToHandler ErrByronTxNotSupported
+            . inAnyShelleyBasedEra
+            . cardanoTx
+            . getApiT $ body ^. #transaction
 
         res <- withShelleyBasedTx anyShelleyTx (fmap toAny . balanceTx . mkPartialTx)
 

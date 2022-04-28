@@ -2216,7 +2216,8 @@ balanceTransactionSpec = do
 
             let balance = balanceTransaction' wallet testStdGenSeed
             let totalOutput tx =
-                    let (wtx, _, _, _) = decodeTx testTxLayer (sealedTxFromCardano' tx)
+                    let (wtx, _, _, _) =
+                            decodeTx testTxLayer (sealedTxFromCardano' tx)
                     in
                         F.foldMap (view (#tokens . #coin)) (view #outputs wtx)
                         <> fromMaybe (Coin 0) (view #fee wtx)
@@ -3650,10 +3651,12 @@ updateSealedTxSpec = do
                     let test res = case res of
                             Left e ->
                                 expectationFailure $
-                                "expected update to succeed but failed: " <> show e
+                                "expected update to succeed but failed: "
+                                    <> show e
                             Right _ -> do
                                 return ()
-                    withShelleyBasedTx tx $ \x -> test (updateSealedTx x noTxUpdate)
+                    withShelleyBasedTx tx $
+                        \x -> test (updateSealedTx x noTxUpdate)
 
                 prop ("with TxUpdate: " <> filepath) $
                     prop_updateSealedTx tx
@@ -3680,24 +3683,31 @@ unsafeSealedTxFromHex =
     isNewlineChar c = c `elem` [10,13]
 
 prop_updateSealedTx
-    :: Cardano.InAnyShelleyBasedEra Cardano.Tx -> [(TxIn, TxOut)] -> [TxIn] -> [TxOut] -> Coin -> Property
-prop_updateSealedTx (Cardano.InAnyShelleyBasedEra era tx) extraIns extraCol extraOuts newFee = do
-    let extra = TxUpdate extraIns extraCol extraOuts (UseNewTxFee newFee)
-    let tx' = either (error . show) id
-            $ updateSealedTx tx extra
-    conjoin
-        [ inputs tx' === inputs tx <> Set.fromList (fst <$> extraIns)
-        , outputs tx' === outputs tx <> Set.fromList extraOuts
-        , sealedFee tx' === Just newFee
-        , collateral tx' ===
-            if isAlonzo era
-            then collateral tx <> Set.fromList extraCol
-            else mempty
-        ]
+    :: Cardano.InAnyShelleyBasedEra Cardano.Tx
+    -> [(TxIn, TxOut)]
+    -> [TxIn]
+    -> [TxOut]
+    -> Coin
+    -> Property
+prop_updateSealedTx
+    (Cardano.InAnyShelleyBasedEra era tx)
+    extraIns extraCol extraOuts newFee =
+    do
+        let extra = TxUpdate extraIns extraCol extraOuts (UseNewTxFee newFee)
+        let tx' = either (error . show) id
+                $ updateSealedTx tx extra
+        conjoin
+            [ inputs tx' === inputs tx <> Set.fromList (fst <$> extraIns)
+            , outputs tx' === outputs tx <> Set.fromList extraOuts
+            , sealedFee tx' === Just newFee
+            , collateral tx' ===
+                if isAlonzo era
+                then collateral tx <> Set.fromList extraCol
+                else mempty
+            ]
   where
     isAlonzo Cardano.ShelleyBasedEraAlonzo = True
     isAlonzo _                             = False
-
 
     inputs = sealedInputs . sealedTxFromCardano'
     outputs = sealedOutputs . sealedTxFromCardano'
@@ -3757,7 +3767,8 @@ sealedNumberOfRedeemers sealedTx =
                     Cardano.TxBodyScriptData _ _ (Alonzo.Redeemers rdmrs) ->
                         Map.size rdmrs
 
-sealedFee :: forall era. Cardano.IsCardanoEra era => Cardano.Tx era -> Maybe Coin
+sealedFee
+    :: forall era. Cardano.IsCardanoEra era => Cardano.Tx era -> Maybe Coin
 sealedFee =
     view #fee . fst4 . _decodeSealedTx . sealedTxFromCardano'
 
@@ -3884,7 +3895,10 @@ instance (Eq a, Show a) => Ord (ShowOrd a) where
 shelleyBasedTxFromBytes :: ByteString -> Cardano.InAnyShelleyBasedEra Cardano.Tx
 shelleyBasedTxFromBytes bytes =
     let
-        anyEraTx = cardanoTx $ either (error . show) id $ sealedTxFromBytes bytes
+        anyEraTx
+            = cardanoTx
+            $ either (error . show) id
+            $ sealedTxFromBytes bytes
     in
         case asAnyShelleyBasedEra anyEraTx of
             Just shelleyTx -> shelleyTx

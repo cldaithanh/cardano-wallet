@@ -18,11 +18,14 @@ module Cardano.Wallet.Primitive.Types.Tx.Gen
     , genTxOutTokenBundle
     , genTxMint
     , genTxBurn
+    , genTxWith
+    , shrinkTxWith
     , genTxScriptValidity
     , shrinkTx
     , shrinkTxHash
     , shrinkTxIndex
     , shrinkTxIn
+    , shrinkTxInLargeRange
     , shrinkTxOut
     , shrinkTxOutCoin
     , shrinkTxMint
@@ -71,14 +74,18 @@ import Cardano.Wallet.Primitive.Types.Tx
     )
 import Control.Monad
     ( replicateM )
+import Data.ByteArray.Encoding
+    ( Base (Base16), convertToBase )
 import Data.Either
     ( fromRight )
+import Data.List.Extra
+    ( nubOrdOn )
 import Data.Map.Strict
     ( Map )
 import Data.Text.Class
     ( FromText (..) )
 import Data.Word
-    ( Word32 )
+    ( Word8, Word32 )
 import Generics.SOP
     ( NP (..) )
 import GHC.Generics
@@ -95,8 +102,8 @@ import Test.QuickCheck
     , liftShrink
     , liftShrink2
     , listOf
-    , listOf1
     , oneof
+    , scale
     , shrinkList
     , shrinkMapBy
     , sized
@@ -128,10 +135,19 @@ import qualified Data.Text as T
 --------------------------------------------------------------------------------
 
 genTx :: Gen Tx
-genTx = txWithoutIdToTx <$> genTxWithoutId
+genTx = genTxWith genTxIn
 
-shrinkTx :: Tx -> [Tx]
-shrinkTx = shrinkMapBy txWithoutIdToTx txToTxWithoutId shrinkTxWithoutId
+shrinkTx :: Shrink Tx
+shrinkTx = shrinkTxWith shrinkTxIn
+
+genTxWith :: Gen TxIn -> Gen Tx
+genTxWith genTxInFn = txWithoutIdToTx <$> genTxWithoutId genTxInFn
+
+shrinkTxWith :: Shrink TxIn -> Shrink Tx
+shrinkTxWith shrinkTxInFn =
+    shrinkMapBy txWithoutIdToTx txToTxWithoutId (shrinkTxWithoutId shrinkTxInFn)
+
+type Shrink a = a -> [a]
 
 data TxWithoutId = TxWithoutId
     { fee :: !(Maybe Coin)
@@ -147,24 +163,26 @@ data TxWithoutId = TxWithoutId
     }
     deriving (Eq, Generic, Ord, Show)
 
-genTxWithoutId :: Gen TxWithoutId
-genTxWithoutId = TxWithoutId
+genTxWithoutId :: Gen TxIn -> Gen TxWithoutId
+genTxWithoutId genTxInFn = TxWithoutId
     <$> liftArbitrary genCoinPositive
-    <*> listOf1 (liftArbitrary2 genTxIn genCoinPositive)
-    <*> listOf1 (liftArbitrary2 genTxIn genCoinPositive)
-    <*> listOf genTxOut
-    <*> liftArbitrary genTxOut
-    <*> genTxMint
-    <*> genTxBurn
+    <*> fmap (nubOrdOn fst) (scale (`div` 4) (listOf genResolvedInput))
+    <*> fmap (nubOrdOn fst) (scale (`div` 4) (listOf genResolvedInput))
+    <*> scale (`div` 4) (listOf genTxOut)
+    <*> scale (`div` 4) (liftArbitrary genTxOut)
+    <*> scale (`div` 4) genTxMint
+    <*> scale (`div` 4) genTxBurn
     <*> liftArbitrary genNestedTxMetadata
     <*> genMapWith genRewardAccount genCoinPositive
     <*> liftArbitrary genTxScriptValidity
+  where
+    genResolvedInput = liftArbitrary2 genTxInFn genCoinPositive
 
-shrinkTxWithoutId :: TxWithoutId -> [TxWithoutId]
-shrinkTxWithoutId = genericRoundRobinShrink
+shrinkTxWithoutId :: Shrink TxIn -> Shrink TxWithoutId
+shrinkTxWithoutId shrinkTxInFn = genericRoundRobinShrink
     <@> liftShrink shrinkCoinPositive
-    <:> shrinkList (liftShrink2 shrinkTxIn shrinkCoinPositive)
-    <:> shrinkList (liftShrink2 shrinkTxIn shrinkCoinPositive)
+    <:> fmap (fmap (nubOrdOn fst)) (shrinkList shrinkResolvedInput)
+    <:> fmap (fmap (nubOrdOn fst)) (shrinkList shrinkResolvedInput)
     <:> shrinkList shrinkTxOut
     <:> liftShrink shrinkTxOut
     <:> shrinkTxMint
@@ -173,12 +191,18 @@ shrinkTxWithoutId = genericRoundRobinShrink
     <:> shrinkMapWith shrinkRewardAccount shrinkCoinPositive
     <:> liftShrink shrinkTxScriptValidity
     <:> Nil
+  where
+    shrinkResolvedInput = liftShrink2 shrinkTxInFn shrinkCoinPositive
 
 txWithoutIdToTx :: TxWithoutId -> Tx
 txWithoutIdToTx tx@TxWithoutId {..} = Tx {txId = mockHash tx, ..}
 
 txToTxWithoutId :: Tx -> TxWithoutId
 txToTxWithoutId Tx {..} = TxWithoutId {..}
+
+--------------------------------------------------------------------------------
+-- Transaction script validity
+--------------------------------------------------------------------------------
 
 genTxScriptValidity :: Gen TxScriptValidity
 genTxScriptValidity = genericArbitrary
@@ -187,18 +211,14 @@ shrinkTxScriptValidity :: TxScriptValidity -> [TxScriptValidity]
 shrinkTxScriptValidity = genericShrink
 
 --------------------------------------------------------------------------------
--- Transaction hashes generated according to the size parameter
+-- Transaction hashes
 --------------------------------------------------------------------------------
 
 genTxHash :: Gen (Hash "Tx")
 genTxHash = sized $ \size -> elements $ take (max 1 size) txHashes
 
 shrinkTxHash :: Hash "Tx" -> [Hash "Tx"]
-shrinkTxHash x
-    | x == simplest = []
-    | otherwise = [simplest]
-  where
-    simplest = head txHashes
+shrinkTxHash = const []
 
 txHashes :: [Hash "Tx"]
 txHashes = mkTxHash <$> ['0' .. '9'] <> ['A' .. 'F']
@@ -256,6 +276,9 @@ genTxInLargeRange = TxIn
     -- Note that we don't need to choose indices from a large range, as hashes
     -- are already chosen from a large range:
     <*> genTxIndex
+
+shrinkTxInLargeRange :: TxIn -> [TxIn]
+shrinkTxInLargeRange = const []
 
 --------------------------------------------------------------------------------
 -- Transaction outputs generated according to the size parameter

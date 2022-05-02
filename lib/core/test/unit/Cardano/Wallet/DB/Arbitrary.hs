@@ -42,7 +42,7 @@ import Cardano.Wallet.DB.Model
 import Cardano.Wallet.DB.Sqlite.AddressBook
     ( AddressBookIso (..) )
 import Cardano.Wallet.DummyTarget.Primitive.Types as DummyTarget
-    ( block0, mkTx )
+    ( block0 )
 import Cardano.Wallet.Gen
     ( genMnemonic, genSimpleTxMetadata, shrinkSlotNo, shrinkTxMetadata )
 import Cardano.Wallet.Primitive.AddressDerivation
@@ -123,29 +123,27 @@ import Cardano.Wallet.Primitive.Types.RewardAccount
     ( RewardAccount (..) )
 import Cardano.Wallet.Primitive.Types.TokenBundle.Gen
     ( genTokenBundleSmallRange )
-import Cardano.Wallet.Primitive.Types.TokenMap
-    ( TokenMap )
-import Cardano.Wallet.Primitive.Types.TokenMap.Gen
-    ( genTokenMap, shrinkTokenMap )
 import Cardano.Wallet.Primitive.Types.Tx
     ( Direction (..)
     , Tx (..)
-    , TxBurn (..)
     , TxIn (..)
     , TxMeta (..)
     , TxMetadata
-    , TxMint (..)
     , TxOut (..)
     , TxScriptValidity (..)
     , TxStatus (..)
     , isPending
     )
 import Cardano.Wallet.Primitive.Types.Tx.Gen
-    ( genTxBurn
-    , genTxMint
+    ( genTx
+    , genTxWith
+    , genTxInLargeRange
     , genTxOutCoin
     , genTxScriptValidity
+    , shrinkTx
+    , shrinkTxWith
     , shrinkTxScriptValidity
+    , shrinkTxInLargeRange
     )
 import Cardano.Wallet.Primitive.Types.UTxO
     ( UTxO (..) )
@@ -199,7 +197,6 @@ import Test.QuickCheck
     ( Arbitrary (..)
     , Gen
     , InfiniteList (..)
-    , NonEmptyList (..)
     , arbitraryBoundedEnum
     , arbitrarySizedBoundedIntegral
     , arbitrarySizedNatural
@@ -208,7 +205,6 @@ import Test.QuickCheck
     , frequency
     , generate
     , genericShrink
-    , liftArbitrary
     , oneof
     , scale
     , shrinkIntegral
@@ -417,31 +413,12 @@ arbitraryChainLength = 10
 -------------------------------------------------------------------------------}
 
 instance Arbitrary Tx where
-    shrink (Tx _tid fees ins cins outs cout tmint tburn wdrls md validity) =
-        [ mkTx fees ins' cins' outs' cout' tmint' tburn' wdrls' md' validity'
-        | (ins', cins', outs', cout', tmint', tburn', wdrls', md', validity')
-            <- shrink
-                (ins, cins, outs, cout, tmint, tburn, wdrls, md, validity)
-        ]
-
-    arbitrary = do
-        ins <- fmap (L.nub . L.take 5 . getNonEmpty) arbitrary
-        cins <- fmap (L.nub . L.take 5 . getNonEmpty) arbitrary
-        outs <- fmap (L.take 5 . getNonEmpty) arbitrary
-        cout <- arbitrary
-        tmint <- genTxMint
-        tburn <- genTxBurn
-        wdrls <- fmap (Map.fromList . L.take 5) arbitrary
-        fees <- arbitrary
-        mkTx fees ins cins outs cout tmint tburn wdrls
-            <$> arbitrary <*> liftArbitrary genTxScriptValidity
-
-instance Arbitrary TokenMap where
-    arbitrary = genTokenMap
-    shrink = shrinkTokenMap
-
-deriving instance (Arbitrary TxMint)
-deriving instance (Arbitrary TxBurn)
+    arbitrary =
+        genTxWith
+        genTxInLargeRange
+    shrink =
+        shrinkTxWith
+        shrinkTxInLargeRange
 
 instance Arbitrary TxIn where
     arbitrary = TxIn

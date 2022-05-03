@@ -333,6 +333,8 @@ import Cardano.Wallet.Primitive.Types.Tx
     , SerialisedTx (..)
     , TxConstraints (..)
     , TxIn (..)
+    , TxMint (..)
+    , TxBurn (..)
     , TxMetadata
     , TxScriptValidity (..)
     , TxStatus (..)
@@ -1152,8 +1154,9 @@ data ApiTransaction (n :: NetworkDiscriminant) = ApiTransaction
     , collateral :: ![ApiTxCollateral n]
     , collateralOutputs ::
         !(ApiAsArray "collateral_outputs" (Maybe (ApiTxOutput n)))
+    , mint :: !(ApiT TxMint)
+    , burn :: !(ApiT TxBurn)
     , withdrawals :: ![ApiWithdrawal n]
-    , mint :: !(ApiT W.TokenMap)
     , status :: !(ApiT TxStatus)
     , metadata :: !ApiTxMetadata
     , scriptValidity :: !(Maybe (ApiT TxScriptValidity))
@@ -2826,6 +2829,12 @@ instance FromJSON (ApiT W.TokenMap) where
     parseJSON = fmap (ApiT . W.getFlat) . parseJSON
 instance ToJSON (ApiT W.TokenMap) where
     toJSON = toJSON . W.Flat . getApiT
+
+deriving via ApiT W.TokenMap instance FromJSON (ApiT TxMint)
+deriving via ApiT W.TokenMap instance FromJSON (ApiT TxBurn)
+
+deriving via ApiT W.TokenMap instance ToJSON (ApiT TxMint)
+deriving via ApiT W.TokenMap instance ToJSON (ApiT TxBurn)
 
 instance FromJSON (ApiT PoolId) where
     parseJSON = parseJSON >=> eitherToParser

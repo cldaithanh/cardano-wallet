@@ -1,6 +1,7 @@
 {-# LANGUAGE AllowAmbiguousTypes #-}
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE DerivingVia #-}
 {-# LANGUAGE DuplicateRecordFields #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
@@ -300,6 +301,8 @@ import Cardano.Wallet.Primitive.Types.Tx
     , SerialisedTxParts (..)
     , TxIn (..)
     , TxMetadata (..)
+    , TxMint (..)
+    , TxBurn (..)
     , TxOut (..)
     , TxScriptValidity (..)
     , TxStatus (..)
@@ -1178,11 +1181,13 @@ spec = parallel $ do
                         (x :: ApiTransaction ('Testnet 0))
                     , collateralOutputs = collateralOutputs
                         (x :: ApiTransaction ('Testnet 0))
+                    , mint = mint
+                        (x :: ApiTransaction ('Testnet 0))
+                    , burn = burn
+                        (x :: ApiTransaction ('Testnet 0))
                     , status = status
                         (x :: ApiTransaction ('Testnet 0))
                     , withdrawals = withdrawals
-                        (x :: ApiTransaction ('Testnet 0))
-                    , mint = mint
                         (x :: ApiTransaction ('Testnet 0))
                     , metadata = metadata
                         (x :: ApiTransaction ('Testnet 0))
@@ -2549,8 +2554,9 @@ instance Arbitrary (ApiTransaction n) where
             <*> genOutputs
             <*> genCollateral
             <*> genCollateralOutputs
+            <*> genMint
+            <*> genBurn
             <*> genWithdrawals
-            <*> arbitrary
             <*> pure txStatus
             <*> arbitrary
             <*> liftArbitrary (ApiT <$> genTxScriptValidity)
@@ -2565,6 +2571,13 @@ instance Arbitrary (ApiTransaction n) where
             Test.QuickCheck.scale (`mod` 3) arbitrary
         genCollateralOutputs =
             Test.QuickCheck.scale (`mod` 3) arbitrary
+        genMint =
+            Test.QuickCheck.scale (`mod` 3) arbitrary
+        genBurn =
+            Test.QuickCheck.scale (`mod` 3) arbitrary
+
+deriving via TokenMap instance Arbitrary TxBurn
+deriving via TokenMap instance Arbitrary TxMint
 
 instance Arbitrary TxScriptValidity where
     arbitrary = genTxScriptValidity

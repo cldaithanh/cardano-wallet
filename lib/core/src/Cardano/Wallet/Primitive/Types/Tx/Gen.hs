@@ -173,7 +173,7 @@ genTxWithoutId genTxInFn = TxWithoutId
     <*> scale (`div` 4) genTxMint
     <*> scale (`div` 4) genTxBurn
     <*> liftArbitrary genNestedTxMetadata
-    <*> genMapWith genRewardAccount genCoinPositive
+    <*> scale (`div` 8) (genMapWith genRewardAccount genCoinPositive)
     <*> liftArbitrary genTxScriptValidity
   where
     genResolvedInput = liftArbitrary2 genTxInFn genCoinPositive

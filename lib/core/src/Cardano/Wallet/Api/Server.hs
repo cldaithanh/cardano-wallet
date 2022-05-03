@@ -2055,6 +2055,8 @@ postTransactionOld ctx genChange (ApiT wid) body = do
             , txCollateralInputs = []
             , txOutputs = tx ^. #outputs
             , txCollateralOutput = tx ^. #collateralOutput
+            , txMint = tx ^. #mint
+            , txBurn = tx ^. #burn
             , txWithdrawals = tx ^. #withdrawals
             , txMeta
             , txMetadata = tx ^. #metadata
@@ -2131,6 +2133,8 @@ mkApiTransactionFromInfo ti deposit info = do
             , txCollateralInputs = info ^. #txInfoCollateralInputs <&> drop2nd
             , txOutputs = info ^. #txInfoOutputs
             , txCollateralOutput = info ^. #txInfoCollateralOutput
+            , txMint = info ^. #txInfoMint
+            , txBurn = info ^. #txInfoBurn
             , txWithdrawals = info ^. #txInfoWithdrawals
             , txMeta = info ^. #txInfoMeta
             , txMetadata = info ^. #txInfoMetadata
@@ -2958,6 +2962,10 @@ joinStakePool ctx knownPools getPoolStatus apiPoolId (ApiT wid) body = do
             , txCollateralInputs = []
             , txOutputs = tx ^. #outputs
             , txCollateralOutput = tx ^. #collateralOutput
+              -- Joining a stake pool does not mint tokens:
+            , txMint = W.TxMint mempty
+              -- Joining a stake pool does not burn tokens:
+            , txBurn = W.TxBurn mempty
             , txWithdrawals = tx ^. #withdrawals
             , txMeta
             , txMetadata = Nothing
@@ -3075,6 +3083,10 @@ quitStakePool ctx (ApiT wid) body = do
             , txCollateralInputs = []
             , txOutputs = tx ^. #outputs
             , txCollateralOutput = tx ^. #collateralOutput
+              -- Quitting a stake pool does not mint tokens:
+            , txMint = W.TxMint mempty
+              -- Quitting a stake pool does not burn tokens:
+            , txBurn = W.TxBurn mempty
             , txWithdrawals = tx ^. #withdrawals
             , txMeta
             , txMetadata = Nothing
@@ -3333,6 +3345,10 @@ migrateWallet ctx withdrawalType (ApiT wid) postData = do
                     , txOutputs = tx ^. #outputs
                     , txCollateralOutput = tx ^. #collateralOutput
                     , txWithdrawals = tx ^. #withdrawals
+                    -- Migrations do not mint tokens:
+                    , txMint = W.TxMint mempty
+                    -- Migrations do not burn tokens:
+                    , txBurn = W.TxBurn mempty
                     , txMeta
                     , txMetadata = Nothing
                     , txTime
@@ -3788,6 +3804,8 @@ data MkApiTransactionParams = MkApiTransactionParams
     , txCollateralInputs :: [(TxIn, Maybe TxOut)]
     , txOutputs :: [TxOut]
     , txCollateralOutput :: Maybe TxOut
+    , txMint :: W.TxMint
+    , txBurn :: W.TxBurn
     , txWithdrawals :: Map RewardAccount Coin
     , txMeta :: W.TxMeta
     , txMetadata :: Maybe W.TxMetadata

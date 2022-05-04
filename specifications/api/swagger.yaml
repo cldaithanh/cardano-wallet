@@ -4768,6 +4768,18 @@ x-errExistingKeyWitnesses: &errExistingKeyWitnesses
       type: string
       enum: ['existing_key_witnesses']
 
+x-errConflictingInputResolution: &errConflictingInputResolution
+  <<: *responsesErr
+  title: conflicting_input_resolution
+  properties:
+    message:
+      type: string
+      description: |
+        Occurs when providing an input resolution which conflicts with the wallet UTxO set when balancing.
+    code:
+      type: string
+      enum: ['conflicting_input_resolution']
+
 x-responsesErr400: &responsesErr400
   400:
     description: Bad Request

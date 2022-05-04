@@ -88,4 +88,3 @@ data Parity = Even | Odd
 --------------------------------------------------------------------------------
 
 mkAddress :: Char -> Address
-mkAddress c = Address $ "ADDR" `B8.snoc` c

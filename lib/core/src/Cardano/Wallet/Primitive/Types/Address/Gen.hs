@@ -88,3 +88,4 @@ data Parity = Even | Odd
 --------------------------------------------------------------------------------
 
 mkAddress :: Char -> Address
+mkAddress c = Address $ BS.pack (97 : replicate (28 - 1) 0) `B8.snoc` c

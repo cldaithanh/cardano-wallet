@@ -83,15 +83,13 @@ import Cardano.Binary
 import Cardano.Crypto.Wallet
     ( XPub )
 import Cardano.Ledger.Alonzo.Tools
-    ( BasicFailure (..), evaluateTransactionExecutionUnits )
+    ( BasicFailure (..) )
 import Cardano.Ledger.Crypto
     ( DSIGN )
 import Cardano.Ledger.Era
     ( Crypto, Era, ValidateScript (..) )
 import Cardano.Ledger.Shelley.API
     ( StrictMaybe (..) )
-import Cardano.Slotting.EpochInfo.API
-    ( hoistEpochInfo )
 import Cardano.Wallet.CoinSelection
     ( SelectionLimitOf (..)
     , SelectionOf (..)
@@ -109,7 +107,7 @@ import Cardano.Wallet.Primitive.AddressDerivation.Shelley
 import Cardano.Wallet.Primitive.Passphrase
     ( Passphrase (..) )
 import Cardano.Wallet.Primitive.Slotting
-    ( PastHorizonException, TimeInterpreter, getSystemStart, toEpochInfo )
+    ( SystemStart )
 import Cardano.Wallet.Primitive.Types
     ( Certificate
     , ExecutionUnitPrices (..)
@@ -157,6 +155,7 @@ import Cardano.Wallet.Shelley.Compatibility
     , fromCardanoLovelace
     , fromCardanoTx
     , fromCardanoTxIn
+    , fromCardanoTxOut
     , fromCardanoWdrls
     , fromShelleyTxIn
     , toAlonzoPParams
@@ -167,7 +166,6 @@ import Cardano.Wallet.Shelley.Compatibility
     , toCardanoTxIn
     , toCardanoTxOut
     , toCardanoValue
-    , toCostModelsAsArray
     , toHDPayloadAddress
     , toScriptPurpose
     , toStakeKeyDeregCert
@@ -175,7 +173,7 @@ import Cardano.Wallet.Shelley.Compatibility
     , toStakePoolDlgCert
     )
 import Cardano.Wallet.Shelley.Compatibility.Ledger
-    ( computeMinimumAdaQuantity, toAlonzoTxOut )
+    ( computeMinimumAdaQuantity )
 import Cardano.Wallet.Transaction
     ( AnyScript (..)
     , DelegationAction (..)
@@ -203,8 +201,6 @@ import Control.Monad
     ( forM, guard )
 import Control.Monad.Trans.Class
     ( lift )
-import Control.Monad.Trans.Except
-    ( runExceptT )
 import Control.Monad.Trans.State.Strict
     ( StateT (..), execStateT, get, modify' )
 import Data.Bifunctor
@@ -213,8 +209,6 @@ import Data.Function
     ( (&) )
 import Data.Functor
     ( ($>), (<&>) )
-import Data.Functor.Identity
-    ( runIdentity )
 import Data.Generics.Internal.VL.Lens
     ( view, (^.) )
 import Data.Generics.Labels
@@ -252,7 +246,6 @@ import qualified Cardano.Crypto.Hash.Class as Crypto
 import qualified Cardano.Crypto.Wallet as Crypto.HD
 import qualified Cardano.Ledger.Alonzo.Data as Alonzo
 import qualified Cardano.Ledger.Alonzo.PlutusScriptApi as Alonzo
-import qualified Cardano.Ledger.Alonzo.PParams as Alonzo
 import qualified Cardano.Ledger.Alonzo.Scripts as Alonzo
 import qualified Cardano.Ledger.Alonzo.Tx as Alonzo
 import qualified Cardano.Ledger.Alonzo.TxWitness as Alonzo
@@ -260,7 +253,6 @@ import qualified Cardano.Ledger.Coin as Ledger
 import qualified Cardano.Ledger.Core as Ledger
 import qualified Cardano.Ledger.Shelley.Address.Bootstrap as SL
 import qualified Cardano.Ledger.Shelley.Tx as Shelley
-import qualified Cardano.Ledger.Shelley.UTxO as Ledger
 import qualified Cardano.Ledger.ShelleyMA.TxBody as ShelleyMA
 import qualified Cardano.Wallet.Primitive.Types.Coin as Coin
 import qualified Cardano.Wallet.Primitive.Types.TokenBundle as TokenBundle
@@ -652,6 +644,10 @@ newTransactionLayer networkId = TransactionLayer
     , decodeTx = _decodeSealedTx
 
     , updateTx = updateSealedTx
+
+    , toCardanoUTxO = _toCardanoUTxO
+    , _fromCardanoTxOut = fromCardanoTxOut
+    , _fromCardanoTxIn = fromCardanoTxIn
     }
 
 _decodeSealedTx
@@ -664,50 +660,44 @@ _decodeSealedTx
         )
 _decodeSealedTx (cardanoTx -> InAnyCardanoEra _era tx) = fromCardanoTx tx
 
-_evaluateTransactionBalance
-    :: forall era. IsShelleyBasedEra era
-    => Cardano.Tx era
-    -> Cardano.ProtocolParameters
-    -> UTxO
-    -> [(TxIn, TxOut, Maybe (Hash "Datum"))]
-    -> Cardano.Value
-_evaluateTransactionBalance (Cardano.Tx body _) pp utxo extraUTxO =
-        let
-            utxo' = Map.fromList
-                . map (bimap toCardanoTxIn (toCardanoTxOut era))
-                . Map.toList
-                $ unUTxO utxo
 
-            extraUTxO' = Map.fromList
-                . map (\(i, o, mDatumHash) ->
-                    (toCardanoTxIn i
-                    , setDatumHash era mDatumHash (toCardanoTxOut era o))
-                    )
-                $ extraUTxO
-        in
-            lovelaceFromCardanoTxOutValue
-                $ Cardano.evaluateTransactionBalance
-                    pp
-                    mempty
-                    (Cardano.UTxO $ utxo' <> extraUTxO')
-                    -- The two UTxO sets could overlap here. When called by
-                    -- 'balanceTransaction' the user-specified input resolution
-                    -- will overwrite the wallet UTxO (if in conflict).
-                    --
-                    -- If the overridden outputs are incorrect, the wallet will
-                    -- incorrectly calculate the balance, and the transaction
-                    -- will ultimately be rejected by the node.
-                    --
-                    -- If the overwridden outputs simply adds datum hashes
-                    -- (which the wallet cannot currently represent), this
-                    -- shouldn't affect the balance.
-                    --
-                    -- Ultimately, however, it might be be wiser to error out of
-                    -- caution.
-                    --
-                    -- NOTE: There is a similar case in the 'resolveInput' of
-                    -- 'balanceTransaction'.
-                    body
+_toCardanoUTxO
+    :: forall era. IsShelleyBasedEra era
+    => UTxO
+    -> [(TxIn, TxOut, Maybe (Hash "Datum"))]
+    -> Cardano.UTxO era
+_toCardanoUTxO utxo extraUTxO =
+    let
+        utxo' = Map.fromList
+            . map (bimap toCardanoTxIn (toCardanoTxOut era))
+            . Map.toList
+            $ unUTxO utxo
+
+        extraUTxO' = Map.fromList
+            . map (\(i, o, mDatumHash) ->
+                (toCardanoTxIn i
+                , setDatumHash era mDatumHash (toCardanoTxOut era o))
+                )
+            $ extraUTxO
+    in
+        -- The two UTxO sets could overlap here. When called by
+        -- 'balanceTransaction' the user-specified input resolution
+        -- will overwrite the wallet UTxO (if in conflict).
+        --
+        -- If the overridden outputs are incorrect, the wallet will
+        -- incorrectly calculate the balance, and the transaction
+        -- will ultimately be rejected by the node.
+        --
+        -- If the overwridden outputs simply adds datum hashes
+        -- (which the wallet cannot currently represent), this
+        -- shouldn't affect the balance.
+        --
+        -- Ultimately, however, it might be be wiser to error out of
+        -- caution.
+        --
+        -- NOTE: There is a similar case in the 'resolveInput' of
+        -- 'balanceTransaction'.
+        Cardano.UTxO $ extraUTxO' <> utxo' -- Left-bias
   where
     era = Cardano.shelleyBasedEra @era
 
@@ -742,6 +732,20 @@ _evaluateTransactionBalance (Cardano.Tx body _) pp utxo extraUTxO =
                 , show datumHash
                 ]
 
+_evaluateTransactionBalance
+    :: forall era. IsShelleyBasedEra era
+    => Cardano.Tx era
+    -> Cardano.ProtocolParameters
+    -> Cardano.UTxO era
+    -> Cardano.Value
+_evaluateTransactionBalance (Cardano.Tx body _) pp utxo =
+    lovelaceFromCardanoTxOutValue
+        $ Cardano.evaluateTransactionBalance
+            pp
+            mempty
+            utxo
+            body
+  where
     lovelaceFromCardanoTxOutValue
         :: Cardano.TxOutValue era -> Cardano.Value
     lovelaceFromCardanoTxOutValue = \case
@@ -1111,14 +1115,14 @@ type AlonzoTx =
     Ledger.Tx (Cardano.ShelleyLedgerEra Cardano.AlonzoEra)
 
 _assignScriptRedeemers
-    :: forall era. Cardano.IsShelleyBasedEra era
+    :: forall era. (Cardano.IsShelleyBasedEra era)
     => Cardano.ProtocolParameters
-    -> TimeInterpreter (Either PastHorizonException)
-    -> (TxIn -> Maybe (TxOut, Maybe (Hash "Datum")))
+    -> (Cardano.EraHistory Cardano.CardanoMode, SystemStart)
+    -> Cardano.UTxO era
     -> [Redeemer]
     -> Cardano.Tx era
     -> Either ErrAssignRedeemers (Cardano.Tx era )
-_assignScriptRedeemers (toAlonzoPParams -> pparams) ti resolveInput redeemers tx =
+_assignScriptRedeemers pparams (eraHistory, systemStart) utxo redeemers tx =
     case Cardano.shelleyBasedEra @era of
         Cardano.ShelleyBasedEraShelley ->
             pure tx
@@ -1168,50 +1172,35 @@ _assignScriptRedeemers (toAlonzoPParams -> pparams) ti resolveInput redeemers tx
                 }
             )
 
-    utxoFromAlonzoTx
-        :: AlonzoTx
-        -> Ledger.UTxO (Cardano.ShelleyLedgerEra Cardano.AlonzoEra)
-    utxoFromAlonzoTx alonzoTx =
-        let
-            inputs = Alonzo.inputs (Alonzo.body alonzoTx)
-            utxo = flip mapMaybe (F.toList inputs) $ \i -> do
-                (o, dt) <- resolveInput (fromShelleyTxIn i)
-                -- NOTE: 'toAlonzoTxOut' only partially represent the information
-                -- because the wallet internal types aren't capturing datum at
-                -- the moment. It is _okay_ in this context because the
-                -- resulting UTxO is only used by 'evaluateTransactionExecutionUnits'
-                -- to lookup addresses corresponding to inputs.
-                pure (i, toAlonzoTxOut o dt)
-         in
-            Ledger.UTxO (Map.fromList utxo)
-
     -- | Evaluate execution units of each script/redeemer in the transaction.
     -- This may fail for each script.
     evaluateExecutionUnits
-        :: Map Alonzo.RdmrPtr Redeemer
+        :: era ~ Cardano.AlonzoEra => Map Alonzo.RdmrPtr Redeemer
         -> AlonzoTx
         -> Either ErrAssignRedeemers
             (Map Alonzo.RdmrPtr (Either ErrAssignRedeemers Alonzo.ExUnits))
     evaluateExecutionUnits indexedRedeemers alonzoTx = do
-        let utxo = utxoFromAlonzoTx alonzoTx
-        let costs = toCostModelsAsArray (Alonzo._costmdls pparams)
-        let systemStart = getSystemStart ti
+        let Cardano.Tx txBody _keyWits =
+                Cardano.ShelleyTx Cardano.ShelleyBasedEraAlonzo alonzoTx
 
-        epochInfo <- hoistEpochInfo (left ErrAssignRedeemersPastHorizon . runIdentity . runExceptT)
-            <$> left ErrAssignRedeemersPastHorizon (toEpochInfo ti)
-
-        res <- evaluateTransactionExecutionUnits
-                pparams
-                alonzoTx
-                utxo
-                epochInfo
+        let res = Cardano.evaluateTransactionExecutionUnits
+                Cardano.AlonzoEraInCardanoMode
                 systemStart
-                costs
+                eraHistory
+                pparams
+                utxo
+                txBody
         case res of
-            Left (UnknownTxIns ins) ->
-                Left $ ErrAssignRedeemersUnresolvedTxIns $ map fromShelleyTxIn (F.toList ins)
+            Left (Cardano.TransactionValidityBasicFailure (UnknownTxIns ins)) ->
+                Left
+                    $ ErrAssignRedeemersUnresolvedTxIns
+                    $ map fromShelleyTxIn (F.toList ins)
+            Left (Cardano.TransactionValidityIntervalError err) ->
+                Left $ ErrAssignRedeemersPastHorizon err
             Right report ->
-                Right $ hoistScriptFailure report
+                 pure $ hoistScriptFailure
+                    $ Map.mapKeys Cardano.toAlonzoRdmrPtr
+                    $ Map.map (fmap Cardano.toAlonzoExUnits) report
       where
         hoistScriptFailure
             :: Show scriptFailure
@@ -1267,7 +1256,7 @@ _assignScriptRedeemers (toAlonzoPParams -> pparams) ti resolveInput redeemers tx
             alonzoTx
                 { Alonzo.body = (Alonzo.body alonzoTx)
                     { Alonzo.scriptIntegrityHash = Alonzo.hashScriptIntegrity
-                        pparams
+                        (toAlonzoPParams pparams)
                         (Set.fromList langs)
                         (Alonzo.txrdmrs wits)
                         (Alonzo.txdats wits)

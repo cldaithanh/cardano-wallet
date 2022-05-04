@@ -1706,6 +1706,7 @@ data ApiErrorCode
     | UnableToDetermineCurrentEpoch
     | UnexpectedError
     | UnresolvedInputs
+    | ConflictingInputResolution
     | UnsupportedMediaType
     | UtxoTooSmall
     | WalletAlreadyExists

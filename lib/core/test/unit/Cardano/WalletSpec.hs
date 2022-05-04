@@ -1429,6 +1429,7 @@ mockNetworkLayer = dummyNetworkLayer
     , currentProtocolParameters =
         pure (protocolParameters dummyNetworkParameters)
     , timeInterpreter = dummyTimeInterpreter
+    , eraHistory = error "mockNetworkLayer: eraHistory not implemented"
     , syncProgress =
         error "dummyNetworkLayer: syncProgress not implemented"
     }

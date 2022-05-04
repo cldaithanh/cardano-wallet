@@ -179,4 +179,5 @@ dummyNetworkLayer = NetworkLayer
     , fetchRewardAccountBalances = error "fetchRewardAccountBalances: not implemented"
     , timeInterpreter = error "timeInterpreter: not implemented"
     , syncProgress = error "syncProgress: not implemented"
+    , eraHistory = error "eraHistory: not implemented"
     }

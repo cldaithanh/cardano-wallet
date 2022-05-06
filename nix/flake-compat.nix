@@ -5,7 +5,7 @@ let
   flake-compate-input = lock.nodes.root.inputs.flake-compat;
   nixpkgs-input = lock.nodes.haskellNix.inputs.${builtins.elemAt lock.nodes.root.inputs.nixpkgs 1};
   flake-compat = import (pkgs.fetchzip {
-    url = "https://api.github.com/repos/input-output-hk/flake-compat/tarball/${lock.nodes.${flake-compate-input}.locked.rev}";
+    url = "https://github.com/repos/input-output-hk/flake-compat/archive/${lock.nodes.${flake-compate-input}.locked.rev}.tar.gz";
     sha256 = lock.nodes.${flake-compate-input}.locked.narHash;
   });
   pkgs = import

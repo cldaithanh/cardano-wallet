@@ -98,7 +98,7 @@
         };
 
       mkHydraJobs = systemsJobs:
-        let hydraJobs = lib.foldl' lib.mergeAttrs { } (lib.attrValues systemsJobs);
+        let hydraJobs = lib.foldl' lib.recursiveUpdate { } (lib.attrValues systemsJobs);
         in
         hydraJobs // {
           required = mkRequiredJob hydraJobs;

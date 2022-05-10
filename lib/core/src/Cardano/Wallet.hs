@@ -1544,6 +1544,14 @@ balanceTransaction
     => ctx
     -> ArgGenChange s
     -> (W.ProtocolParameters, Cardano.ProtocolParameters)
+    -- ^ 'Cardano.ProtocolParameters' can be retrived via a Local State Query to
+    -- a local node.
+    --
+    -- Providing incorrect values will result in a phase 1 script integrity
+    -- hash failures instead of phase 2 failures if script redeemers are
+    -- present in the transaction, ensuring collateral is never forfeited.
+    --
+    -- TODO: Remove 'W.ProtocolParameters' argument.
     -> (Cardano.EraHistory Cardano.CardanoMode, SystemStart)
     -- ^ The 'Cardano.EraHistory' and 'SystemStart' is needed to convert
     -- validity intervals from 'UTCTime' to 'SlotNo' when executing Plutus
@@ -1552,18 +1560,17 @@ balanceTransaction
     -- 'SystemStart' is defined in the genesis file.
     --
     -- 'Cardano.EraHistory' can be retrieved via a Local State Query to a local
-    -- node. It can also be hard-coded because it changes so seldom.
+    -- node.
     --
-    -- ===
+    -- Both values can be hard-coded for a given network configuration. Just be
+    -- cautious that the 'Cardano.EraHistory' will occasionally change as new
+    -- eras are introduced to Cardano. Incorrect 'Cardano.EraHistory' values
+    -- _may_ result in a loss of collateral.
     --
-    -- TODO: Confirm that nothing too bad can happen when providing an incorrect
-    -- 'Cardano.EraHistory'. Relevant ledger code https://github.com/input-output-hk/cardano-ledger/blob/fdec04e8c071060a003263cdcb37e7319fb4dbf3/eras/alonzo/impl/src/Cardano/Ledger/Alonzo/TxInfo.hs#L428-L440
+    -- TODO: Clarify and/or test whether it's actually possible to lose
+    -- collateral by providing incorrect 'Cardano.EraHistory' values.
     --
-    -- Preliminary thoughts:
-    -- - PastHorizon-errors shouldn't matter because it's a phase 1 failure.
-    -- - Running the scripts with wrong 'UTCTime' ranges could change their
-    -- execution. Does the script integrity hash protect us here? And can alonzo
-    -- txs be accepted by the node in vasil? (I think yes)
+    -- Relevant ledger code: https://github.com/input-output-hk/cardano-ledger/blob/fdec04e8c071060a003263cdcb37e7319fb4dbf3/eras/alonzo/impl/src/Cardano/Ledger/Alonzo/TxInfo.hs#L428-L440
     -> (UTxOIndex WalletUTxO, Wallet s, Set Tx)
     -> PartialTx era
     -> ExceptT ErrBalanceTx m (Cardano.Tx era)

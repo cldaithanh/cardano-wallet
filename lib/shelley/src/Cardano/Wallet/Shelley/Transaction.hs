@@ -154,8 +154,6 @@ import Cardano.Wallet.Shelley.Compatibility
     , fromCardanoAddress
     , fromCardanoLovelace
     , fromCardanoTx
-    , fromCardanoTxIn
-    , fromCardanoTxOut
     , fromCardanoWdrls
     , fromShelleyTxIn
     , toAlonzoPParams
@@ -455,7 +453,7 @@ signTransaction
         Cardano.TxBody bodyContent = body
 
         inputs =
-            [ fromCardanoTxIn i
+            [ Compatibility.fromCardanoTxIn i
             | (i, _) <- Cardano.txIns bodyContent
             ]
 
@@ -464,7 +462,7 @@ signTransaction
                 Cardano.TxInsCollateralNone ->
                     []
                 Cardano.TxInsCollateral _ is ->
-                    fromCardanoTxIn <$> is
+                    Compatibility.fromCardanoTxIn <$> is
 
         extraKeys =
             case Cardano.txExtraKeyWits bodyContent of
@@ -646,8 +644,8 @@ newTransactionLayer networkId = TransactionLayer
     , updateTx = updateSealedTx
 
     , toCardanoUTxO = _toCardanoUTxO
-    , _fromCardanoTxOut = fromCardanoTxOut
-    , _fromCardanoTxIn = fromCardanoTxIn
+    , fromCardanoTxOut = Compatibility.fromCardanoTxOut
+    , fromCardanoTxIn = Compatibility.fromCardanoTxIn
     }
 
 _decodeSealedTx

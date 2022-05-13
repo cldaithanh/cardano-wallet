@@ -1387,10 +1387,10 @@ dummyTransactionLayer = TransactionLayer
         error "dummyTransactionLayer: constraints not implemented"
     , toCardanoUTxO =
         error "dummyTransactionLayer: toCardanoUTxO not implemented"
-    , _fromCardanoTxIn =
-        error "dummyTransactionLayer: _fromCardanoTxIn not implemented"
-    , _fromCardanoTxOut =
-        error "dummyTransactionLayer: _fromCardanoTxOut not implemented"
+    , fromCardanoTxIn =
+        error "dummyTransactionLayer: fromCardanoTxIn not implemented"
+    , fromCardanoTxOut =
+        error "dummyTransactionLayer: fromCardanoTxOut not implemented"
     , decodeTx = \_sealed ->
         ( Tx
             { txId = Hash ""

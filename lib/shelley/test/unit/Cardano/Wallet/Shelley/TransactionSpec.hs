@@ -196,8 +196,6 @@ import Cardano.Wallet.Shelley.Compatibility
     ( AnyShelleyBasedEra (..)
     , computeTokenBundleSerializedLengthBytes
     , fromCardanoLovelace
-    , fromCardanoTxIn
-    , fromCardanoTxOut
     , getScriptIntegrityHash
     , getShelleyBasedEra
     , shelleyToCardanoEra
@@ -395,6 +393,7 @@ import qualified Cardano.Wallet.Primitive.Types.TokenBundle as TokenBundle
 import qualified Cardano.Wallet.Primitive.Types.TokenMap as TokenMap
 import qualified Cardano.Wallet.Primitive.Types.Tx.Gen as TxGen
 import qualified Cardano.Wallet.Primitive.Types.UTxOIndex as UTxOIndex
+import qualified Cardano.Wallet.Shelley.Compatibility as Compatibility
 import qualified Codec.CBOR.Encoding as CBOR
 import qualified Codec.CBOR.Write as CBOR
 import qualified Data.ByteArray as BA
@@ -2741,8 +2740,8 @@ instance Arbitrary Wallet' where
           where
             genEntry = (,) <$> genIn <*> genOut
               where
-                genIn = fromCardanoTxIn <$> Cardano.genTxIn
-                genOut = fromCardanoTxOut <$> genTxOut AlonzoEra
+                genIn = Compatibility.fromCardanoTxIn <$> Cardano.genTxIn
+                genOut = Compatibility.fromCardanoTxOut <$> genTxOut AlonzoEra
 
         rootK :: SomeMnemonic -> ShelleyKey 'RootK XPrv
         rootK mw = generateKeyFromSeed (mw, Nothing) mempty

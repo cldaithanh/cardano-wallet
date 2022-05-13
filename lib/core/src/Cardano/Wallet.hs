@@ -1738,10 +1738,10 @@ balanceTransactionWithSelectionStrategy
         let res = flip map txIns $ \(i, _) -> do
                 case Map.lookup i utxo of
                     Nothing ->
-                       Left $ _fromCardanoTxIn tl i
+                       Left $ fromCardanoTxIn tl i
                     Just o -> do
-                        let i' = _fromCardanoTxIn tl i
-                        let TxOut addr bundle = _fromCardanoTxOut tl o
+                        let i' = fromCardanoTxIn tl i
+                        let TxOut addr bundle = fromCardanoTxOut tl o
                         pure (WalletUTxO i' addr, bundle)
 
         -- NOTE: we are hijacking the error case in
@@ -1805,8 +1805,8 @@ balanceTransactionWithSelectionStrategy
         :: Cardano.UTxO era
         -> ExceptT ErrBalanceTx m ()
     guardWalletUTxOConsistencyWith u' = do
-        let u = Map.mapKeys (_fromCardanoTxIn tl)
-                . Map.map (_fromCardanoTxOut tl)
+        let u = Map.mapKeys (fromCardanoTxIn tl)
+                . Map.map (fromCardanoTxOut tl)
                 $ (unUTxO u')
         let conflicts = lefts $ flip map (Map.toList u) $ \(i, o) ->
                 case i `UTxO.lookup` walletUTxO of

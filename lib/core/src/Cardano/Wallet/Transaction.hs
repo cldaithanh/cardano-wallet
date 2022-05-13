@@ -356,11 +356,11 @@ data TransactionLayer k tx = TransactionLayer
         -> Cardano.UTxO era
         -- ^ Temporary hack to allow access to conversion in balanceTransaction
 
-    , _fromCardanoTxIn
+    , fromCardanoTxIn
         :: Cardano.TxIn -> TxIn
         -- ^ Temporary hack to allow access to conversion in balanceTransaction
 
-    , _fromCardanoTxOut
+    , fromCardanoTxOut
         :: forall era ctx. Cardano.IsCardanoEra era
         => Cardano.TxOut ctx era
         -> TxOut

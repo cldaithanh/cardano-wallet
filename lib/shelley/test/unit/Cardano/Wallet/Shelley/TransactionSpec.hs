@@ -1,4 +1,5 @@
 {-# LANGUAGE AllowAmbiguousTypes #-}
+{-# LANGUAGE BlockArguments #-}
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE DerivingStrategies #-}
@@ -2794,13 +2795,13 @@ instance Arbitrary (PartialTx Cardano.AlonzoEra) where
         tx <- genTxForBalancing era
         let (Cardano.Tx (Cardano.TxBody content) _) = tx
         let inputs = Cardano.txIns content
-        resolvedInputs <- Cardano.UTxO . Map.fromList <$> forM inputs (\i -> do
+        resolvedInputs <- Cardano.UTxO . Map.fromList <$> forM inputs \i -> do
             -- NOTE: genTxOut does not generate quantities larger than
             -- `maxBound :: Word64`, however users could supply these.
             -- We should ideally test what happens, and make it clear what code,
             -- if any, should validate.
             o <- genTxOut Cardano.AlonzoEra
-            return (fst i, o))
+            return (fst i, o)
         let redeemers = []
         return $ PartialTx
             tx

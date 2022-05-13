@@ -2783,12 +2783,10 @@ instance Arbitrary (Cardano.TxOutDatum ctx Cardano.AlonzoEra) where
 
 instance Arbitrary (Cardano.TxOut ctx Cardano.AlonzoEra) where
     arbitrary = genTxOut Cardano.AlonzoEra
-    shrink (Cardano.TxOut addr val dat) = tail
-        [ Cardano.TxOut addr' val' dat'
-        | addr' <- prependOriginal shrink addr
-        , val' <- prependOriginal shrink val
-        , dat' <- prependOriginal shrink dat
-        ]
+    shrink = shrinkMapBy
+        (Compatibility.toCardanoTxOut ShelleyBasedEraAlonzo)
+        (Compatibility.fromCardanoTxOut)
+        (shrink)
 
 instance Arbitrary (PartialTx Cardano.AlonzoEra) where
     arbitrary = do

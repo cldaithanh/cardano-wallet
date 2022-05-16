@@ -2073,6 +2073,12 @@ prop_spendTx_balance tx u =
     cover 10
         (lhs /= mempty && rhs /= mempty)
         "lhs /= mempty && rhs /= mempty" $
+    cover 10
+        (failedScriptValidation tx)
+        "failedScriptValidation tx" $
+    cover 10
+        (not $ failedScriptValidation tx)
+        "not $ failedScriptValidation tx" $
     lhs === rhs
   where
     lhs = balance (spendTx tx u)
@@ -2091,6 +2097,12 @@ prop_spendTx tx u =
     cover 10
         (spendTx tx u /= mempty)
         "spendTx tx u /= mempty" $
+    cover 10
+        (failedScriptValidation tx)
+        "failedScriptValidation tx" $
+    cover 10
+        (not $ failedScriptValidation tx)
+        "not $ failedScriptValidation tx" $
     spendTx tx u === u `excluding` toExclude
   where
     toExclude =

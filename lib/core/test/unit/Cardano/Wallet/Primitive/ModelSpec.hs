@@ -1982,7 +1982,7 @@ prop_filterByAddress_balance_applyTxToUTxO f tx =
   where
     expectedResult =
         if failedScriptValidation tx
-        then mempty
+        then foldMap m (collateralOutput tx)
         else foldMap m (outputs tx)
       where
         m output =

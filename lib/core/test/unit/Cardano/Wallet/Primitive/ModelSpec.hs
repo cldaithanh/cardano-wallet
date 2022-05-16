@@ -2037,12 +2037,10 @@ prop_utxoFromTx_balance tx =
     cover 10
         (not $ failedScriptValidation tx)
         "not $ failedScriptValidation tx)" $
-    balance (utxoFromTx tx) === foldMap f (outputs tx)
-  where
-    f output =
+    balance (utxoFromTx tx) ===
         if failedScriptValidation tx
-        then mempty
-        else tokens output
+        then foldMap tokens (collateralOutput tx)
+        else foldMap tokens (outputs tx)
 
 -- spendTx tx u `isSubsetOf` u
 prop_spendTx_isSubset :: Tx -> UTxO -> Property

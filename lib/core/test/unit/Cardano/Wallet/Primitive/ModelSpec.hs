@@ -1955,10 +1955,10 @@ prop_applyTxToUTxO_entries tx u =
         "not $ failedScriptValidation tx" $
     applyTxToUTxO tx u === expectedResult
   where
-    expectedResult =
+    expectedResult = (<> utxoFromTx tx) $
         if failedScriptValidation tx
         then u `excluding` Set.fromList (collateralInputs tx)
-        else u `excluding` Set.fromList (inputs tx) <> utxoFromTx tx
+        else u `excluding` Set.fromList (inputs tx)
 
 prop_filterByAddress_balance_applyTxToUTxO
     :: (Address -> Bool) -> Tx -> Property

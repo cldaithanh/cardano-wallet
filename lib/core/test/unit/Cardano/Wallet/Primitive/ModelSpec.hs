@@ -545,8 +545,14 @@ prop_availableUTxO makeProperty =
 --
 prop_changeUTxO :: Property
 prop_changeUTxO =
-    forAllShrink (scale (`div` 4) $ listOf genTx) (shrinkList shrinkTx)
+    forAllShrink (scale (`div` 4) $ listOf genPendingTx) (shrinkList shrinkTx)
         prop_changeUTxO_inner
+  where
+    genPendingTx :: Gen Tx
+    genPendingTx = removeTxScriptValidity <$> genTx
+
+    removeTxScriptValidity :: Tx -> Tx
+    removeTxScriptValidity tx = tx {scriptValidity = Nothing}
 
 prop_changeUTxO_inner :: [Tx] -> Property
 prop_changeUTxO_inner pendingTxs =

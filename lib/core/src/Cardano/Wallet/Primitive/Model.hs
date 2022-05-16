@@ -5,6 +5,7 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE OverloadedLabels #-}
+{-# LANGUAGE TupleSections #-}
 {-# LANGUAGE TypeFamilies #-}
 
 -- |
@@ -560,6 +561,14 @@ utxoFromTx tx =
 utxoFromTxOutputs :: Tx -> UTxO
 utxoFromTxOutputs Tx {txId, outputs} =
     UTxO $ Map.fromList $ zip (TxIn txId <$> [0..]) outputs
+
+-- | Generates a UTxO set from the collateral outputs of a transaction.
+--
+-- This function ignores the transaction's script validity.
+--
+utxoFromTxCollateralOutputs :: Tx -> UTxO
+utxoFromTxCollateralOutputs Tx {txId, collateralOutput} =
+    UTxO $ Map.fromList $ F.toList $ (TxIn txId 0,) <$> collateralOutput
 
 {-------------------------------------------------------------------------------
                         Address ownership and discovery

@@ -469,6 +469,7 @@ totalUTxO pending (Wallet u _ s) =
 --
 -- We perform /some/ address discovery within the list of pending addresses,
 -- but we do not store the result.
+--
 -- Instead, we essentially assume that the address discovery state @s@ contains
 -- enough information to collect the change addresses in the pending
 -- transactions.
@@ -480,6 +481,7 @@ totalUTxO pending (Wallet u _ s) =
 --   them onto the chain. Hence, the address discovery phase is not really
 --   very effective.
 --   TODO: Add slot to 'Tx' and sort the pending set by slot.
+--
 changeUTxO
     :: IsOurs s Address
     => Set Tx
@@ -487,7 +489,7 @@ changeUTxO
     -> UTxO
 changeUTxO pending = evalState $
     mconcat <$> mapM
-        (UTxO.filterByAddressM isOursState . utxoFromTxOutputs)
+        (UTxO.filterByAddressM isOursState . utxoFromTx)
         (Set.toList pending)
 
 {-------------------------------------------------------------------------------

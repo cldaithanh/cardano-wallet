@@ -487,6 +487,13 @@ changeUTxO
     -> UTxO
 changeUTxO pending = evalState $
     mconcat <$> mapM
+        -- If a transaction is pending, we do not yet know whether the
+        -- transaction will fail script validation.
+        --
+        -- Here we make the assumption that script validation will not fail,
+        -- and only generate UTxO sets from ordinary outputs, completely
+        -- ignoring collateral outputs:
+        --
         (UTxO.filterByAddressM isOursState . utxoFromTxOutputs)
         (Set.toList pending)
 

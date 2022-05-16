@@ -59,6 +59,8 @@ module Cardano.Wallet.Primitive.Model
     -- ** Exported for testing
     , spendTx
     , utxoFromTx
+    , utxoFromTxOutputs
+    , utxoFromTxCollateralOutputs
     , applyTxToUTxO
     , applyOurTxToUTxO
     , changeUTxO

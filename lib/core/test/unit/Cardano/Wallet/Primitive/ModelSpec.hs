@@ -84,7 +84,8 @@ import Cardano.Wallet.Primitive.Types.TokenBundle
     ( TokenBundle )
 import Cardano.Wallet.Primitive.Types.Tx
     ( Direction (..)
-    , Tx (..)
+    , Tx
+    , TxF (..)
     , TxIn (..)
     , TxMeta (direction)
     , TxOut (..)

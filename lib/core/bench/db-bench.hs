@@ -140,7 +140,8 @@ import Cardano.Wallet.Primitive.Types.TokenQuantity
 import Cardano.Wallet.Primitive.Types.Tx
     ( Direction (..)
     , TransactionInfo
-    , Tx (..)
+    , Tx
+    , TxF (..)
     , TxIn (..)
     , TxMeta (..)
     , TxOut (..)

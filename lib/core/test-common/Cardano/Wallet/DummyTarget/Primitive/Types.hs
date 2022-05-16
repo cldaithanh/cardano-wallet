@@ -50,7 +50,8 @@ import Cardano.Wallet.Primitive.Types.Hash
 import Cardano.Wallet.Primitive.Types.RewardAccount
     ( RewardAccount (..) )
 import Cardano.Wallet.Primitive.Types.Tx
-    ( Tx (..)
+    ( Tx
+    , TxF (..)
     , TxIn (..)
     , TxMetadata (..)
     , TxOut (..)

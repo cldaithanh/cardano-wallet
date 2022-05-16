@@ -68,7 +68,8 @@ import Cardano.Wallet.Primitive.Types.Hash
 import Cardano.Wallet.Primitive.Types.Tx
     ( Direction (..)
     , TransactionInfo (..)
-    , Tx (..)
+    , Tx
+    , TxF (..)
     , TxMeta (..)
     , TxStatus (..)
     , isPending

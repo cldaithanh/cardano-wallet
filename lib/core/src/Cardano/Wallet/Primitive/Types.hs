@@ -180,7 +180,7 @@ import Cardano.Wallet.Primitive.Types.Hash
 import Cardano.Wallet.Primitive.Types.RewardAccount
     ( RewardAccount (..) )
 import Cardano.Wallet.Primitive.Types.Tx
-    ( Tx (..), TxSize (..) )
+    ( Tx, TxSize (..) )
 import Cardano.Wallet.Util
     ( ShowFmt (..), parseURI, uriToText )
 import Control.Arrow

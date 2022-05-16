@@ -94,7 +94,7 @@ import Cardano.Wallet.Primitive.Types.TokenPolicy
     ( TokenPolicyId )
 import Cardano.Wallet.Primitive.Types.Tx
     ( TokenBundleSizeAssessor
-    , Tx (..)
+    , Tx
     , TxConstraints
     , TxIn
     , TxMetadata

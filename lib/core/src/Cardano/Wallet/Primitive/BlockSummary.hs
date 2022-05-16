@@ -51,7 +51,7 @@ import Cardano.Wallet.Primitive.Types
 import Cardano.Wallet.Primitive.Types.Address
     ( Address )
 import Cardano.Wallet.Primitive.Types.Tx
-    ( Tx (..), TxOut (..) )
+    ( Tx, TxF (..), TxOut (..) )
 import Data.Foldable
     ( Foldable (toList) )
 import Data.Functor.Identity
@@ -208,7 +208,7 @@ mergeSameBlock
 -- Items with equal keys are considered duplicates.
 -- The second argument of 'mergeOn' is function that merges two
 -- duplicate items.
--- 
+--
 -- Example:
 --
 -- > mergeOn fst const [(0,"h"),(1,"a"),(4,"ell")] [(1,"λ"),(3,"sk")]

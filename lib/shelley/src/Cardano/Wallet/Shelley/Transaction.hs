@@ -137,8 +137,9 @@ import Cardano.Wallet.Primitive.Types.TokenQuantity
     ( TokenQuantity (..) )
 import Cardano.Wallet.Primitive.Types.Tx
     ( SealedTx (..)
-    , Tx (..)
+    , Tx
     , TxConstraints (..)
+    , TxF (..)
     , TxIn
     , TxMetadata (..)
     , TxOut (..)

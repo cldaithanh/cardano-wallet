@@ -423,8 +423,9 @@ import Cardano.Wallet.Primitive.Types.Tx
     , LocalTxSubmissionStatus
     , SealedTx (..)
     , TransactionInfo (..)
-    , Tx (..)
+    , Tx
     , TxChange (..)
+    , TxF (..)
     , TxIn (..)
     , TxMeta (..)
     , TxMetadata (..)

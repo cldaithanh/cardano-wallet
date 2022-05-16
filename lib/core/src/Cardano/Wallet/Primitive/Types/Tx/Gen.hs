@@ -52,7 +52,8 @@ import Cardano.Wallet.Primitive.Types.TokenMap.Gen
 import Cardano.Wallet.Primitive.Types.TokenQuantity
     ( TokenQuantity (..) )
 import Cardano.Wallet.Primitive.Types.Tx
-    ( Tx (..)
+    ( Tx
+    , TxF (..)
     , TxIn (..)
     , TxMetadata (..)
     , TxOut (..)

@@ -102,7 +102,7 @@ import Cardano.Wallet.Primitive.Types.RewardAccount
     ( RewardAccount (..) )
 import Cardano.Wallet.Primitive.Types.Tx
     ( Direction (..)
-    , Tx (..)
+    , Tx
     , TxIn (..)
     , TxMeta (..)
     , TxMetadata (..)

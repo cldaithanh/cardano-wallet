@@ -21,7 +21,8 @@
 module Cardano.Wallet.Primitive.Types.Tx
     (
     -- * Types
-      Tx (..)
+      Tx
+    , TxF (..)
     , TxIn (..)
     , TxOut (..)
     , TxChange (..)
@@ -204,12 +205,17 @@ import qualified Data.Set as Set
 import qualified Data.Text as T
 import qualified Data.Text.Lazy.Builder as Builder
 
--- | Primitive @Tx@-type.
+-- | The default type of transaction.
+--
+type Tx = TxF (Maybe TxScriptValidity)
+
+-- | Primitive @Tx@ type constructor.
 --
 -- Currently tailored for jormungandr in that inputs are @(TxIn, Coin)@
 -- instead of @TxIn@. We might have to revisit this when supporting another
 -- node.
-data Tx = Tx
+--
+data TxF scriptValidity = Tx
     { txId
         :: Hash "Tx"
         -- ^ Jörmungandr computes transaction id by hashing the full content of
@@ -262,16 +268,19 @@ data Tx = Tx
         -- <https://hydra.iohk.io/job/Cardano/cardano-ledger-specs/delegationDesignSpec/latest/download-by-type/doc-pdf/delegation_design_spec Shelley Ledger: Delegation/Incentives Design Spec>.
 
     , scriptValidity
-        :: !(Maybe TxScriptValidity)
+        :: !scriptValidity
         -- ^ Tag indicating whether non-native scripts in this transaction
         -- passed validation. This is added by the block creator when
         -- constructing the block. May be 'Nothing' for pre-Alonzo and pending
         -- transactions.
     } deriving (Show, Generic, Ord, Eq)
 
-instance NFData Tx
+instance NFData scriptValidity =>
+    NFData (TxF scriptValidity)
 
-instance Buildable Tx where
+instance Buildable scriptValidity =>
+    Buildable (TxF scriptValidity)
+  where
     build t = mconcat
         [ build (view #txId t)
         , build ("\n" :: String)

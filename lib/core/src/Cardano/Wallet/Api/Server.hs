@@ -492,8 +492,9 @@ import Cardano.Wallet.Primitive.Types.TokenQuantity
     ( TokenQuantity (..) )
 import Cardano.Wallet.Primitive.Types.Tx
     ( TransactionInfo
-    , Tx (..)
+    , Tx
     , TxChange (..)
+    , TxF (..)
     , TxIn (..)
     , TxOut (..)
     , TxStatus (..)

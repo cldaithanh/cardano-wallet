@@ -129,7 +129,8 @@ import Cardano.Wallet.Primitive.Types.TokenMap.Gen
     ( genTokenMap, shrinkTokenMap )
 import Cardano.Wallet.Primitive.Types.Tx
     ( Direction (..)
-    , Tx (..)
+    , Tx
+    , TxF (..)
     , TxIn (..)
     , TxMeta (..)
     , TxMetadata

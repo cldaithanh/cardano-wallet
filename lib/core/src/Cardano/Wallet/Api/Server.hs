@@ -2062,7 +2062,8 @@ postTransactionOld ctx genChange (ApiT wid) body = do
             , txMeta
             , txMetadata = tx ^. #metadata
             , txTime
-            , txScriptValidity = tx ^. #scriptValidity
+            -- Pending transactions do not have script validity:
+            , txScriptValidity = Nothing
             , txDeposit = W.stakeKeyDeposit pp
             , txMetadataSchema = TxMetadataDetailedSchema
             }
@@ -2986,7 +2987,8 @@ joinStakePool ctx knownPools getPoolStatus apiPoolId (ApiT wid) body = do
             , txMeta
             , txMetadata = Nothing
             , txTime
-            , txScriptValidity = tx ^. #scriptValidity
+            -- Pending transactions do not have script validity:
+            , txScriptValidity = Nothing
             , txDeposit = W.stakeKeyDeposit pp
             , txMetadataSchema = TxMetadataDetailedSchema
             }
@@ -3104,7 +3106,8 @@ quitStakePool ctx (ApiT wid) body = do
             , txMeta
             , txMetadata = Nothing
             , txTime
-            , txScriptValidity = tx ^. #scriptValidity
+            -- Pending transactions do not have script validity:
+            , txScriptValidity = Nothing
             , txDeposit = W.stakeKeyDeposit pp
             , txMetadataSchema = TxMetadataDetailedSchema
             }
@@ -3362,7 +3365,9 @@ migrateWallet ctx withdrawalType (ApiT wid) postData = do
                     , txMeta
                     , txMetadata = Nothing
                     , txTime
-                    , txScriptValidity = tx ^. #scriptValidity
+                    -- Pending migration transactions do not have script
+                    -- validity:
+                    , txScriptValidity = Nothing
                     , txDeposit = W.stakeKeyDeposit pp
                     , txMetadataSchema = TxMetadataDetailedSchema
                     }

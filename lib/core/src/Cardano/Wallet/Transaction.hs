@@ -93,7 +93,8 @@ import Cardano.Wallet.Primitive.Types.TokenMap
 import Cardano.Wallet.Primitive.Types.TokenPolicy
     ( TokenPolicyId )
 import Cardano.Wallet.Primitive.Types.Tx
-    ( TokenBundleSizeAssessor
+    ( PendingTx
+    , TokenBundleSizeAssessor
     , Tx
     , TxConstraints
     , TxIn
@@ -157,7 +158,7 @@ data TransactionLayer k tx = TransactionLayer
         -> SelectionOf TxOut
             -- A balanced coin selection where all change addresses have been
             -- assigned.
-        -> Either ErrMkTransaction (Tx, tx)
+        -> Either ErrMkTransaction (PendingTx, tx)
         -- ^ Construct a standard transaction
         --
         -- " Standard " here refers to the fact that we do not deal with redemption,

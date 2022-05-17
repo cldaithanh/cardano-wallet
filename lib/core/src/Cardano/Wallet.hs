@@ -422,6 +422,7 @@ import Cardano.Wallet.Primitive.Types.Tx
     ( Direction (..)
     , LocalTxSubmissionStatus
     , PendingTx
+    , PendingTxScriptValidity (..)
     , SealedTx (..)
     , TransactionInfo (..)
     , Tx
@@ -434,6 +435,7 @@ import Cardano.Wallet.Primitive.Types.Tx
     , TxSize (..)
     , TxStatus (..)
     , UnsignedTx (..)
+    , pendingTxToTx
     , sealedTxFromCardano
     , txHistoryToPendingTxs
     , txOutCoin
@@ -2332,7 +2334,7 @@ buildAndSignTransaction
     -> Passphrase "user"
     -> TransactionCtx
     -> SelectionOf TxOut
-    -> ExceptT ErrSignPayment IO (Tx, TxMeta, UTCTime, SealedTx)
+    -> ExceptT ErrSignPayment IO (PendingTx, TxMeta, UTCTime, SealedTx)
 buildAndSignTransaction ctx wid mkRwdAcct pwd txCtx sel = db & \DBLayer{..} -> do
     era <- liftIO $ currentNodeEra nl
     withRootKey @_ @s ctx wid pwd ErrSignPaymentWithRootKey $ \xprv scheme -> do
@@ -2517,14 +2519,14 @@ submitTx
         )
     => ctx
     -> WalletId
-    -> (Tx, TxMeta, SealedTx)
+    -> (PendingTx, TxMeta, SealedTx)
     -> ExceptT ErrSubmitTx IO ()
 submitTx ctx wid (tx, meta, binary) = traceResult tr' $ db & \DBLayer{..} -> do
     withExceptT ErrSubmitTxNetwork $
         postTx nw binary
     mapExceptT atomically $ do
         withExceptT ErrSubmitTxNoSuchWallet $
-            putTxHistory wid [(tx, meta)]
+            putTxHistory wid [(pendingTxToTx tx, meta)]
         withExceptT handleLocalTxSubmissionErr $
             putLocalTxSubmission wid (tx ^. #txId) binary (meta ^. #slotNo)
   where
@@ -2550,10 +2552,10 @@ submitExternalTx
         )
     => ctx
     -> SealedTx
-    -> ExceptT ErrPostTx IO Tx
+    -> ExceptT ErrPostTx IO PendingTx
 submitExternalTx ctx sealedTx = traceResult trPost $ do
     postTx nw sealedTx
-    pure tx
+    pure $ tx {scriptValidity = PendingTxScriptValidity}
   where
     tl = ctx ^. transactionLayer @k
     nw = ctx ^. networkLayer
@@ -3832,8 +3834,8 @@ instance HasSeverityAnnotation WalletLog where
         MsgIsStakeKeyRegistered _ -> Info
 
 data TxSubmitLog
-    = MsgSubmitTx Tx TxMeta SealedTx (BracketLog' (Either ErrSubmitTx ()))
-    | MsgSubmitExternalTx (Hash "Tx") (BracketLog' (Either ErrPostTx Tx))
+    = MsgSubmitTx PendingTx TxMeta SealedTx (BracketLog' (Either ErrSubmitTx ()))
+    | MsgSubmitExternalTx (Hash "Tx") (BracketLog' (Either ErrPostTx PendingTx))
     | MsgRetryPostTx (Hash "Tx") (BracketLog' (Either ErrPostTx ()))
     | MsgProcessPendingPool BracketLog
     deriving (Show, Eq)

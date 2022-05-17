@@ -99,6 +99,7 @@ module Cardano.Wallet.Primitive.Types.Tx
     , PendingTx
     , PendingTxScriptValidity (..)
     , maybeTxToPendingTx
+    , pendingTxToTx
     , txHistoryToPendingTxs
 
     ) where
@@ -1055,6 +1056,19 @@ data PendingTxScriptValidity = PendingTxScriptValidity
 instance Buildable PendingTxScriptValidity where
     build PendingTxScriptValidity = "pending"
 
+-- | Converts a 'Tx' to a 'PendingTx'.
+--
+-- A pending transaction has a script validity status that is not yet known.
+-- In the database we use the 'Nothing' value to represent an unknown script
+-- validity.
+--
+-- Returns 'Nothing' if the given 'Tx' has a script validity that is not equal
+-- to 'Nothing'.
+--
+-- Satisfies the following property:
+--
+-- prop> maybeTxToPendingTx (pendingTxToTx t) == Just t
+--
 maybeTxToPendingTx :: Tx -> Maybe PendingTx
 maybeTxToPendingTx tx = case scriptValidity tx of
     Just TxScriptValid ->
@@ -1064,6 +1078,24 @@ maybeTxToPendingTx tx = case scriptValidity tx of
     Nothing ->
         Just tx {scriptValidity = PendingTxScriptValidity}
 
+-- | Converts a 'PendingTx' to a 'Tx'.
+--
+-- A pending transaction has a script validity status that is not yet known.
+-- In the database we use the 'Nothing' value to represent an unknown script
+-- validity.
+--
+-- Satisfies the following property:
+--
+-- prop> maybeTxToPendingTx (pendingTxToTx t) == Just t
+--
+pendingTxToTx :: PendingTx -> Tx
+pendingTxToTx tx = tx {scriptValidity = Nothing}
+
+-- | Converts a transaction history to a set of 'PendingTx' values.
+--
+-- This function can applied to the result of calling 'readTxHistory' with a
+-- 'Maybe TxStatus' parameter of 'Just Pending'.
+--
 txHistoryToPendingTxs :: [TransactionInfo] -> Set PendingTx
 txHistoryToPendingTxs =
     Set.fromList . mapMaybe (maybeTxToPendingTx . fromTransactionInfo)

@@ -1,4 +1,5 @@
 {-# LANGUAGE DataKinds #-}
+{-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE DeriveFunctor #-}
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE DerivingVia #-}
@@ -94,6 +95,12 @@ module Cardano.Wallet.Primitive.Types.Tx
     -- * Conversions (Unsafe)
     , unsafeCoinToTxOutCoinValue
 
+    -- * Pending transactions
+    , PendingTx
+    , PendingTxScriptValidity (..)
+    , maybeTxToPendingTx
+    , txHistoryToPendingTxs
+
     ) where
 
 import Prelude
@@ -151,6 +158,8 @@ import Data.Int
     ( Int64 )
 import Data.Map.Strict
     ( Map )
+import Data.Maybe
+    ( mapMaybe )
 import Data.Ord
     ( comparing )
 import Data.Quantity
@@ -1028,3 +1037,33 @@ unsafeCoinToTxOutCoinValue c
             ]
     | otherwise =
         Coin.unsafeToWord64 c
+
+--------------------------------------------------------------------------------
+-- Pending transactions
+--------------------------------------------------------------------------------
+
+-- | A pending transaction.
+--
+-- Pending transactions do not yet have script validity.
+--
+type PendingTx = TxF PendingTxScriptValidity
+
+data PendingTxScriptValidity = PendingTxScriptValidity
+    deriving stock (Eq, Generic, Ord, Show)
+    deriving anyclass NFData
+
+instance Buildable PendingTxScriptValidity where
+    build PendingTxScriptValidity = "pending"
+
+maybeTxToPendingTx :: Tx -> Maybe PendingTx
+maybeTxToPendingTx tx = case scriptValidity tx of
+    Just TxScriptValid ->
+        Nothing
+    Just TxScriptInvalid ->
+        Nothing
+    Nothing ->
+        Just tx {scriptValidity = PendingTxScriptValidity}
+
+txHistoryToPendingTxs :: [TransactionInfo] -> Set PendingTx
+txHistoryToPendingTxs =
+    Set.fromList . mapMaybe (maybeTxToPendingTx . fromTransactionInfo)

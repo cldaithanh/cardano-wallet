@@ -7,6 +7,7 @@
 
 module Cardano.Wallet.Primitive.Types.Tx.Gen
     ( coarbitraryTxIn
+    , genPendingTx
     , genTx
     , genTxHash
     , genTxIndex
@@ -17,6 +18,7 @@ module Cardano.Wallet.Primitive.Types.Tx.Gen
     , genTxOutCoin
     , genTxOutTokenBundle
     , genTxScriptValidity
+    , shrinkPendingTx
     , shrinkTx
     , shrinkTxHash
     , shrinkTxIndex
@@ -52,7 +54,9 @@ import Cardano.Wallet.Primitive.Types.TokenMap.Gen
 import Cardano.Wallet.Primitive.Types.TokenQuantity
     ( TokenQuantity (..) )
 import Cardano.Wallet.Primitive.Types.Tx
-    ( Tx
+    ( PendingTx
+    , PendingTxScriptValidity (..)
+    , Tx
     , TxF (..)
     , TxIn (..)
     , TxMetadata (..)
@@ -174,6 +178,22 @@ genTxScriptValidity = genericArbitrary
 
 shrinkTxScriptValidity :: TxScriptValidity -> [TxScriptValidity]
 shrinkTxScriptValidity = genericShrink
+
+--------------------------------------------------------------------------------
+-- Pending transactions generated according to the size parameter
+--------------------------------------------------------------------------------
+
+genPendingTx :: Gen PendingTx
+genPendingTx = txToPendingTx <$> genTx
+
+shrinkPendingTx :: PendingTx -> [PendingTx]
+shrinkPendingTx = shrinkMapBy txToPendingTx pendingTxToTx shrinkTx
+
+txToPendingTx :: Tx -> PendingTx
+txToPendingTx tx = tx {scriptValidity = PendingTxScriptValidity}
+
+pendingTxToTx :: PendingTx -> Tx
+pendingTxToTx tx = tx {scriptValidity = Nothing}
 
 --------------------------------------------------------------------------------
 -- Transaction hashes generated according to the size parameter

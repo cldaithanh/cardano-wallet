@@ -84,6 +84,8 @@ import Cardano.Wallet.Primitive.Types.TokenBundle
     ( TokenBundle )
 import Cardano.Wallet.Primitive.Types.Tx
     ( Direction (..)
+    , PendingTx
+    , PendingTxScriptValidity (..)
     , Tx
     , TxF (..)
     , TxIn (..)
@@ -97,7 +99,15 @@ import Cardano.Wallet.Primitive.Types.Tx
     , txOutCoin
     )
 import Cardano.Wallet.Primitive.Types.Tx.Gen
-    ( genTx, genTxIn, genTxOut, shrinkTx, shrinkTxIn, shrinkTxOut )
+    ( genPendingTx
+    , genTx
+    , genTxIn
+    , genTxOut
+    , shrinkPendingTx
+    , shrinkTx
+    , shrinkTxIn
+    , shrinkTxOut
+    )
 import Cardano.Wallet.Primitive.Types.UTxO
     ( UTxO (..), balance, dom, excluding, filterByAddress, restrictedTo )
 import Cardano.Wallet.Primitive.Types.UTxO.Gen
@@ -443,11 +453,11 @@ prop_countRewardsOnce (WithPending wallet pending rewards)
 -- Available UTxO properties
 --------------------------------------------------------------------------------
 
-allInputsOfTxs :: Set Tx -> Set TxIn
-allInputsOfTxs = F.foldMap allInputsOfTx
+allInputsOfPendingTxs :: Set PendingTx -> Set TxIn
+allInputsOfPendingTxs = F.foldMap allInputsOfPendingTx
   where
-    allInputsOfTx :: Tx -> Set TxIn
-    allInputsOfTx tx = Set.fromList $ fst <$> mconcat
+    allInputsOfPendingTx :: PendingTx -> Set TxIn
+    allInputsOfPendingTx tx = Set.fromList $ fst <$> mconcat
         [ tx & resolvedInputs
         , tx & resolvedCollateralInputs
         ]
@@ -461,12 +471,12 @@ prop_availableUTxO_notMember :: Property
 prop_availableUTxO_notMember =
     prop_availableUTxO $ \pendingTxs _wallet result ->
     all (`Map.notMember` unUTxO result)
-        (allInputsOfTxs pendingTxs)
+        (allInputsOfPendingTxs pendingTxs)
 
 prop_availableUTxO_withoutKeys :: Property
 prop_availableUTxO_withoutKeys =
     prop_availableUTxO $ \pendingTxs wallet result ->
-    unUTxO (utxo wallet) `Map.withoutKeys` allInputsOfTxs pendingTxs
+    unUTxO (utxo wallet) `Map.withoutKeys` allInputsOfPendingTxs pendingTxs
         === unUTxO result
 
 prop_availableUTxO_availableBalance :: Property
@@ -477,15 +487,21 @@ prop_availableUTxO_availableBalance =
 
 prop_availableUTxO
     :: Testable prop
-    => (Set Tx -> Wallet s -> UTxO -> prop)
+    => (Set PendingTx -> Wallet s -> UTxO -> prop)
     -> Property
 prop_availableUTxO makeProperty =
     forAllShrink (scale (* 4) genUTxO) shrinkUTxO
         $ \utxo ->
-    forAllShrink (scale (`div` 2) $ listOf genTx) (shrinkList shrinkTx)
+    forAllShrink genPendingTxs shrinkPendingTxs
         $ \pendingTxs ->
     inner utxo pendingTxs
   where
+    genPendingTxs :: Gen [PendingTx]
+    genPendingTxs = scale (`div` 2) $ listOf genPendingTx
+
+    shrinkPendingTxs :: [PendingTx] -> [[PendingTx]]
+    shrinkPendingTxs = shrinkList shrinkPendingTx
+
     inner utxo pendingTxs =
         cover 5 (result /= mempty && result == utxo)
             "result /= mempty && result == utxo" $
@@ -546,10 +562,12 @@ prop_availableUTxO makeProperty =
 --
 prop_changeUTxO :: Property
 prop_changeUTxO =
-    forAllShrink (scale (`div` 4) $ listOf genTx) (shrinkList shrinkTx)
-        prop_changeUTxO_inner
+    forAllShrink
+        (scale (`div` 4) $ listOf genPendingTx)
+        (shrinkList shrinkPendingTx)
+        (prop_changeUTxO_inner)
 
-prop_changeUTxO_inner :: [Tx] -> Property
+prop_changeUTxO_inner :: [PendingTx] -> Property
 prop_changeUTxO_inner pendingTxs =
     checkCoverage $
     cover 50 (not (UTxO.null utxoEven) && not (UTxO.null utxoOdd))
@@ -604,7 +622,7 @@ prop_changeUTxO_inner pendingTxs =
     utxoOdd :: UTxO
     utxoOdd  = changeUTxO pendingTxSet $ IsOursIf ((== Odd) . addressParity)
 
-    pendingTxSet :: Set Tx
+    pendingTxSet :: Set PendingTx
     pendingTxSet = Set.fromList pendingTxs
 
 --------------------------------------------------------------------------------
@@ -729,16 +747,22 @@ prop_totalUTxO_pendingInputsExcluded =
 
 prop_totalUTxO
     :: Testable prop
-    => (Set Tx -> Wallet TestStateForTotalUTxO -> UTxO -> prop)
+    => (Set PendingTx -> Wallet TestStateForTotalUTxO -> UTxO -> prop)
     -> Property
 prop_totalUTxO makeProperty =
     checkCoverage $
     forAllShrink (scale (* 2) genUTxO) shrinkUTxO
         $ \utxo ->
-    forAllShrink (listOf (scale (`div` 2) genTx)) (shrinkList shrinkTx)
+    forAllShrink genPendingTxs shrinkPendingTxs
         $ \pendingTxs ->
     inner utxo pendingTxs
   where
+    genPendingTxs :: Gen [PendingTx]
+    genPendingTxs = listOf (scale (`div` 2) genPendingTx)
+
+    shrinkPendingTxs :: [PendingTx] -> [[PendingTx]]
+    shrinkPendingTxs = shrinkList shrinkPendingTx
+
     inner utxo pendingTxs =
         property $ makeProperty pendingTxSet wallet result
       where
@@ -749,7 +773,7 @@ prop_totalUTxO makeProperty =
     -- Restricts a transaction so that its ordinary inputs and collateral
     -- inputs are all members of the given UTxO set.
     --
-    restrictTxInputs :: UTxO -> Tx -> Tx
+    restrictTxInputs :: UTxO -> PendingTx -> PendingTx
     restrictTxInputs utxo
         = over #resolvedInputs
             (filter ((`Set.member` utxoInputs) . fst))
@@ -1091,7 +1115,7 @@ instance Arbitrary (ShowFmt Address) where
 
 data WithPending s = WithPending
     { _wallet :: Wallet s
-    , _pendingTxs :: Set Tx
+    , _pendingTxs :: Set PendingTx
     , _rewards :: Coin
     } deriving (Generic, Show)
 
@@ -1105,11 +1129,11 @@ instance Arbitrary (WithPending WalletState) where
         subChain <- flip take blockchain <$> choose (1, length blockchain)
         let wallet = foldl (\cp b -> snd . snd $ applyBlock b cp) cp0 subChain
         rewards <- Coin <$> oneof [pure 0, chooseNatural (1, 10000)]
-        pending <- genPendingTx (totalUTxO Set.empty wallet) rewards
+        pending <- genPendingTxs (totalUTxO Set.empty wallet) rewards
         pure $ WithPending wallet pending rewards
       where
-        genPendingTx :: UTxO -> Coin -> Gen (Set Tx)
-        genPendingTx (UTxO u) rewards
+        genPendingTxs :: UTxO -> Coin -> Gen (Set PendingTx)
+        genPendingTxs (UTxO u) rewards
             | Map.null u = pure Set.empty
             | otherwise  = do
                 (inp, out) <-
@@ -1154,7 +1178,7 @@ instance Arbitrary (WithPending WalletState) where
                         , outputs = [out {tokens}]
                         , withdrawals = mempty
                         , metadata = Nothing
-                        , scriptValidity = Nothing
+                        , scriptValidity = PendingTxScriptValidity
                         }
 
                 elements [Set.singleton pending, Set.empty]

@@ -421,6 +421,7 @@ import Cardano.Wallet.Primitive.Types.TokenQuantity
 import Cardano.Wallet.Primitive.Types.Tx
     ( Direction (..)
     , LocalTxSubmissionStatus
+    , PendingTx
     , SealedTx (..)
     , TransactionInfo (..)
     , Tx
@@ -433,8 +434,8 @@ import Cardano.Wallet.Primitive.Types.Tx
     , TxSize (..)
     , TxStatus (..)
     , UnsignedTx (..)
-    , fromTransactionInfo
     , sealedTxFromCardano
+    , txHistoryToPendingTxs
     , txOutCoin
     , withdrawals
     )
@@ -833,12 +834,13 @@ readWallet
     :: forall ctx s k. HasDBLayer IO s k ctx
     => ctx
     -> WalletId
-    -> ExceptT ErrNoSuchWallet IO (Wallet s, WalletMetadata, Set Tx)
+    -> ExceptT ErrNoSuchWallet IO (Wallet s, WalletMetadata, Set PendingTx)
 readWallet ctx wid = db & \DBLayer{..} -> mapExceptT atomically $ do
     cp <- withNoSuchWallet wid $ readCheckpoint wid
     meta <- withNoSuchWallet wid $ readWalletMeta wid
-    pending <- lift $ readTxHistory wid Nothing Descending wholeRange (Just Pending)
-    pure (cp, meta, Set.fromList (fromTransactionInfo <$> pending))
+    pendingTxs <- lift $ txHistoryToPendingTxs <$>
+        readTxHistory wid Nothing Descending wholeRange (Just Pending)
+    pure (cp, meta, pendingTxs)
   where
     db = ctx ^. dbLayer @IO @s @k
 
@@ -1547,7 +1549,7 @@ balanceTransaction
     -> ArgGenChange s
     -> (W.ProtocolParameters, Cardano.ProtocolParameters)
     -> TimeInterpreter (Either PastHorizonException)
-    -> (UTxOIndex WalletUTxO, Wallet s, Set Tx)
+    -> (UTxOIndex WalletUTxO, Wallet s, Set PendingTx)
     -> PartialTx era
     -> ExceptT ErrBalanceTx m (Cardano.Tx era)
 balanceTransaction ctx change pp ti wallet ptx = do
@@ -1573,7 +1575,7 @@ balanceTransactionWithSelectionStrategy
     -> ArgGenChange s
     -> (W.ProtocolParameters, Cardano.ProtocolParameters)
     -> TimeInterpreter (Either PastHorizonException)
-    -> (UTxOIndex WalletUTxO, Wallet s, Set Tx)
+    -> (UTxOIndex WalletUTxO, Wallet s, Set PendingTx)
     -> SelectionStrategy
     -> PartialTx era
     -> ExceptT ErrBalanceTx m (Cardano.Tx era)
@@ -2101,7 +2103,8 @@ readWalletUTxOIndex
     :: forall ctx s k. HasDBLayer IO s k ctx
     => ctx
     -> WalletId
-    -> ExceptT ErrNoSuchWallet IO (UTxOIndex WalletUTxO, Wallet s, Set Tx)
+    -> ExceptT ErrNoSuchWallet IO
+        (UTxOIndex WalletUTxO, Wallet s, Set PendingTx)
 readWalletUTxOIndex ctx wid = do
     (cp, _, pending) <- readWallet @ctx @s @k ctx wid
     let utxo = UTxOIndex.fromMap $
@@ -2132,7 +2135,7 @@ calcMinimumCoinValues ctx outs = do
 --
 data SelectAssetsParams s result = SelectAssetsParams
     { outputs :: [TxOut]
-    , pendingTxs :: Set Tx
+    , pendingTxs :: Set PendingTx
     , randomSeed :: Maybe StdGenSeed
     , txContext :: TransactionCtx
     , utxoAvailableForCollateral :: Map WalletUTxO TokenBundle
@@ -2257,7 +2260,7 @@ selectAssets ctx pp params transform = do
             _otherwise ->
                 pure ()
       where
-        hasWithdrawal :: Tx -> Bool
+        hasWithdrawal :: PendingTx -> Bool
         hasWithdrawal = not . null . withdrawals
 
         txWithdrawal :: Withdrawal
@@ -3542,7 +3545,7 @@ data ErrSelectAssets
     = ErrSelectAssetsPrepareOutputsError
         (SelectionOutputError WalletSelectionContext)
     | ErrSelectAssetsNoSuchWallet ErrNoSuchWallet
-    | ErrSelectAssetsAlreadyWithdrawing Tx
+    | ErrSelectAssetsAlreadyWithdrawing PendingTx
     | ErrSelectAssetsSelectionError (SelectionError WalletSelectionContext)
     deriving (Generic, Eq, Show)
 

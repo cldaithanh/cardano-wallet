@@ -491,8 +491,8 @@ import Cardano.Wallet.Primitive.Types.TokenPolicy
 import Cardano.Wallet.Primitive.Types.TokenQuantity
     ( TokenQuantity (..) )
 import Cardano.Wallet.Primitive.Types.Tx
-    ( TransactionInfo
-    , Tx
+    ( PendingTx
+    , TransactionInfo
     , TxChange (..)
     , TxF (..)
     , TxIn (..)
@@ -798,7 +798,7 @@ type MkApiWallet ctx s w
     -> WalletId
     -> Wallet s
     -> WalletMetadata
-    -> Set Tx
+    -> Set PendingTx
     -> SyncProgress
     -> Handler w
 
@@ -1239,7 +1239,7 @@ mkLegacyWallet
     -> WalletId
     -> Wallet s
     -> WalletMetadata
-    -> Set Tx
+    -> Set PendingTx
     -> SyncProgress
     -> Handler ApiByronWallet
 mkLegacyWallet ctx wid cp meta pending progress = do

@@ -101,6 +101,7 @@ import Cardano.Wallet.Primitive.Types.TokenBundle
     ( TokenBundle )
 import Cardano.Wallet.Primitive.Types.Tx
     ( Direction (..)
+    , PendingTx
     , Tx
     , TxF (..)
     , TxIn (..)
@@ -398,14 +399,14 @@ lastHeader (Summary _ BlockSummary{to}) = to
 -------------------------------------------------------------------------------}
 
 -- | Available balance = 'balance' . 'availableUTxO'
-availableBalance :: Set Tx -> Wallet s -> TokenBundle
+availableBalance :: Set PendingTx -> Wallet s -> TokenBundle
 availableBalance pending =
     balance . availableUTxO pending
 
 -- | Total balance = 'balance' . 'totalUTxO' +? rewards
 totalBalance
     :: (IsOurs s Address, IsOurs s RewardAccount)
-    => Set Tx
+    => Set PendingTx
     -> Coin
     -> Wallet s
     -> TokenBundle
@@ -421,7 +422,7 @@ totalBalance pending rewards wallet@(Wallet _ _ s) =
 
 -- | Available UTxO = @pending ⋪ utxo@
 availableUTxO
-    :: Set Tx
+    :: Set PendingTx
     -> Wallet s
     -> UTxO
 availableUTxO pending (Wallet u _ _) = u `excluding` used
@@ -431,7 +432,7 @@ availableUTxO pending (Wallet u _ _) = u `excluding` used
 
     -- UTxO which have been spent or committed as collateral in a pending
     -- transaction are not available to use in future transactions.
-    getUsedTxIn :: Tx -> Set TxIn
+    getUsedTxIn :: PendingTx -> Set TxIn
     getUsedTxIn tx = Set.fromList $ fst <$> mconcat
         [ tx ^. #resolvedInputs
         , tx ^. #resolvedCollateralInputs
@@ -449,7 +450,7 @@ availableUTxO pending (Wallet u _ _) = u `excluding` used
 --
 totalUTxO
     :: IsOurs s Address
-    => Set Tx
+    => Set PendingTx
     -> Wallet s
     -> UTxO
 totalUTxO pending (Wallet u _ s) =
@@ -463,7 +464,7 @@ totalUTxO pending (Wallet u _ s) =
     -- the UTxO set would look if all pending transactions are applied
     -- successfully: if a transaction is applied successfully, then its
     -- collateral inputs cannot be consumed.
-    getSpentTxIn :: Tx -> Set TxIn
+    getSpentTxIn :: PendingTx -> Set TxIn
     getSpentTxIn tx = Set.fromList $ fst <$> tx ^. #resolvedInputs
 
 -- | Retrieve the change 'UTxO' contained in a set of pending transactions.
@@ -483,7 +484,7 @@ totalUTxO pending (Wallet u _ s) =
 --   TODO: Add slot to 'Tx' and sort the pending set by slot.
 changeUTxO
     :: IsOurs s Address
-    => Set Tx
+    => Set PendingTx
     -> s
     -> UTxO
 changeUTxO pending = evalState $
@@ -578,7 +579,7 @@ utxoFromTx tx =
 --
 -- This function ignores the transaction's script validity.
 --
-utxoFromTxOutputs :: Tx -> UTxO
+utxoFromTxOutputs :: TxF scriptValidity -> UTxO
 utxoFromTxOutputs Tx {txId, outputs} =
     UTxO $ Map.fromList $ zip (TxIn txId <$> [0..]) outputs
 
@@ -586,7 +587,7 @@ utxoFromTxOutputs Tx {txId, outputs} =
 --
 -- This function ignores the transaction's script validity.
 --
-utxoFromTxCollateralOutputs :: Tx -> UTxO
+utxoFromTxCollateralOutputs :: TxF scriptValidity -> UTxO
 utxoFromTxCollateralOutputs Tx {txId, collateralOutput} =
     UTxO $ Map.fromList $ F.toList $ (TxIn txId 0,) <$> collateralOutput
 

@@ -158,6 +158,7 @@ import Cardano.Wallet.Primitive.Types.TokenBundle
     ( TokenBundle )
 import Cardano.Wallet.Primitive.Types.Tx
     ( Direction (..)
+    , PendingTx
     , TransactionInfo (..)
     , Tx
     , TxF (..)
@@ -167,6 +168,7 @@ import Cardano.Wallet.Primitive.Types.Tx
     , TxScriptValidity (..)
     , TxStatus (..)
     , toTxHistory
+    , txHistoryToPendingTxs
     )
 import Cardano.Wallet.Unsafe
     ( unsafeFromHex, unsafeRunExceptT )
@@ -190,6 +192,8 @@ import Data.Maybe
     ( fromMaybe, isJust, isNothing, mapMaybe )
 import Data.Quantity
     ( Quantity (..) )
+import Data.Set
+    ( Set )
 import Data.Text
     ( Text )
 import Data.Text.Class
@@ -1363,10 +1367,10 @@ getAvailableBalance :: DBLayer IO s k -> IO Natural
 getAvailableBalance DBLayer{..} = do
     cp <- fmap (fromMaybe (error "nothing")) <$>
         atomically $ readCheckpoint testWid
-    pend <- atomically $ fmap toTxHistory
-        <$> readTxHistory testWid Nothing Descending wholeRange (Just Pending)
+    pendingTxs <- atomically $ txHistoryToPendingTxs <$>
+        readTxHistory testWid Nothing Descending wholeRange (Just Pending)
     return $ fromIntegral $ unCoin $ TokenBundle.getCoin $
-        availableBalance (Set.fromList $ map fst pend) cp
+        availableBalance pendingTxs cp
 
 getTxsInLedger :: DBLayer IO s k -> IO ([(Direction, Natural)])
 getTxsInLedger DBLayer {..} = do

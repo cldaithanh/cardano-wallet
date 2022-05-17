@@ -169,8 +169,8 @@ import Cardano.Wallet.Primitive.Types.TokenPolicy
 import Cardano.Wallet.Primitive.Types.TokenPolicy.Gen
     ( genTokenPolicyId, shrinkTokenPolicyId )
 import Cardano.Wallet.Primitive.Types.Tx
-    ( SealedTx (..)
-    , Tx
+    ( PendingTx
+    , SealedTx (..)
     , TxConstraints (..)
     , TxIn (..)
     , TxMetadata (..)
@@ -2721,7 +2721,7 @@ instance MonadRandom Gen where
 data Wallet' = Wallet'
     (UTxOIndex WalletUTxO)
     (Wallet (SeqState 'Mainnet ShelleyKey))
-    (Set Tx)
+    (Set PendingTx)
 
 instance Show Wallet' where
     show (Wallet' u w pending) = fmt $ mconcat

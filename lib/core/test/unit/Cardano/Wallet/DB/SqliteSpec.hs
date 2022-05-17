@@ -1374,9 +1374,9 @@ getAvailableBalance DBLayer{..} = do
 
 getTxsInLedger :: DBLayer IO s k -> IO ([(Direction, Natural)])
 getTxsInLedger DBLayer {..} = do
-    pend <- atomically $ fmap toTxHistory
+    txs <- atomically $ fmap toTxHistory
         <$> readTxHistory testWid Nothing Descending wholeRange (Just InLedger)
-    pure $ map (\(_, m) -> (direction m, fromIntegral $ unCoin $ amount m)) pend
+    pure $ map (\(_, m) -> (direction m, fromIntegral $ unCoin $ amount m)) txs
 
 {-------------------------------------------------------------------------------
                            Test data - Sequential AD

@@ -557,9 +557,10 @@ spendTxD tx !u =
 -- indices within this ordering will determine how they are referenced as
 -- transaction inputs in subsequent blocks.
 --
--- The following property should always hold:
+-- The following properties should always hold:
 --
 -- prop> utxoFromTx tx == utxoFromTxOuts (txId tx) (txOutsFromTx tx)
+-- prop> size (utxoFromTx tx) == length (txOutsFromTx tx)
 --
 -- Assuming the transaction is not marked as having an invalid script, the
 -- following property should hold:

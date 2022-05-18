@@ -2807,23 +2807,22 @@ instance Arbitrary Cardano.TxIn where
 
 instance Arbitrary (PartialTx Cardano.AlonzoEra) where
     arbitrary = do
-        let era = AlonzoEra
-        tx <- genTxForBalancing era
+        tx <- genTxForBalancing Cardano.AlonzoEra
         let (Cardano.Tx (Cardano.TxBody content) _) = tx
         let inputs = Cardano.txIns content
-        resolvedInputs <- fmap (Cardano.UTxO . Map.fromList) . forM inputs $ \i -> do
-            -- NOTE: genTxOut does not generate quantities larger than
-            -- `maxBound :: Word64`, however users could supply these.
-            -- We should ideally test what happens, and make it clear what code,
-            -- if any, should validate.
-            o <- genTxOut Cardano.AlonzoEra
-            return (fst i, o)
-        let redeemers = []
+        resolvedInputs
+            <- fmap (Cardano.UTxO . Map.fromList) . forM inputs $ \i -> do
+                -- NOTE: genTxOut does not generate quantities larger than
+                -- `maxBound :: Word64`, however users could supply these.
+                -- We should ideally test what happens, and make it clear what
+                -- code, if any, should validate.
+                o <- genTxOut Cardano.AlonzoEra
+                return (fst i, o)
         return $ PartialTx
-            tx
-            resolvedInputs
-            redeemers
-
+            { tx = tx
+            , inputs = resolvedInputs
+            , redeemers = []
+            }
 
     -- NOTE: We need to ensure consistency between the tx itself and the input
     -- resolution. This currently works by:

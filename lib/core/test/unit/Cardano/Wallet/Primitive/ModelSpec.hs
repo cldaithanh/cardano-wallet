@@ -50,6 +50,7 @@ import Cardano.Wallet.Primitive.Model
     , spendTx
     , totalBalance
     , totalUTxO
+    , txInsFromTx
     , txOutsFromTx
     , unsafeInitWallet
     , updateOurs
@@ -251,6 +252,8 @@ spec = do
                 (property unit_applyTxToUTxO_scriptValidity_Unknown)
             it "applyTxToUTxO then filterByAddress"
                 (property prop_filterByAddress_balance_applyTxToUTxO)
+            it "applyTxToUTxO decomposition"
+                (property prop_applyTxToUTxO_txInsFromTx_txOutsFromTx)
             it "spendTx/applyTxToUTxO/utxoFromTx"
                 (property prop_applyTxToUTxO_spendTx_utxoFromTx)
 
@@ -2263,6 +2266,22 @@ prop_spendTx_utxoFromTx tx u =
         (not $ txScriptInvalid tx)
         "not $ txScriptInvalid tx" $
     spendTx tx (u <> utxoFromTx tx) === spendTx tx u <> utxoFromTx tx
+
+prop_applyTxToUTxO_txInsFromTx_txOutsFromTx :: Tx -> UTxO -> Property
+prop_applyTxToUTxO_txInsFromTx_txOutsFromTx tx u =
+    checkCoverage $
+    cover 10
+        (txScriptInvalid tx)
+        "txScriptInvalid tx" $
+    cover 10
+        (not $ txScriptInvalid tx)
+        "not $ txScriptInvalid tx" $
+    cover 10
+        (outputs tx /= mempty && isJust (collateralOutput tx))
+        "outputs tx /= mempty && isJust (collateralOutput tx)" $
+    applyTxToUTxO tx u ===
+        (u `excluding` txInsFromTx tx)
+            <> (utxoFromTxOuts (txId tx) (txOutsFromTx tx))
 
 prop_applyTxToUTxO_spendTx_utxoFromTx :: Tx -> UTxO -> Property
 prop_applyTxToUTxO_spendTx_utxoFromTx tx u =

@@ -62,6 +62,7 @@ module Cardano.Wallet.Primitive.Model
     , utxoFromTxOutputs
     , utxoFromTxCollateralOutputs
     , utxoFromTxOuts
+    , txInsFromTx
     , txOutsFromTx
     , applyTxToUTxO
     , applyOurTxToUTxO
@@ -606,6 +607,17 @@ utxoFromTxCollateralOutputs Tx {txId, collateralOutput} =
 --
 utxoFromTxOuts :: Hash "Tx" -> [TxOut] -> UTxO
 utxoFromTxOuts txId = UTxO . Map.fromList . zip (TxIn txId <$> [0..])
+
+-- | Extracts the "correct" set of inputs from a transaction.
+--
+-- By "correct", we mean the set of inputs that should be removed from the
+-- wallet's UTxO set according to the transaction's script validity status.
+--
+txInsFromTx :: Tx -> Set TxIn
+txInsFromTx tx = Set.fromList $
+    if txScriptInvalid tx
+    then collateralInputs tx
+    else inputs tx
 
 -- | Extracts the "correct" set of outputs from a transaction.
 --

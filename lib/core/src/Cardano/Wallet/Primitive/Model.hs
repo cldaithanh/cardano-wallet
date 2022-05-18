@@ -560,6 +560,7 @@ spendTxD tx !u =
 -- The following properties should always hold:
 --
 -- prop> utxoFromTx tx == utxoFromTxOuts (txId tx) (txOutsFromTx tx)
+-- prop> balance (utxoFromTx tx) == foldMap tokens (txOutsFromTx tx)
 -- prop> size (utxoFromTx tx) == length (txOutsFromTx tx)
 --
 -- Assuming the transaction is not marked as having an invalid script, the

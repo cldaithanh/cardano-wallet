@@ -2120,10 +2120,14 @@ prop_utxoFromTx_balance tx =
     cover 10
         (outputs tx /= mempty && isJust (collateralOutput tx))
         "outputs tx /= mempty && isJust (collateralOutput tx)" $
-    balance (utxoFromTx tx) ===
-        if txScriptInvalid tx
-        then foldMap tokens (collateralOutput tx)
-        else foldMap tokens (outputs tx)
+    conjoin
+        [ balance (utxoFromTx tx) ===
+            foldMap tokens (txOutsFromTx tx)
+        , balance (utxoFromTx tx) ===
+            if txScriptInvalid tx
+            then foldMap tokens (collateralOutput tx)
+            else foldMap tokens (outputs tx)
+        ]
 
 prop_utxoFromTx_indices :: Tx -> Property
 prop_utxoFromTx_indices tx =

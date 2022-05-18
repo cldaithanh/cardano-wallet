@@ -2104,14 +2104,14 @@ prop_utxoFromTx_balance :: Tx -> Property
 prop_utxoFromTx_balance tx =
     checkCoverage $
     cover 10
-        (outputs tx /= mempty)
-        "outputs tx /= mempty" $
-    cover 10
         (txScriptInvalid tx)
-        "txScriptInvalid tx)" $
+        "txScriptInvalid tx" $
     cover 10
         (not $ txScriptInvalid tx)
-        "not $ txScriptInvalid tx)" $
+        "not $ txScriptInvalid tx" $
+    cover 10
+        (outputs tx /= mempty && isJust (collateralOutput tx))
+        "outputs tx /= mempty && isJust (collateralOutput tx)" $
     balance (utxoFromTx tx) ===
         if txScriptInvalid tx
         then foldMap tokens (collateralOutput tx)

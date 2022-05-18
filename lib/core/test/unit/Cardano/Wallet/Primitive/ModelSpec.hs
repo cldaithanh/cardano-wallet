@@ -811,6 +811,12 @@ prop_applyOurTxToUTxO_allOurs slot blockHeight tx utxo =
     report (utxoFromTx tx) "utxoFromTx tx" $
     report haveResult "haveResult" $
     report shouldHaveResult "shouldHaveResult" $
+    cover 10
+        (txScriptInvalid tx)
+        "txScriptInvalid tx" $
+    cover 10
+        (not $ txScriptInvalid tx)
+        "not $ txScriptInvalid tx" $
     case maybeResult of
         Nothing ->
             verify (not shouldHaveResult) "not shouldHaveResult" $
@@ -851,6 +857,12 @@ prop_applyOurTxToUTxO_someOurs ourState slot blockHeight tx utxo =
     report (utxoFromTx tx) "utxoFromTx tx" $
     report haveResult "haveResult" $
     report shouldHaveResult "shouldHaveResult" $
+    cover 10
+        (txScriptInvalid tx)
+        "txScriptInvalid tx" $
+    cover 10
+        (not $ txScriptInvalid tx)
+        "not $ txScriptInvalid tx" $
     case maybeResult of
         Nothing ->
             verify (not shouldHaveResult) "not shouldHaveResult" $
@@ -2021,6 +2033,12 @@ prop_utxoFromTx_is_unspent tx =
     cover 10
         (Set.fromList (inputs tx) /= mempty)
         "Set.fromList (inputs tx) /= mempty" $
+    cover 10
+        (txScriptInvalid tx)
+        "txScriptInvalid tx" $
+    cover 10
+        (not $ txScriptInvalid tx)
+        "not $ txScriptInvalid tx" $
     utxoFromTx tx `excluding` Set.fromList (inputs tx)
     === utxoFromTx tx
 
@@ -2099,6 +2117,12 @@ prop_spendTx_isSubset :: Tx -> UTxO -> Property
 prop_spendTx_isSubset tx u =
     checkCoverage $
     cover 10 isNonEmptyProperSubmap "isNonEmptyProperSubmap" $
+    cover 10
+        (txScriptInvalid tx)
+        "txScriptInvalid tx" $
+    cover 10
+        (not $ txScriptInvalid tx)
+        "not $ txScriptInvalid tx" $
     property $ spendTx tx u `UTxO.isSubsetOf` u
   where
     isNonEmptyProperSubmap = (&&)
@@ -2112,6 +2136,12 @@ prop_spendTx_balance_inequality tx u =
     cover 10
         (lhs /= mempty && lhs `leq` rhs && lhs /= rhs)
         "lhs /= mempty && lhs `leq` rhs && lhs /= rhs" $
+    cover 10
+        (txScriptInvalid tx)
+        "txScriptInvalid tx" $
+    cover 10
+        (not $ txScriptInvalid tx)
+        "not $ txScriptInvalid tx" $
     isJust (rhs `TokenBundle.subtract` lhs)
         & counterexample ("balance (spendTx tx u) = " <> show lhs)
         & counterexample ("balance u = " <> show rhs)
@@ -2164,6 +2194,13 @@ prop_spendTx tx u =
 
 prop_spendTx_utxoFromTx :: Tx -> UTxO -> Property
 prop_spendTx_utxoFromTx tx u =
+    checkCoverage $
+    cover 10
+        (txScriptInvalid tx)
+        "txScriptInvalid tx" $
+    cover 10
+        (not $ txScriptInvalid tx)
+        "not $ txScriptInvalid tx" $
     spendTx tx (u <> utxoFromTx tx) === spendTx tx u <> utxoFromTx tx
 
 prop_applyTxToUTxO_spendTx_utxoFromTx :: Tx -> UTxO -> Property
@@ -2172,6 +2209,12 @@ prop_applyTxToUTxO_spendTx_utxoFromTx tx u =
     cover 10
         (spendTx tx u /= mempty && utxoFromTx tx /= mempty)
         "spendTx tx u /= mempty && utxoFromTx tx /= mempty" $
+    cover 10
+        (txScriptInvalid tx)
+        "txScriptInvalid tx" $
+    cover 10
+        (not $ txScriptInvalid tx)
+        "not $ txScriptInvalid tx" $
     applyTxToUTxO tx u === spendTx tx u <> utxoFromTx tx
 
 prop_spendTx_filterByAddress :: (Address -> Bool) -> Tx -> UTxO -> Property
@@ -2180,6 +2223,12 @@ prop_spendTx_filterByAddress f tx u =
     cover 10
         (spendTx tx u /= mempty && filterByAddress f u /= mempty)
         "spendTx tx u /= mempty && filterByAddress f u /= mempty" $
+    cover 10
+        (txScriptInvalid tx)
+        "txScriptInvalid tx" $
+    cover 10
+        (not $ txScriptInvalid tx)
+        "not $ txScriptInvalid tx" $
     filterByAddress f (spendTx tx u) === spendTx tx (filterByAddress f u)
 
 instance CoArbitrary Address where

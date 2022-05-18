@@ -61,6 +61,8 @@ module Cardano.Wallet.Primitive.Model
     , utxoFromTx
     , utxoFromTxOutputs
     , utxoFromTxCollateralOutputs
+    , utxoFromTxOuts
+    , txOutsFromTx
     , applyTxToUTxO
     , applyOurTxToUTxO
     , changeUTxO
@@ -95,6 +97,8 @@ import Cardano.Wallet.Primitive.Types.Address
     ( Address (..) )
 import Cardano.Wallet.Primitive.Types.Coin
     ( Coin (..), distance )
+import Cardano.Wallet.Primitive.Types.Hash
+    ( Hash (..) )
 import Cardano.Wallet.Primitive.Types.RewardAccount
     ( RewardAccount (..) )
 import Cardano.Wallet.Primitive.Types.TokenBundle
@@ -104,6 +108,7 @@ import Cardano.Wallet.Primitive.Types.Tx
     , Tx (..)
     , TxIn (..)
     , TxMeta (..)
+    , TxOut (..)
     , TxStatus (..)
     , collateralInputs
     , inputs
@@ -122,6 +127,8 @@ import Data.Delta
     ( Delta (..) )
 import Data.Foldable
     ( Foldable (toList) )
+import Data.Function
+    ( (&) )
 import Data.Functor.Identity
     ( Identity (..) )
 import Data.Generics.Internal.VL.Lens
@@ -550,6 +557,10 @@ spendTxD tx !u =
 -- indices within this ordering will determine how they are referenced as
 -- transaction inputs in subsequent blocks.
 --
+-- The following property should always hold:
+--
+-- prop> utxoFromTx tx == utxoFromTxOuts (txId tx) (txOutsFromTx tx)
+--
 -- Assuming the transaction is not marked as having an invalid script, the
 -- following property should hold:
 --
@@ -581,6 +592,29 @@ utxoFromTxOutputs Tx {txId, outputs} =
 utxoFromTxCollateralOutputs :: Tx -> UTxO
 utxoFromTxCollateralOutputs Tx {txId, collateralOutput} =
     UTxO $ Map.fromList $ F.toList $ (TxIn txId 0,) <$> collateralOutput
+
+-- | Generates a UTxO set from a transaction id and a set of outputs.
+--
+-- This assumes that the "correct" set of outputs is supplied, that no outputs
+-- are missing, and that outputs appear in exactly the same order that they
+-- appeared within the original transaction.
+--
+-- By "correct", we mean the set of outputs that should be created within the
+-- wallet's UTxO set according to the transaction's script validity status.
+--
+utxoFromTxOuts :: Hash "Tx" -> [TxOut] -> UTxO
+utxoFromTxOuts txId = UTxO . Map.fromList . zip (TxIn txId <$> [0..])
+
+-- | Extracts the "correct" set of outputs from a transaction.
+--
+-- By "correct", we mean the set of outputs that should be created within the
+-- wallet's UTxO set according to the transaction's script validity status.
+--
+txOutsFromTx :: Tx -> [TxOut]
+txOutsFromTx tx = tx &
+    if txScriptInvalid tx
+    then F.toList . collateralOutput
+    else F.toList . outputs
 
 {-------------------------------------------------------------------------------
                         Address ownership and discovery

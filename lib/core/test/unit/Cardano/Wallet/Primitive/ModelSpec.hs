@@ -50,12 +50,14 @@ import Cardano.Wallet.Primitive.Model
     , spendTx
     , totalBalance
     , totalUTxO
+    , txOutsFromTx
     , unsafeInitWallet
     , updateOurs
     , utxo
     , utxoFromTx
     , utxoFromTxCollateralOutputs
     , utxoFromTxOutputs
+    , utxoFromTxOuts
     )
 import Cardano.Wallet.Primitive.Slotting.Legacy
     ( flatSlot )
@@ -255,6 +257,8 @@ spec = do
         describe "utxoFromTx" $ do
             it "has expected balance"
                 (property prop_utxoFromTx_balance)
+            it "equivalent to utxoFromTxOuts . txOutsFromTx"
+                (property prop_utxoFromTx_utxoFromTxOuts_txOutsFromTx)
             it "is unspent"
                 (property prop_utxoFromTx_inputs_unspent)
 
@@ -2116,6 +2120,20 @@ prop_utxoFromTx_balance tx =
         if txScriptInvalid tx
         then foldMap tokens (collateralOutput tx)
         else foldMap tokens (outputs tx)
+
+prop_utxoFromTx_utxoFromTxOuts_txOutsFromTx :: Tx -> Property
+prop_utxoFromTx_utxoFromTxOuts_txOutsFromTx tx =
+    checkCoverage $
+    cover 10
+        (txScriptInvalid tx)
+        "txScriptInvalid tx" $
+    cover 10
+        (not $ txScriptInvalid tx)
+        "not $ txScriptInvalid tx" $
+    cover 10
+        (outputs tx /= mempty && isJust (collateralOutput tx))
+        "outputs tx /= mempty && isJust (collateralOutput tx)" $
+    utxoFromTx tx == utxoFromTxOuts (txId tx) (txOutsFromTx tx)
 
 -- spendTx tx u `isSubsetOf` u
 prop_spendTx_isSubset :: Tx -> UTxO -> Property

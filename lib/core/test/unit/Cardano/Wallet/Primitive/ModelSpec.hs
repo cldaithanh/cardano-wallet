@@ -257,6 +257,8 @@ spec = do
         describe "utxoFromTx" $ do
             it "has expected balance"
                 (property prop_utxoFromTx_balance)
+            it "has expected indices"
+                (property prop_utxoFromTx_indices)
             it "has expected size"
                 (property prop_utxoFromTx_size)
             it "equivalent to utxoFromTxOuts . txOutsFromTx"
@@ -2122,6 +2124,22 @@ prop_utxoFromTx_balance tx =
         if txScriptInvalid tx
         then foldMap tokens (collateralOutput tx)
         else foldMap tokens (outputs tx)
+
+prop_utxoFromTx_indices :: Tx -> Property
+prop_utxoFromTx_indices tx =
+    checkCoverage $
+    cover 10
+        (txScriptInvalid tx)
+        "txScriptInvalid tx" $
+    cover 10
+        (not $ txScriptInvalid tx)
+        "not $ txScriptInvalid tx" $
+    cover 10
+        (outputs tx /= mempty && isJust (collateralOutput tx))
+        "outputs tx /= mempty && isJust (collateralOutput tx)" $
+    fmap inputIx (Set.toList (UTxO.dom (utxoFromTx tx)))
+        ===
+        take (length (txOutsFromTx tx)) [0 ..]
 
 prop_utxoFromTx_size :: Tx -> Property
 prop_utxoFromTx_size tx =

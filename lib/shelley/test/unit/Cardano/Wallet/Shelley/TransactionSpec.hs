@@ -196,6 +196,7 @@ import Cardano.Wallet.Shelley.Compatibility
     ( AnyShelleyBasedEra (..)
     , computeTokenBundleSerializedLengthBytes
     , fromCardanoLovelace
+    , fromCardanoValue
     , getScriptIntegrityHash
     , getShelleyBasedEra
     , shelleyToCardanoEra
@@ -2776,7 +2777,17 @@ instance Arbitrary (Cardano.AddressInEra Cardano.AlonzoEra) where
 instance Arbitrary (Cardano.TxOutValue Cardano.AlonzoEra) where
     arbitrary = Cardano.TxOutValue Cardano.MultiAssetInAlonzoEra
         <$> genValueForTxOut
-    shrink _ = [] -- TODO
+    shrink (Cardano.TxOutValue Cardano.MultiAssetInAlonzoEra val) =
+        map
+            (Cardano.TxOutValue Cardano.MultiAssetInAlonzoEra
+                . toCardanoValue)
+            (shrink $ fromCardanoValue val)
+    shrink (Cardano.TxOutAdaOnly support val) =
+        map (Cardano.TxOutAdaOnly support
+                . toCardanoLovelace)
+        (shrink $ safeFromCardanoLovelace val)
+      where
+        safeFromCardanoLovelace = fromCardanoLovelace . abs
 
 instance Arbitrary (Cardano.TxOutDatum ctx Cardano.AlonzoEra) where
     arbitrary = genTxOutDatum Cardano.AlonzoEra
@@ -2789,6 +2800,10 @@ instance Arbitrary (Cardano.TxOut ctx Cardano.AlonzoEra) where
         , val' <- prependOriginal shrink val
         , dat' <- prependOriginal shrink dat
         ]
+
+instance Arbitrary Cardano.TxIn where
+    arbitrary = toCardanoTxIn <$> arbitrary
+    shrink i = map toCardanoTxIn $ shrink $ fromCardanoTxIn testTxLayer i
 
 instance Arbitrary (PartialTx Cardano.AlonzoEra) where
     arbitrary = do
@@ -2808,9 +2823,17 @@ instance Arbitrary (PartialTx Cardano.AlonzoEra) where
             tx
             resolvedInputs
             redeemers
+
+
+    -- NOTE: We need to ensure consistency between the tx itself and the input
+    -- resolution. This currently works by:
+    -- 1. shrinkTx only dropping, not altering tx inputs
+    -- 2. shrinkInputResolution only shrinking the individual outputs.
+    -- 3. restrictResolution ensuring dropped inputs are removed from the
+    -- resolution as well.
     shrink (PartialTx tx inputs redeemers) =
         [ PartialTx tx inputs' redeemers
-        | inputs' <- shrinkUTxOPreserveShape inputs
+        | inputs' <- shrinkInputResolution inputs
         ] ++
         [ restrictResolution $ PartialTx
             tx'
@@ -2819,8 +2842,22 @@ instance Arbitrary (PartialTx Cardano.AlonzoEra) where
         | tx' <- shrinkTx tx
         ]
       where
-        -- TODO: Add a shrinker
-        shrinkUTxOPreserveShape (Cardano.UTxO _) = []
+        shrinkInputResolution =
+            map utxoFromList . shrinkUTxOEntries . utxoToList
+
+          where
+            utxoToList (Cardano.UTxO u) = Map.toList u
+            utxoFromList = Cardano.UTxO . Map.fromList
+
+        shrinkUTxOEntries :: Arbitrary o => [(i, o)] -> [[(i, o)]]
+        shrinkUTxOEntries ((i,o) : rest) = mconcat
+            -- First shrink the first element
+            [ map (\o' -> (i, o') : rest ) (shrink o)
+            -- Recurse to shrink subsequent elements on their own
+            , map ((i,o):) (shrinkUTxOEntries rest)
+            ]
+        shrinkUTxOEntries [] = []
+
 
 instance Semigroup (Cardano.UTxO era) where
     Cardano.UTxO a <> Cardano.UTxO b = Cardano.UTxO (a <> b)

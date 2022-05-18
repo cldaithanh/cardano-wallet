@@ -256,7 +256,7 @@ spec = do
             it "has expected balance"
                 (property prop_utxoFromTx_balance)
             it "is unspent"
-                (property prop_utxoFromTx_is_unspent)
+                (property prop_utxoFromTx_inputs_unspent)
 
         describe "spendTx" $ do
             it "is subset of UTxO"
@@ -2024,8 +2024,8 @@ prop_filterByAddress_balance_applyTxToUTxO f tx =
             then tokens output
             else mempty
 
-prop_utxoFromTx_is_unspent :: Tx -> Property
-prop_utxoFromTx_is_unspent tx =
+prop_utxoFromTx_inputs_unspent :: Tx -> Property
+prop_utxoFromTx_inputs_unspent tx =
     checkCoverage $
     cover 10
         (utxoFromTx tx /= mempty)
@@ -2034,12 +2034,17 @@ prop_utxoFromTx_is_unspent tx =
         (Set.fromList (inputs tx) /= mempty)
         "Set.fromList (inputs tx) /= mempty" $
     cover 10
+        (Set.fromList (collateralInputs tx) /= mempty)
+        "Set.fromList (collateralInputs tx) /= mempty" $
+    cover 10
         (txScriptInvalid tx)
         "txScriptInvalid tx" $
     cover 10
         (not $ txScriptInvalid tx)
         "not $ txScriptInvalid tx" $
-    utxoFromTx tx `excluding` Set.fromList (inputs tx)
+    utxoFromTx tx
+        `excluding` Set.fromList (inputs tx)
+        `excluding` Set.fromList (collateralInputs tx)
     === utxoFromTx tx
 
 unit_applyTxToUTxO_spends_input :: Tx -> TxIn -> TxOut -> Coin -> Property

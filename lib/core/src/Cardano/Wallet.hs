@@ -1523,12 +1523,16 @@ data PartialTx era = PartialTx
 instance Buildable (PartialTx era) where
     build (PartialTx tx (Cardano.UTxO ins) redeemers)
         = nameF "PartialTx" $ mconcat
-            [ nameF "inputs" (blockListF' "-" inF (Map.toList ins))
+            [ nameF "inputs" (blockListF' "-" utxoF (Map.toList ins))
             , nameF "redeemers" (pretty redeemers)
             , nameF "tx" (cardanoTxF tx)
             ]
       where
-        inF = build . show
+        utxoF :: (Cardano.TxIn, Cardano.TxOut Cardano.CtxUTxO era) -> Builder
+        utxoF (i, out) =
+            build (show i)
+            <> "\n"
+            <> build (show out)
 
         cardanoTxF :: Cardano.Tx era -> Builder
         cardanoTxF tx' = pretty $ pShow tx'

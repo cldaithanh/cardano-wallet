@@ -1100,7 +1100,7 @@ type AlonzoTx =
     Ledger.Tx (Cardano.ShelleyLedgerEra Cardano.AlonzoEra)
 
 _assignScriptRedeemers
-    :: forall era. (Cardano.IsShelleyBasedEra era)
+    :: forall era. Cardano.IsShelleyBasedEra era
     => Cardano.ProtocolParameters
     -> (Cardano.EraHistory Cardano.CardanoMode, SystemStart)
     -> Cardano.UTxO era

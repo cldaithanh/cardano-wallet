@@ -2532,8 +2532,6 @@ constructTransaction ctx genChange knownPools getPoolStatus (ApiT wid) body = do
             . Map.toList
             . foldr (uncurry (Map.insertWith (<>))) Map.empty
 
--- TODO: Most of the body of this function should really belong to
--- Cardano.Wallet to keep the Api.Server module free of business logic!
 balanceTransaction
     :: forall ctx s k (n :: NetworkDiscriminant).
         ( ctx ~ ApiLayer s k

@@ -2551,8 +2551,7 @@ balanceTransaction ctx genChange (ApiT wid) body = do
     let nodePParams = fromJust $ W.currentNodeProtocolParameters pp
     withWorkerCtx ctx wid liftE liftE $ \wrk -> do
         wallet <- liftHandler $ W.readWalletUTxOIndex @_ @s @k wrk wid
-        ti <- liftIO $ eraHistory $ ctx ^. networkLayer
-
+        eh <- liftIO $ eraHistory $ ctx ^. networkLayer
 
         let mkPartialTx
                 :: forall era. Cardano.IsShelleyBasedEra era => Cardano.Tx era
@@ -2574,7 +2573,7 @@ balanceTransaction ctx genChange (ApiT wid) body = do
                     wrk
                     genChange
                     (pp, nodePParams)
-                    ti
+                    eh
                     wallet
                     partialTx
 

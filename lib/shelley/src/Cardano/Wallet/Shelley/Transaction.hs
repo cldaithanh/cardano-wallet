@@ -658,7 +658,10 @@ _decodeSealedTx
         )
 _decodeSealedTx (cardanoTx -> InAnyCardanoEra _era tx) = fromCardanoTx tx
 
-
+-- TODO [ADP-1655] We could split this function into two parts
+-- 1. UTxO -> Cardano.UTxO
+-- 2. [(in, out, datumHash, ..)] -> Cardano.UTxO
+-- because we no longer rely on the merging done by this function via @<>@.
 _toCardanoUTxO
     :: forall era. IsShelleyBasedEra era
     => UTxO
@@ -678,23 +681,7 @@ _toCardanoUTxO utxo extraUTxO =
                 )
             $ extraUTxO
     in
-        -- The two UTxO sets could overlap here. When called by
-        -- 'balanceTransaction' the user-specified input resolution
-        -- will overwrite the wallet UTxO (if in conflict).
-        --
-        -- If the overridden outputs are incorrect, the wallet will
-        -- incorrectly calculate the balance, and the transaction
-        -- will ultimately be rejected by the node.
-        --
-        -- If the overwridden outputs simply adds datum hashes
-        -- (which the wallet cannot currently represent), this
-        -- shouldn't affect the balance.
-        --
-        -- Ultimately, however, it might be be wiser to error out of
-        -- caution.
-        --
-        -- NOTE: There is a similar case in the 'resolveInput' of
-        -- 'balanceTransaction'.
+        -- The two UTxO sets could overlap here
         Cardano.UTxO $ extraUTxO' <> utxo' -- Left-bias
   where
     era = Cardano.shelleyBasedEra @era

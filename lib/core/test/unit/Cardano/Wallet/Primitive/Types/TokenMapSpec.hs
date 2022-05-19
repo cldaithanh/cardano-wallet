@@ -33,6 +33,7 @@ import Cardano.Wallet.Primitive.Types.TokenMap.Gen
     , genAssetIdLargeRange
     , genTokenMap
     , genTokenMapSmallRange
+    , partitionTokenMap
     , shrinkAssetId
     , shrinkTokenMap
     )
@@ -102,6 +103,7 @@ import Test.QuickCheck
     , conjoin
     , counterexample
     , cover
+    , forAll
     , forAllBlind
     , frequency
     , property
@@ -293,6 +295,13 @@ spec =
             property prop_equipartitionQuantitiesWithUpperBound_order
         it "prop_equipartitionQuantitiesWithUpperBound_sum" $
             property prop_equipartitionQuantitiesWithUpperBound_sum
+
+    parallel $ describe "Generating partitions" $ do
+
+        it "prop_partitionTokenMap_fold" $
+            prop_partitionTokenMap_fold & property
+        it "prop_partitionTokenMap_length" $
+            prop_partitionTokenMap_length & property
 
     parallel $ describe "JSON serialization" $ do
 
@@ -853,6 +862,18 @@ prop_equipartitionQuantitiesWithUpperBound_sum
     :: TokenMap -> Positive TokenQuantity -> Property
 prop_equipartitionQuantitiesWithUpperBound_sum m (Positive maxQuantity) =
     F.fold (TokenMap.equipartitionQuantitiesWithUpperBound m maxQuantity) === m
+
+--------------------------------------------------------------------------------
+-- Generating partitions
+--------------------------------------------------------------------------------
+
+prop_partitionTokenMap_fold :: TokenMap -> Int -> Property
+prop_partitionTokenMap_fold m i =
+    forAll (partitionTokenMap m i) $ (== m) . F.fold
+
+prop_partitionTokenMap_length :: TokenMap -> Int -> Property
+prop_partitionTokenMap_length m i =
+    forAll (partitionTokenMap m i) $ (== max 1 i) . F.length
 
 --------------------------------------------------------------------------------
 -- JSON serialization tests

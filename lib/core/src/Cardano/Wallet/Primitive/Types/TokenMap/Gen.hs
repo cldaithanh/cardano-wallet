@@ -1,5 +1,6 @@
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE NamedFieldPuns #-}
+{-# LANGUAGE TupleSections #-}
 
 module Cardano.Wallet.Primitive.Types.TokenMap.Gen
     ( genAssetId
@@ -9,6 +10,8 @@ module Cardano.Wallet.Primitive.Types.TokenMap.Gen
     , shrinkAssetId
     , shrinkTokenMap
     , AssetIdF (..)
+    , partitionTokenMap
+    , partitionTokenMapNonNull
     ) where
 
 import Prelude
@@ -25,16 +28,22 @@ import Cardano.Wallet.Primitive.Types.TokenPolicy.Gen
     , testTokenNames
     , testTokenPolicyIds
     )
+import Cardano.Wallet.Primitive.Types.TokenQuantity
+    ( TokenQuantity (..) )
 import Cardano.Wallet.Primitive.Types.TokenQuantity.Gen
-    ( genTokenQuantity, shrinkTokenQuantity )
+    ( genTokenQuantity, partitionTokenQuantity, shrinkTokenQuantity )
 import Control.Monad
     ( replicateM )
 import Data.List
-    ( elemIndex )
+    ( elemIndex, transpose )
+import Data.List.NonEmpty
+    ( NonEmpty )
 import Data.Maybe
     ( fromMaybe )
 import GHC.Generics
     ( Generic )
+import Safe
+    ( fromJustNote )
 import Test.QuickCheck
     ( CoArbitrary (..)
     , Function (..)
@@ -50,6 +59,8 @@ import Test.QuickCheck.Extra
     ( genSized2With, shrinkInterleaved )
 
 import qualified Cardano.Wallet.Primitive.Types.TokenMap as TokenMap
+import qualified Data.Foldable as F
+import qualified Data.List.NonEmpty as NE
 
 --------------------------------------------------------------------------------
 -- Asset identifiers chosen from a range that depends on the size parameter
@@ -128,3 +139,34 @@ instance CoArbitrary AssetIdF where
         let n = fromMaybe 0 (elemIndex tokenName testTokenNames)
         let m = fromMaybe 0 (elemIndex tokenPolicyId testTokenPolicyIds)
         variant (n+m) genB
+
+--------------------------------------------------------------------------------
+-- Partitioning token maps
+--------------------------------------------------------------------------------
+
+-- | Partitions a token map randomly into a given number of parts.
+--
+-- Satisfies the following properties:
+--
+-- prop> forAll (partitionTokenMap m i) $ (== m      ) . fold
+-- prop> forAll (partitionTokenMap m i) $ (== max 1 i) . length
+--
+partitionTokenMap :: TokenMap -> Int -> Gen (NonEmpty TokenMap)
+partitionTokenMap m i
+    | TokenMap.isEmpty m =
+        pure $ NE.fromList $ replicate (max 1 i) mempty
+    | otherwise =
+        fmap TokenMap.fromFlatList . transposeNE <$>
+        traverse partitionAQ (TokenMap.toFlatList m)
+  where
+    partitionAQ :: (a, TokenQuantity) -> Gen (NonEmpty (a, TokenQuantity))
+    partitionAQ = fmap sequenceA . traverse (`partitionTokenQuantity` i)
+
+    transposeNE :: [NonEmpty a] -> NonEmpty [a]
+    transposeNE = fromJustNote note . NE.nonEmpty . transpose . fmap NE.toList
+      where
+        note = "partitionTokenMap.transposeNE: unexpected empty list"
+
+partitionTokenMapNonNull :: TokenMap -> Int -> Gen [TokenMap]
+partitionTokenMapNonNull m i =
+    filter (/= mempty) . F.toList <$> partitionTokenMap m i

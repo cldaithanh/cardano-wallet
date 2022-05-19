@@ -1,6 +1,7 @@
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE GADTs #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE TypeOperators #-}
 
@@ -31,6 +32,13 @@ module Test.QuickCheck.Extra
     , (<@>)
     , (<:>)
 
+      -- * Partitioning lists
+    , partitionList
+
+      -- * Selecting entries from maps
+    , mapEntry
+    , mapEntries
+
       -- * Generating and shrinking natural numbers
     , chooseNatural
     , shrinkNatural
@@ -56,6 +64,8 @@ module Test.QuickCheck.Extra
 
 import Prelude
 
+import Control.Monad
+    ( foldM )
 import Data.IntCast
     ( intCast, intCastMaybe )
 import Data.List.NonEmpty
@@ -74,6 +84,8 @@ import Test.QuickCheck
     , Gen
     , Property
     , Testable
+    , choose
+    , chooseInt
     , chooseInteger
     , counterexample
     , liftArbitrary2
@@ -187,6 +199,95 @@ shrinkInterleaved (a, shrinkA) (b, shrinkB) = interleave
     interleave (x : xs) (y : ys) = x : y : interleave xs ys
     interleave xs [] = xs
     interleave [] ys = ys
+
+--------------------------------------------------------------------------------
+-- Generating list partitions
+--------------------------------------------------------------------------------
+
+-- | Partitions a list into sublists of random lengths.
+--
+-- Each generated sublist is bounded in length by the given inclusive minimum
+-- and maximum sublist length parameters, with the sole exception of the last
+-- sublist, which may be shorter than the minimum length.
+--
+-- Examples:
+--
+-- >>> generate (partitionList (1, 4) [1 .. 10])
+-- [[1,2],[3,4,5,6],[7],[8,9,10]]
+--
+-- >>> generate (partitionList (4, 8) "Books are the liberated spirits of men.")
+-- ["Books ar","e the l","iberat","ed spir","its of"," men."]
+--
+-- If we assume the following definitions:
+--
+-- >>> p = max 1 x
+-- >>> q = max p y
+--
+-- Then this function satisfies the following properties:
+--
+-- prop> forAll (partitionList (x, y) as) $ (== as) . mconcat
+-- prop> forAll (partitionList (x, y) as) $ all ((>= p) . length) . dropEnd 1
+-- prop> forAll (partitionList (x, y) as) $ all ((<= q) . length)
+--
+partitionList
+    :: (Int, Int)
+    -- ^ The minimum and maximum sublist length.
+    -> [a]
+    -- ^ The list to be partitioned.
+    -> Gen [[a]]
+    -- ^ The partitioned list.
+partitionList (x, y) =
+    fmap reverse . loop []
+  where
+    loop :: [[a]] -> [a] -> Gen [[a]]
+    loop cs [] = pure cs
+    loop cs rs = do
+        (c, ss) <- genChunk rs
+        loop (c : cs) ss
+
+    genChunk :: [a] -> Gen ([a], [a])
+    genChunk available = do
+        chunkLength <- chooseInt (minChunkSize, maxChunkSize)
+        pure $ splitAt chunkLength available
+
+    minChunkSize = max 1 x
+    maxChunkSize = max minChunkSize y
+
+--------------------------------------------------------------------------------
+-- Selecting random map entries
+--------------------------------------------------------------------------------
+
+-- | Selects an entry at random from the given map.
+--
+-- Returns the removed entry and the remaining map.
+--
+-- Returns 'Nothing' if (and only if) the given map is empty.
+--
+mapEntry :: forall k v. Ord k => Map k v -> Gen (Maybe ((k, v), Map k v))
+mapEntry m
+    | Map.null m =
+        pure Nothing
+    | otherwise =
+        Just . selectAndRemoveElemAt <$> choose (0, Map.size m - 1)
+  where
+    selectAndRemoveElemAt :: Int -> ((k, v), Map k v)
+    selectAndRemoveElemAt =
+        (\(k, v) -> ((k, v), Map.delete k m)) . flip Map.elemAt m
+
+-- | Selects up to a given number of entries at random from the given map.
+--
+-- Returns the removed entries and the remaining map.
+--
+mapEntries :: forall k v. Ord k => Int -> Map k v -> Gen ([(k, v)], Map k v)
+mapEntries i m0 =
+    foldM (const . selectOneMore) ([], m0) (replicate i ())
+  where
+    selectOneMore :: ([(k, v)], Map k v) -> Gen ([(k, v)], Map k v)
+    selectOneMore (es, m) = do
+        selected <- mapEntry m
+        case selected of
+            Nothing -> pure (es, m)
+            Just (e, m') -> pure (e : es, m')
 
 --------------------------------------------------------------------------------
 -- Generating and shrinking natural numbers

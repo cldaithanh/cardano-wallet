@@ -26,11 +26,16 @@ import Cardano.Wallet.Primitive.Types.TokenBundle
     , unsafeSubtract
     )
 import Cardano.Wallet.Primitive.Types.TokenBundle.Gen
-    ( genTokenBundleSmallRange, shrinkTokenBundleSmallRange )
+    ( genTokenBundleSmallRange
+    , partitionTokenBundle
+    , shrinkTokenBundleSmallRange
+    )
 import Cardano.Wallet.Primitive.Types.TokenQuantity
     ( TokenQuantity (..) )
 import Cardano.Wallet.Primitive.Types.TokenQuantity.Gen
     ( genTokenQuantityPositive, shrinkTokenQuantityPositive )
+import Data.Function
+    ( (&) )
 import Data.Ratio
     ( (%) )
 import Test.Hspec
@@ -43,6 +48,7 @@ import Test.QuickCheck
     , checkCoverage
     , counterexample
     , cover
+    , forAll
     , property
     , (===)
     , (==>)
@@ -100,6 +106,13 @@ spec =
             property prop_equipartitionQuantitiesWithUpperBound_order
         it "prop_equipartitionQuantitiesWithUpperBound_sum" $
             property prop_equipartitionQuantitiesWithUpperBound_sum
+
+    describe "Generating partitions" $ do
+
+        it "prop_partitionTokenBundle_fold" $
+            prop_partitionTokenBundle_fold & property
+        it "prop_partitionTokenBundle_length" $
+            prop_partitionTokenBundle_length & property
 
     describe "Behaviour" $
         it "toCoin only returns when token bundle has only ADA" $
@@ -190,6 +203,20 @@ prop_equipartitionQuantitiesWithUpperBound_sum m maxQuantity =
     maxQuantity > TokenQuantity.zero ==>
         F.fold (TokenBundle.equipartitionQuantitiesWithUpperBound m maxQuantity)
             === m
+
+--------------------------------------------------------------------------------
+-- Generating partitions
+--------------------------------------------------------------------------------
+
+prop_partitionTokenBundle_fold
+    :: TokenBundle -> Int -> Property
+prop_partitionTokenBundle_fold b i =
+    forAll (partitionTokenBundle b i) $ (== b) . F.fold
+
+prop_partitionTokenBundle_length
+    :: TokenBundle -> Int -> Property
+prop_partitionTokenBundle_length b i =
+    forAll (partitionTokenBundle b i) $ (== max 1 i) . F.length
 
 --------------------------------------------------------------------------------
 -- Behavioural properties

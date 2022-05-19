@@ -9,7 +9,9 @@ import Prelude
 import Cardano.Wallet.Primitive.Types.Coin
     ( Coin (..) )
 import Cardano.Wallet.Primitive.Types.Coin.Gen
-    ( genCoin, genCoinPositive, shrinkCoin, shrinkCoinPositive )
+    ( genCoin, genCoinPositive, partitionCoin, shrinkCoin, shrinkCoinPositive )
+import Data.Function
+    ( (&) )
 import Test.Hspec
     ( Spec, describe, it )
 import Test.Hspec.Extra
@@ -27,6 +29,7 @@ import Test.QuickCheck
     )
 
 import qualified Cardano.Wallet.Primitive.Types.Coin as Coin
+import qualified Data.Foldable as F
 
 spec :: Spec
 spec = describe "Cardano.Wallet.Primitive.Types.CoinSpec" $ do
@@ -59,6 +62,13 @@ spec = describe "Cardano.Wallet.Primitive.Types.CoinSpec" $ do
                 property prop_genCoinPositive
             it "shrinkCoinPositive" $
                 property prop_shrinkCoinPositive
+
+    parallel $ describe "Generating partitions" $ do
+
+        it "prop_partitionCoin_fold" $
+            prop_partitionCoin_fold & property
+        it "prop_partitionCoin_length" $
+            prop_partitionCoin_length & property
 
 --------------------------------------------------------------------------------
 -- Arithmetic operations
@@ -152,6 +162,18 @@ prop_shrinkCoinPositive = forAll genCoinPositive $ \c ->
 
 isValidCoinPositive :: Coin -> Bool
 isValidCoinPositive c = c > Coin 0
+
+--------------------------------------------------------------------------------
+-- Generating partitions
+--------------------------------------------------------------------------------
+
+prop_partitionCoin_fold :: Coin -> Int -> Property
+prop_partitionCoin_fold c i =
+    forAll (partitionCoin c i) $ (== c) . F.fold
+
+prop_partitionCoin_length :: Coin -> Int -> Property
+prop_partitionCoin_length c i =
+    forAll (partitionCoin c i) $ (== max 1 i) . F.length
 
 --------------------------------------------------------------------------------
 -- Arbitrary instances

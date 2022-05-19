@@ -15,9 +15,14 @@ import Prelude
 import Cardano.Wallet.Primitive.Types.TokenQuantity
     ( TokenQuantity (..) )
 import Cardano.Wallet.Primitive.Types.TokenQuantity.Gen
-    ( genTokenQuantityFullRange, shrinkTokenQuantityFullRange )
+    ( genTokenQuantityFullRange
+    , partitionTokenQuantity
+    , shrinkTokenQuantityFullRange
+    )
 import Data.Aeson
     ( FromJSON (..), ToJSON (..) )
+import Data.Function
+    ( (&) )
 import Data.Proxy
     ( Proxy (..) )
 import Data.Text.Class
@@ -39,6 +44,7 @@ import Test.QuickCheck
     , conjoin
     , counterexample
     , cover
+    , forAll
     , property
     , (===)
     , (==>)
@@ -103,6 +109,13 @@ spec =
             property prop_difference_add
         it "prop_add_difference ((x + y) - y = x)" $
             property prop_add_difference
+
+    parallel $ describe "Generating partitions" $ do
+
+        it "prop_partitionTokenQuantity_fold" $
+            prop_partitionTokenQuantity_fold & property
+        it "prop_partitionTokenQuantity_length" $
+            prop_partitionTokenQuantity_length & property
 
     parallel $ describe "JSON serialization" $ do
 
@@ -188,6 +201,20 @@ prop_add_difference x y =
         [ (x `TokenQuantity.add` y) `TokenQuantity.difference` y === x
         , (x `TokenQuantity.add` y) `TokenQuantity.difference` x === y
         ]
+
+--------------------------------------------------------------------------------
+-- Generating partitions
+--------------------------------------------------------------------------------
+
+prop_partitionTokenQuantity_fold
+    :: TokenQuantity -> Int -> Property
+prop_partitionTokenQuantity_fold q i =
+    forAll (partitionTokenQuantity q i) $ (== q) . F.fold
+
+prop_partitionTokenQuantity_length
+    :: TokenQuantity -> Int -> Property
+prop_partitionTokenQuantity_length q i =
+    forAll (partitionTokenQuantity q i) $ (== max 1 i) . F.length
 
 --------------------------------------------------------------------------------
 -- JSON serialization

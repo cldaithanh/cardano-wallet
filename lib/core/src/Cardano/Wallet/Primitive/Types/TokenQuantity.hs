@@ -22,6 +22,7 @@ module Cardano.Wallet.Primitive.Types.TokenQuantity
       -- * Partitioning
     , equipartition
     , partition
+    , partitionDefault
 
       -- * Tests
     , isNonZero
@@ -57,6 +58,8 @@ import Fmt
     ( Buildable (..) )
 import GHC.Generics
     ( Generic )
+import GHC.Stack
+    ( HasCallStack )
 import Numeric.Natural
     ( Natural )
 import Quiet
@@ -178,8 +181,14 @@ equipartition q =
     fmap TokenQuantity . equipartitionNatural (unTokenQuantity q)
 
 -- | Partitions a token quantity into a number of parts, where the size of each
---   part is proportional to the size of its corresponding element in the given
---   list of weights, and the number of parts is equal to the number of weights.
+--   part is proportional (modulo rounding) to the size of its corresponding
+--   element in the given list of weights, and the number of parts is equal to
+--   the number of weights.
+--
+-- Satisfies the following properties:
+--
+-- prop> sum    (partition q ws) == q
+-- prop> length (partition q ws) == length ws
 --
 -- Returns 'Nothing' if the sum of weights is equal to zero.
 --
@@ -194,6 +203,30 @@ partition c
     = fmap (fmap TokenQuantity)
     . partitionNatural (unTokenQuantity c)
     . fmap unTokenQuantity
+
+-- | Partitions a token quantity into a number of parts, where the size of each
+--   part is proportional (modulo rounding) to the size of its corresponding
+--   element in the given list of weights, and the number of parts is equal to
+--   the number of weights.
+--
+-- Provided the sum of weights is non-zero, satisfies the following properties:
+--
+-- prop> sum ws /= 0 ==> sum    (partition q ws) == q
+-- prop> sum ws /= 0 ==> length (partition q ws) == length ws
+--
+-- If the sum of weights is equal to zero, then this function instead returns
+-- an 'equipartition' satisfying the following property:
+--
+-- prop> sum ws == 0 ==> partitionDefault q ws == equipartition q ws
+--
+partitionDefault
+    :: TokenQuantity
+    -- ^ The token quantity to be partitioned.
+    -> NonEmpty TokenQuantity
+    -- ^ The list of weights.
+    -> NonEmpty TokenQuantity
+    -- ^ The partitioned token quantities.
+partitionDefault q ws = fromMaybe (equipartition q ws) (partition q ws)
 
 --------------------------------------------------------------------------------
 -- Tests

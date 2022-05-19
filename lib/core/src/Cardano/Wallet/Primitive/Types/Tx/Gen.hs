@@ -3,6 +3,8 @@
 {-# LANGUAGE DuplicateRecordFields #-}
 {-# LANGUAGE PartialTypeSignatures #-}
 {-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TypeApplications #-}
 {-# OPTIONS_GHC -fno-warn-partial-type-signatures #-}
 
 module Cardano.Wallet.Primitive.Types.Tx.Gen
@@ -24,6 +26,9 @@ module Cardano.Wallet.Primitive.Types.Tx.Gen
     , shrinkTxOut
     , shrinkTxOutCoin
     , shrinkTxScriptValidity
+    -- * Transaction sequences
+    , genTxFromUTxO
+    , genTxsFromUTxO
     )
     where
 
@@ -31,6 +36,10 @@ import Prelude
 
 import Cardano.Wallet.Gen
     ( genNestedTxMetadata, shrinkTxMetadata )
+import Cardano.Wallet.Primitive.Model
+    ( applyTxToUTxO )
+import Cardano.Wallet.Primitive.Types.Address
+    ( Address )
 import Cardano.Wallet.Primitive.Types.Address.Gen
     ( genAddress, shrinkAddress )
 import Cardano.Wallet.Primitive.Types.Coin
@@ -46,7 +55,10 @@ import Cardano.Wallet.Primitive.Types.RewardAccount.Gen
 import Cardano.Wallet.Primitive.Types.TokenBundle
     ( TokenBundle )
 import Cardano.Wallet.Primitive.Types.TokenBundle.Gen
-    ( genTokenBundleSmallRange, shrinkTokenBundleSmallRange )
+    ( genTokenBundleSmallRange
+    , partitionTokenBundleNonNull
+    , shrinkTokenBundleSmallRange
+    )
 import Cardano.Wallet.Primitive.Types.TokenMap.Gen
     ( genAssetIdLargeRange )
 import Cardano.Wallet.Primitive.Types.TokenQuantity
@@ -63,12 +75,18 @@ import Cardano.Wallet.Primitive.Types.Tx
     , txOutMinCoin
     , txOutMinTokenQuantity
     )
+import Cardano.Wallet.Primitive.Types.UTxO
+    ( UTxO (..) )
 import Control.Monad
-    ( replicateM )
+    ( foldM, replicateM )
+import Data.Bifunctor
+    ( first )
 import Data.Either
     ( fromRight )
 import Data.Map.Strict
     ( Map )
+import Data.Maybe
+    ( listToMaybe )
 import Data.Text.Class
     ( FromText (..) )
 import Data.Word
@@ -95,6 +113,7 @@ import Test.QuickCheck
     , shrinkMapBy
     , sized
     , suchThat
+    , vectorOf
     )
 import Test.QuickCheck.Arbitrary.Generic
     ( genericArbitrary, genericShrink )
@@ -104,6 +123,7 @@ import Test.QuickCheck.Extra
     , genMapWith
     , genSized2With
     , genericRoundRobinShrink
+    , mapEntries
     , shrinkInterleaved
     , shrinkMapWith
     , shrinkNatural
@@ -113,7 +133,9 @@ import Test.QuickCheck.Extra
 
 import qualified Cardano.Wallet.Primitive.Types.Coin as Coin
 import qualified Cardano.Wallet.Primitive.Types.TokenBundle as TokenBundle
+import qualified Cardano.Wallet.Primitive.Types.UTxO as UTxO
 import qualified Data.ByteString.Char8 as B8
+import qualified Data.Foldable as F
 import qualified Data.List as L
 import qualified Data.Text as T
 
@@ -324,6 +346,56 @@ genTxOutTokenBundle fixedAssetCount
         integerToTokenQuantity = TokenQuantity . fromIntegral
 
 --------------------------------------------------------------------------------
+-- Transaction sequences
+--------------------------------------------------------------------------------
+
+genTxsFromUTxO :: Gen Address -> UTxO -> Gen ([Tx], UTxO)
+genTxsFromUTxO genAddr u0 = sized $ \txCount ->
+    first reverse <$> foldM (const . genOne) ([], u0) (replicate txCount ())
+  where
+    genOne :: ([Tx], UTxO) -> Gen ([Tx], UTxO)
+    genOne (txs, u) = do
+        tx <- genTxFromUTxO genAddr u
+        pure (tx : txs, applyTxToUTxO tx u)
+
+genTxFromUTxO :: Gen Address -> UTxO -> Gen Tx
+genTxFromUTxO genAddr u = do
+    (inputs, _) <-
+        utxoEntries u =<< choose (1, max 4 (UTxO.size u))
+    (collateralInputs, _) <-
+        utxoEntries u =<< choose (1, max 2 (UTxO.size u))
+    let inputValue =
+            F.foldMap (tokens . snd) inputs
+    let collateralInputValue =
+            F.foldMap (tokens . snd) collateralInputs
+    outputBundles <-
+        partitionTokenBundleNonNull inputValue =<< choose (1, 4)
+    collateralOutputBundles <-
+        elements [[], [collateralInputValue]]
+    outputAddresses <-
+        vectorOf (length outputBundles) genAddr
+    collateralOutputAddresses <-
+        vectorOf (length collateralOutputBundles) genAddr
+    pure $ txWithoutIdToTx TxWithoutId
+        { fee =
+            Just (Coin 0)
+        , resolvedInputs =
+            fmap (TokenBundle.getCoin . tokens) <$> inputs
+        , resolvedCollateralInputs =
+            fmap (TokenBundle.getCoin . tokens) <$> collateralInputs
+        , outputs =
+            zipWith TxOut outputAddresses outputBundles
+        , collateralOutput = listToMaybe $
+            zipWith TxOut collateralOutputAddresses collateralOutputBundles
+        , metadata =
+            Nothing
+        , withdrawals =
+            mempty
+        , scriptValidity =
+            Nothing
+        }
+
+--------------------------------------------------------------------------------
 -- Internal utilities
 --------------------------------------------------------------------------------
 
@@ -341,3 +413,10 @@ mkTxHash c
 
 txHashHexStringLength :: Int
 txHashHexStringLength = 64
+
+-- | Selects up to a given number of entries at random from the given UTxO set.
+--
+-- Returns the removed entries and the remaining UTxO set.
+--
+utxoEntries :: UTxO -> Int -> Gen ([(TxIn, TxOut)], UTxO)
+utxoEntries u i = fmap (fmap UTxO) $ mapEntries i $ unUTxO u

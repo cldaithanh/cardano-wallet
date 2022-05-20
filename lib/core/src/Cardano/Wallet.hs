@@ -17,6 +17,7 @@
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE TypeOperators #-}
+{-# LANGUAGE ViewPatterns #-}
 
 -- |
 -- Copyright: © 2018-2020 IOHK
@@ -2041,6 +2042,55 @@ balanceTransactionWithSelectionStrategy
                 flip evalRand (stdGenFromSeed seed)
                     $ runExceptT
                     $ performSelection selectionConstraints selectionParams
+
+unCardanoUTxO
+    :: Cardano.UTxO era
+    -> Map Cardano.TxIn (Cardano.TxOut Cardano.CtxUTxO era)
+unCardanoUTxO (Cardano.UTxO u) = u
+
+combineWalletUTxOWithExternalUTxO
+    :: Cardano.UTxO era
+    -- ^ Wallet UTxO
+    -> Cardano.UTxO era
+    -- ^ External UTxO
+    -> Maybe (Cardano.UTxO era)
+combineWalletUTxOWithExternalUTxO
+    (unCardanoUTxO -> utxoWallet)
+    (unCardanoUTxO -> utxoExternal)
+        | inconsistentAddresses = Nothing
+        | inconsistentValues = Nothing
+        | otherwise = Just combinedUTxO
+  where
+    inconsistentAddresses = (/=)
+        (txOutAddress <$> intersectionWallet)
+        (txOutAddress <$> intersectionExternal)
+    inconsistentValues = (/=)
+        (txOutValue <$> intersectionWallet)
+        (txOutValue <$> intersectionExternal)
+
+    intersectionWallet =
+        Map.restrictKeys utxoWallet intersectionKeys
+    intersectionExternal =
+        Map.restrictKeys utxoExternal intersectionKeys
+
+    intersectionKeys :: Set Cardano.TxIn
+    intersectionKeys = Set.intersection
+        (Map.keysSet utxoWallet)
+        (Map.keysSet utxoExternal)
+
+    txOutAddress (Cardano.TxOut addr _value _datumHash) = addr
+    txOutValue (Cardano.TxOut _addr value _datumHash) = value
+
+    combinedUTxO = Cardano.UTxO $ mconcat
+         -- The @Cardano.UTxO@ can contain strictly more information than
+         -- @W.UTxO@. Therefore we make the user-specified @inputUTxO@ to take
+         -- precedence. This matters if a user is trying to balance a tx making
+         -- use of a datum hash in a UTxO which is also present in the wallet
+         -- UTxO set. (Whether or not this is a sane thing for the user to do,
+         -- is another question.)
+         [ utxoExternal
+         , utxoWallet
+         ]
 
 -- | Augments the given outputs with new outputs. These new outputs correspond
 -- to change outputs to which new addresses have been assigned. This updates

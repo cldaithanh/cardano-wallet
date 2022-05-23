@@ -4523,8 +4523,9 @@ instance IsServerError ErrBalanceTx where
                 ]
         ErrBalanceTxConflictingInputResolution ->
             apiError err403 ConflictingInputResolution $ mconcat
-                [ "The provided input resolution conflicts with my UTxO. Please"
-                , " make sure it is correct."
+                [ "At least one of the inputs provided has a different value "
+                , "or different address from that recorded in the wallet UTxO. "
+                , "Please ensure it is correct."
                 ]
 
 instance IsServerError ErrRemoveTx where

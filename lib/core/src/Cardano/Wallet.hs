@@ -17,7 +17,6 @@
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE TypeOperators #-}
-{-# LANGUAGE ViewPatterns #-}
 
 -- |
 -- Copyright: © 2018-2020 IOHK
@@ -1621,9 +1620,9 @@ balanceTransactionWithSelectionStrategy
     guardExistingCollateral partialTx
     guardZeroAdaOutputs (extractOutputsFromTx $ toSealed partialTx)
     guardConflictingWithdrawalNetworks partialTx
-    guardWalletUTxOConsistencyWith inputUTxO
+    utxo <- combineWalletUTxOWith inputUTxO
 
-    (balance0, minfee0) <- balanceAfterSettingMinFee partialTx
+    (balance0, minfee0) <- balanceAfterSettingMinFee partialTx utxo
 
     (extraInputs, extraCollateral, extraOutputs) <- do
 
@@ -1651,7 +1650,7 @@ balanceTransactionWithSelectionStrategy
             (UTxOIndex.size internalUtxoAvailable)
             (BuildableInAnyEra Cardano.cardanoEra ptx)
 
-        externalSelectedUtxo <- extractExternallySelectedUTxO ptx
+        externalSelectedUtxo <- extractExternallySelectedUTxO ptx utxo
         let mSel = selectAssets'
                 (extractOutputsFromTx $ toSealed partialTx)
                 (UTxOSelection.fromIndexPair
@@ -1692,14 +1691,14 @@ balanceTransactionWithSelectionStrategy
     -- ought to support.
 
     let unsafeFromLovelace (Cardano.Lovelace l) = Coin.unsafeFromIntegral l
-    candidateTx <- assembleTransaction $ TxUpdate
+    candidateTx <- assembleTransaction utxo $ TxUpdate
         { extraInputs
         , extraCollateral
         , extraOutputs
         , feeUpdate = UseNewTxFee $ unsafeFromLovelace minfee0
         }
 
-    (balance, candidateMinFee) <- balanceAfterSettingMinFee candidateTx
+    (balance, candidateMinFee) <- balanceAfterSettingMinFee candidateTx utxo
     surplus <- case Cardano.selectLovelace balance of
         (Cardano.Lovelace c)
             | c >= 0 ->
@@ -1723,7 +1722,7 @@ balanceTransactionWithSelectionStrategy
                 $ ErrUnderestimatedFee c (toSealed candidateTx))
         (ExceptT . pure $ distributeSurplus tl feePolicy surplus feeAndChange)
 
-    guardTxSize =<< guardTxBalanced =<< (assembleTransaction $ TxUpdate
+    guardTxSize =<< guardTxBalanced utxo =<< (assembleTransaction utxo $ TxUpdate
         { extraInputs
         , extraCollateral
         , extraOutputs = updatedChange
@@ -1736,13 +1735,11 @@ balanceTransactionWithSelectionStrategy
     toSealed = sealedTxFromCardano . Cardano.InAnyCardanoEra Cardano.cardanoEra
 
     -- | Extract the resolved inputs contained in the @PartialTx@
-    --
-    -- Requires @guardWalletUTxOConsistencyWith inputUTxO@ to validate
-    -- for balancing to succeed.
     extractExternallySelectedUTxO
         :: PartialTx era
+        -> Cardano.UTxO era -- ^ Combined UTxO
         -> ExceptT ErrBalanceTx m (UTxOIndex WalletUTxO)
-    extractExternallySelectedUTxO (PartialTx tx _ _rdms) = do
+    extractExternallySelectedUTxO (PartialTx tx _ _rdms) combinedUTxO = do
         let res = flip map txIns $ \(i, _) -> do
                 case Map.lookup i utxo of
                     Nothing ->
@@ -1775,81 +1772,54 @@ balanceTransactionWithSelectionStrategy
             throwE ErrBalanceTxMaxSizeLimitExceeded
         return tx
 
-    guardTxBalanced :: Cardano.Tx era -> ExceptT ErrBalanceTx m (Cardano.Tx era)
-    guardTxBalanced tx = do
-        let bal = txBalance tx
+    guardTxBalanced
+        :: Cardano.UTxO era
+        -> Cardano.Tx era
+        -> ExceptT ErrBalanceTx m (Cardano.Tx era)
+    guardTxBalanced utxo tx = do
+        let bal = txBalance tx utxo
         if bal == mempty
         then pure tx
         else throwE $ ErrBalanceTxInternalError $ ErrFailedBalancing bal
 
-    txBalance :: Cardano.Tx era -> Cardano.Value
-    txBalance tx =
-        evaluateTransactionBalance tl tx nodePParams combinedUTxO
+    txBalance
+        :: Cardano.Tx era
+        -> Cardano.UTxO era
+        -> Cardano.Value
+    txBalance tx utxo =
+        evaluateTransactionBalance tl tx nodePParams utxo
 
     balanceAfterSettingMinFee
         :: Cardano.Tx era
+        -> Cardano.UTxO era
         -> ExceptT ErrBalanceTx m (Cardano.Value, Cardano.Lovelace)
-    balanceAfterSettingMinFee tx = ExceptT . pure $ do
+    balanceAfterSettingMinFee tx utxo = ExceptT . pure $ do
         -- NOTE: evaluateMinimumFee relies on correctly estimating the required
         -- number of witnesses.
         let minfee = evaluateMinimumFee tl nodePParams tx
         let update = TxUpdate [] [] [] (UseNewTxFee minfee)
         tx' <- left ErrBalanceTxUpdateError $ updateTx tl tx update
-        let balance = evaluateTransactionBalance tl tx' nodePParams combinedUTxO
+        let balance = evaluateTransactionBalance tl tx' nodePParams utxo
         let minfee' = Cardano.Lovelace $ fromIntegral $ unCoin minfee
         return (balance, minfee')
 
-    -- | Ensure the wallet UTxO is consistent with a provided @Cardano.UTxO@.
-    --
-    -- They are not consistent iff an input can be looked up in both UTxO sets
-    -- with different @Address@, or @TokenBundle@ values.
-    --
-    -- The @Cardano.UTxO era@ is allowed to contain additional information, like
-    -- datum hashes, which the wallet UTxO cannot represent.
-    --
-    -- NOTE: Representing the wallet utxo as a @Cardano.UTxO@ will not make this
-    -- check easier, even if it may be useful in other regards.
-    guardWalletUTxOConsistencyWith
+    combineWalletUTxOWith
         :: Cardano.UTxO era
-        -> ExceptT ErrBalanceTx m ()
-    guardWalletUTxOConsistencyWith u' = do
-        let u = Map.mapKeys (fromCardanoTxIn tl)
-                . Map.map (fromCardanoTxOut tl)
-                $ (unUTxO u')
-        let conflicts = lefts $ flip map (Map.toList u) $ \(i, o) ->
-                case i `UTxO.lookup` walletUTxO of
-                    Just o' -> unless (o == o') $ Left (o, o')
-                    Nothing -> pure ()
-
-        unless (null conflicts) $
-            throwE ErrBalanceTxConflictingInputResolution
-      where
-         unUTxO (Cardano.UTxO u) = u
-
-    walletUTxO :: UTxO
-    walletUTxO = CS.toExternalUTxOMap $ UTxOIndex.toMap internalUtxoAvailable
-
-    combinedUTxO :: Cardano.UTxO era
-    combinedUTxO = Cardano.UTxO $ mconcat
-         -- The @Cardano.UTxO@ can contain strictly more information than
-         -- @W.UTxO@. Therefore we make the user-specified @inputUTxO@ to take
-         -- precedence. This matters if a user is trying to balance a tx making
-         -- use of a datum hash in a UTxO which is also present in the wallet
-         -- UTxO set. (Whether or not this is a sane thing for the user to do,
-         -- is another question.)
-         [ unUTxO inputUTxO
-         , unUTxO $ toCardanoUTxO tl walletUTxO []
-         ]
-      where
-         unUTxO (Cardano.UTxO u) = u
+        -> ExceptT ErrBalanceTx m (Cardano.UTxO era)
+    combineWalletUTxOWith u' = do
+        let walletUTxO = flip (toCardanoUTxO tl) []
+                $ CS.toExternalUTxOMap $ UTxOIndex.toMap internalUtxoAvailable
+        maybe (throwE ErrBalanceTxConflictingInputResolution) pure
+            $ combineWalletUTxOWithExternalUTxO walletUTxO inputUTxO
 
     assembleTransaction
-        :: TxUpdate
+        :: Cardano.UTxO era
+        -> TxUpdate
         -> ExceptT ErrBalanceTx m (Cardano.Tx era)
-    assembleTransaction update = ExceptT . pure $ do
+    assembleTransaction utxo update = ExceptT . pure $ do
         tx' <- left ErrBalanceTxUpdateError $ updateTx tl partialTx update
         left ErrBalanceTxAssignRedeemers $ assignScriptRedeemers
-            tl nodePParams eraHistory combinedUTxO redeemers tx'
+            tl nodePParams eraHistory utxo redeemers tx'
 
     guardZeroAdaOutputs outputs = do
         -- We seem to produce imbalanced transactions if zero-ada
@@ -2043,10 +2013,6 @@ balanceTransactionWithSelectionStrategy
                     $ runExceptT
                     $ performSelection selectionConstraints selectionParams
 
-unCardanoUTxO
-    :: Cardano.UTxO era
-    -> Map Cardano.TxIn (Cardano.TxOut Cardano.CtxUTxO era)
-unCardanoUTxO (Cardano.UTxO u) = u
 
 combineWalletUTxOWithExternalUTxO
     :: Cardano.UTxO era
@@ -2055,8 +2021,8 @@ combineWalletUTxOWithExternalUTxO
     -- ^ External UTxO
     -> Maybe (Cardano.UTxO era)
 combineWalletUTxOWithExternalUTxO
-    (unCardanoUTxO -> utxoWallet)
-    (unCardanoUTxO -> utxoExternal)
+    (Cardano.UTxO utxoWallet)
+    (Cardano.UTxO utxoExternal)
         | inconsistentAddresses = Nothing
         | inconsistentValues = Nothing
         | otherwise = Just combinedUTxO

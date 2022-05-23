@@ -771,15 +771,15 @@ assembleTransaction
       where
         f :: [BF.UtxoInput] -> Either BlockfrostError [(TxIn, Coin)]
         f = traverse \input@BF.UtxoInput {..} -> do
-        txHash <- parseTxHash _utxoInputTxHash
-        txIndex <- _utxoInputOutputIndex <?#> "_utxoInputOutputIndex"
-        coin <-
-            case [ lovelaces
-                    | BF.AdaAmount lovelaces <- _utxoInputAmount
-                ] of
-            [l] -> fromBlockfrost l
-            _ -> throwError $ InvalidUtxoInputAmount input
-        pure (TxIn txHash txIndex, coin)
+                txHash <- parseTxHash $ BF.unTxHash $ _utxoInputTxHash
+                txIndex <- _utxoInputOutputIndex <?#> "_utxoInputOutputIndex"
+                coin <-
+                    case [ lovelaces
+                            | BF.AdaAmount lovelaces <- _utxoInputAmount
+                        ] of
+                    [l] -> fromBlockfrost l
+                    _ -> throwError $ InvalidUtxoInputAmount input
+                pure (TxIn txHash txIndex, coin)
 
     parseTxHash hash =
         either (throwError . InvalidTxHash hash) pure $ fromText hash

@@ -726,7 +726,7 @@ spec = parallel $ do
 
         it "ApiMnemonicT '[12] (not enough words)" $ do
             let msg = "Error in $: Invalid number of words: 12 words\
-                    \ are expected."
+                    \ are expected"
             Aeson.parseEither parseJSON [aesonQQ|
                 ["toilet", "toilet", "toilet"]
             |] `shouldBe` (Left @String @(ApiMnemonicT '[12]) msg)

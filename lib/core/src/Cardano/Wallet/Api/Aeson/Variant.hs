@@ -3,6 +3,7 @@
 module Cardano.Wallet.Api.Aeson.Variant (variant, variants) where
 
 import Prelude
+
 import Data.Aeson.Types
     ( Object, Parser, Value, modifyFailure, withObject )
 

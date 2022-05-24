@@ -90,8 +90,8 @@ import Test.Integration.Framework.DSL
     , emptyByronWalletWith
     , emptyRandomWallet
     , emptyWallet
-    , emptyWalletWith
     , emptyWalletAndMnemonic
+    , emptyWalletWith
     , eventually
     , expectErrorMessage
     , expectField
@@ -102,6 +102,7 @@ import Test.Integration.Framework.DSL
     , fixtureMultiAssetWallet
     , fixturePassphrase
     , fixtureWallet
+    , fixtureWalletWithMnemonics
     , genMnemonics
     , getFromResponse
     , json
@@ -117,10 +118,11 @@ import Test.Integration.Framework.DSL
     , unsafeResponse
     , verify
     , walletId
-    , (</>), fixtureWalletWithMnemonics
+    , (</>)
     )
 import Test.Integration.Framework.TestData
     ( arabicWalletName
+    , errMsg403WrongMnemonic
     , errMsg403WrongPass
     , errMsg404NoWallet
     , errMsg406
@@ -134,7 +136,7 @@ import Test.Integration.Framework.TestData
     , updateNamePayload
     , updatePassPayload
     , updatePassPayloadMnemonic
-    , wildcardsWalletName, errMsg403WrongMnemonic
+    , wildcardsWalletName
     )
 
 -- FIXME:
@@ -766,7 +768,7 @@ spec = describe "SHELLEY_WALLETS" $ do
         rg <- request @ApiWallet ctx ("GET", getEndpoint) Default Empty
         expectField #passphrase (`shouldNotBe` originalPassUpdateDateTime) rg
 
-    it "WALLETS_UPDATE_PASS_01 - passphraseLastUpdate gets updated, mnemonic"
+    it "WALLETS_UPDATE_PASS_01a - passphraseLastUpdate gets updated, mnemonic"
       $ \ctx -> runResourceT $ do
         (w,mnemonic) <- emptyWalletAndMnemonic ctx
         let payload = updatePassPayloadMnemonic mnemonic "New passphrase"
@@ -940,7 +942,7 @@ spec = describe "SHELLEY_WALLETS" $ do
             verify r expectations
         forM_ matrix $ \(title, pass, expectations) -> it title
           $ \ctx -> runResourceT $ do
-            (wSrc, mnemonic) <- 
+            (wSrc, mnemonic) <-
               fixtureWalletWithMnemonics (Proxy @"shelley") ctx
             wDest <- emptyWallet ctx
             let payloadUpdate = updatePassPayloadMnemonic mnemonic newPass

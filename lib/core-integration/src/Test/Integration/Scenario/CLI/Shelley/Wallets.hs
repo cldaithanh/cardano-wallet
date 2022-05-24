@@ -73,6 +73,7 @@ import Test.Integration.Framework.DSL
     , deleteWalletViaCLI
     , emptyRandomWallet
     , emptyWallet
+    , emptyWalletAndMnemonicWith
     , emptyWalletWith
     , eventually
     , expectCliField
@@ -91,8 +92,9 @@ import Test.Integration.Framework.DSL
     , postTransactionViaCLI
     , updateWalletNameViaCLI
     , updateWalletPassphraseViaCLI
+    , updateWalletPassphraseWithMnemonicViaCLI
     , verify
-    , walletId, emptyWalletAndMnemonicWith, updateWalletPassphraseWithMnemonicViaCLI
+    , walletId
     )
 import Test.Integration.Framework.TestData
     ( arabicWalletName
@@ -545,14 +547,14 @@ spec = describe "SHELLEY_CLI_WALLETS" $ do
             let ppOld = "old secure passphrase"
             let ppNew = "new secure passphrase"
             let addrPoolMin = fromIntegral @_ @Int $ getAddressPoolGap minBound
-            (w, mnemonic) <- emptyWalletAndMnemonicWith 
+            (w, mnemonic) <- emptyWalletAndMnemonicWith
                 ctx (name, T.pack ppOld, addrPoolMin)
             let initPassUpdateTime = w ^. #passphrase
             let wid = T.unpack $ w ^. walletId
 
             --update pass
             (exitCode, out, err) <-
-                updateWalletPassphraseWithMnemonicViaCLI 
+                updateWalletPassphraseWithMnemonicViaCLI
                     ctx wid mnemonic ppNew ppNew
             out `shouldBe` "\n"
             T.unpack err `shouldContain` cmdOk

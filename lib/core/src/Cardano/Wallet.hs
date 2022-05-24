@@ -1551,7 +1551,7 @@ balanceTransaction
     -- ^ 'Cardano.ProtocolParameters' can be retrived via a Local State Query to
     -- a local node.
     --
-    -- Providing incorrect values will result in a phase 1 script integrity
+    -- Providing incorrect values will result in phase 1 script integrity
     -- hash failures instead of phase 2 failures if script redeemers are
     -- present in the transaction, ensuring collateral is never forfeited.
     --

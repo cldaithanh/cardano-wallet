@@ -16,6 +16,7 @@
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE TypeOperators #-}
 
+
 -- |
 -- Copyright: © 2018-2020 IOHK
 -- License: Apache-2.0
@@ -1607,17 +1608,57 @@ putByronWalletPassphrase
     :: forall ctx s k.
         ( WalletKey k
         , ctx ~ ApiLayer s k
-        )
+        , GetAccount s k
+        , HardDerivation k)
     => ctx
+    -> (SomeMnemonic
+            -> Passphrase "encryption"
+            -> k 'RootK XPrv
+        )
+    -> (k 'AccountK XPub -> XPub)
     -> ApiT WalletId
     -> ByronWalletPutPassphraseData
     -> Handler NoContent
-putByronWalletPassphrase ctx (ApiT wid) body = do
-    let (ByronWalletPutPassphraseData oldM (ApiT new)) = body
-    withWorkerCtx ctx wid liftE liftE $ \wrk -> liftHandler $ do
-        let old = maybe mempty (coerce . getApiT) oldM
-        W.updateWalletPassphraseWithOldPassphrase wrk wid (old, new)
-    return NoContent
+putByronWalletPassphrase ctx createKey getKey (ApiT wid)
+    (ByronWalletPutPassphraseData method) = withWrk $ \wrk ->
+        NoContent <$ case method of
+        Left
+            (Api.ByronWalletPutPassphraseOldPassphraseData
+                oldM
+                (ApiT new)
+            ) ->
+                let old = maybe mempty (coerce . getApiT) oldM
+                in liftHandler
+                    $ W.updateWalletPassphraseWithOldPassphrase
+                        wrk wid (old, new)
+        Right
+            (Api.WalletPutPassphraseMnemonicData
+                    (ApiMnemonicT mnemonic) _sndFactor (ApiT new)
+            ) -> do
+            let encrPass = preparePassphrase currentPassphraseScheme new
+                challengeKey = createKey mnemonic encrPass
+                challengPubKey = publicKey
+                    $ deriveAccountPrivateKey encrPass challengeKey minBound
+            storedPubKey <- liftHandler
+                $ W.readAccountPublicKey wrk wid
+            if getKey challengPubKey == getKey storedPubKey
+                then liftHandler
+                    $ W.updateWalletPassphraseWithMnemonic
+                        wrk wid (challengeKey, new)
+                else liftHandler
+                    $ throwE
+                    $ ErrUpdatePassphraseWithRootKey
+                    $ ErrWithRootKeyWrongMnemonic wid
+    where
+        withWrk :: (WorkerCtx (ApiLayer s k) -> Handler a) -> Handler a
+        withWrk = withWorkerCtx ctx wid liftE liftE
+
+    -- do
+    -- let (ByronWalletPutPassphraseData oldM (ApiT new)) = body
+    -- withWorkerCtx ctx wid liftE liftE $ \wrk -> liftHandler $ do
+    --     let old = maybe mempty (coerce . getApiT) oldM
+    --     W.updateWalletPassphraseWithOldPassphrase wrk wid (old, new)
+    -- return NoContent
 
 getUTxOsStatistics
     :: forall ctx s k.

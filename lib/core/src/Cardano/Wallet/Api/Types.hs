@@ -186,6 +186,7 @@ module Cardano.Wallet.Api.Types
     , SomeByronWalletPostData (..)
     , ByronWalletFromXPrvPostData (..)
     , ByronWalletPutPassphraseData (..)
+    , ByronWalletPutPassphraseOldPassphraseData (..)
     , ApiPostRandomAddressData (..)
     , ApiWalletDiscovery (..)
     , KnownDiscovery(..)
@@ -946,7 +947,14 @@ newtype WalletPutPassphraseData = WalletPutPassphraseData
     )
     deriving (Eq, Generic, Show)
 
-data ByronWalletPutPassphraseData = ByronWalletPutPassphraseData
+newtype ByronWalletPutPassphraseData = ByronWalletPutPassphraseData
+    (  Either
+            ByronWalletPutPassphraseOldPassphraseData
+            WalletPutPassphraseMnemonicData
+    )
+    deriving (Eq, Generic, Show)
+data ByronWalletPutPassphraseOldPassphraseData 
+        = ByronWalletPutPassphraseOldPassphraseData
     { oldPassphrase :: !(Maybe (ApiT (Passphrase "lenient")))
     , newPassphrase :: !(ApiT (Passphrase "user"))
     } deriving (Eq, Generic, Show)
@@ -2688,11 +2696,27 @@ instance ToJSON (ApiT PoolMetadataGCStatus) where
         object [ "status" .= String "has_run"
             , "last_run" .= ApiT (Iso8601Time (posixSecondsToUTCTime gctime)) ]
 
-instance FromJSON ByronWalletPutPassphraseData where
+instance FromJSON ByronWalletPutPassphraseOldPassphraseData where
     parseJSON = genericParseJSON defaultRecordTypeOptions
-instance ToJSON ByronWalletPutPassphraseData where
+instance ToJSON ByronWalletPutPassphraseOldPassphraseData where
     toJSON = genericToJSON defaultRecordTypeOptions
 
+instance FromJSON ByronWalletPutPassphraseData where
+    parseJSON  =
+        fmap ByronWalletPutPassphraseData . variants "PutPassphrase data"
+            [ variant "old passphrase"
+                    (HM.member "old_passphrase")
+                    $ fmap Left <$> parseJSON
+            , variant "mnemonic"
+                    (HM.member "mnemonic_sentence")
+                    $ fmap Right <$> parseJSON
+            ]
+
+instance ToJSON  ByronWalletPutPassphraseData where
+    toJSON (ByronWalletPutPassphraseData x) = either
+        (genericToJSON defaultRecordTypeOptions)
+        (genericToJSON defaultRecordTypeOptions)
+        x
 instance FromJSON ApiMaintenanceActionPostData where
     parseJSON = genericParseJSON defaultRecordTypeOptions
 instance ToJSON ApiMaintenanceActionPostData where

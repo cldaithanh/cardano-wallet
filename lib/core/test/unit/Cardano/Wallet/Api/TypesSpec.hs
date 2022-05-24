@@ -179,6 +179,7 @@ import Cardano.Wallet.Api.Types
     , ByronWalletFromXPrvPostData (..)
     , ByronWalletPostData (..)
     , ByronWalletPutPassphraseData (..)
+    , ByronWalletPutPassphraseOldPassphraseData (..)
     , DecodeAddress (..)
     , DecodeStakeAddress (..)
     , EncodeAddress (..)
@@ -1123,9 +1124,11 @@ spec = parallel $ do
                         x' === x .&&. show x' === show x
         it "ByronWalletPutPassphraseData" $ property $ \x ->
             let
-                x' = ByronWalletPutPassphraseData
-                    { oldPassphrase = oldPassphrase (x :: ByronWalletPutPassphraseData)
-                    , newPassphrase = newPassphrase (x :: ByronWalletPutPassphraseData)
+                x' = ByronWalletPutPassphraseOldPassphraseData
+                    { oldPassphrase = 
+                            oldPassphrase (x :: ByronWalletPutPassphraseOldPassphraseData)
+                    , newPassphrase = 
+                            newPassphrase (x :: ByronWalletPutPassphraseOldPassphraseData)
                     }
             in
                 x' === x .&&. show x' === show x
@@ -1775,6 +1778,11 @@ instance Arbitrary WalletPutPassphraseOldPassphraseData where
 instance Arbitrary WalletPutPassphraseMnemonicData where
     arbitrary = genericArbitrary
     shrink = genericShrink
+
+instance Arbitrary ByronWalletPutPassphraseOldPassphraseData where
+    arbitrary = genericArbitrary
+    shrink = genericShrink
+
 instance Arbitrary ByronWalletPutPassphraseData where
     arbitrary = genericArbitrary
     shrink = genericShrink

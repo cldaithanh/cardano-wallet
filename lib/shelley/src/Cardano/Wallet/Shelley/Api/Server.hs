@@ -217,6 +217,7 @@ import qualified Cardano.Wallet.Primitive.AddressDerivation.Shared as Shared
 import qualified Cardano.Wallet.Primitive.AddressDerivation.Shelley as Shelley
 import qualified Data.ByteString as BS
 import qualified Data.Text as T
+import qualified Cardano.Wallet.Primitive.AddressDerivation.Byron as Byron
 
 server
     :: forall n.
@@ -410,8 +411,11 @@ server byron icarus shelley multisig spl ntp =
                 (icarus, getUTxOsStatistics icarus wid)
              )
         :<|> (\wid pwd -> withLegacyLayer wid
-                (byron , putByronWalletPassphrase byron wid pwd)
-                (icarus, putByronWalletPassphrase icarus wid pwd)
+                (byron , 
+                    putByronWalletPassphrase 
+                        byron Byron.generateKeyFromSeed Byron.getKey wid pwd
+                )
+                (icarus, putByronWalletPassphrase icarus _ _ wid pwd)
              )
 
     byronAssets :: Server ByronAssets

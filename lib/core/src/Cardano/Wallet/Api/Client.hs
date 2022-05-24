@@ -5,6 +5,7 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE GADTs #-}
+{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE OverloadedLabels #-}
 {-# LANGUAGE RankNTypes #-}
@@ -88,11 +89,13 @@ import Cardano.Wallet.Api.Types
     , ApiWalletUtxoSnapshot (..)
     , Base (Base64)
     , ByronWalletPutPassphraseData (..)
+    , ByronWalletPutPassphraseOldPassphraseData (..)
     , Iso8601Time (..)
     , PostTransactionFeeOldDataT
     , PostTransactionOldDataT
     , WalletPutData (..)
     , WalletPutPassphraseData (..)
+    , WalletPutPassphraseOldPassphraseData (..)
     )
 import Cardano.Wallet.Api.Types.SchemaMetadata
     ( TxMetadataSchema, toSimpleMetadataFlag )
@@ -301,11 +304,20 @@ byronWalletClient =
             , listWallets = _listWallets
             , postWallet = _postWallet
             , putWallet = _putWallet
-            , putWalletPassphrase = \wid (WalletPutPassphraseData (Left req)) ->
-                _putWalletPassphrase wid $ ByronWalletPutPassphraseData
-                    { oldPassphrase = Just $ coerce <$> req ^. #oldPassphrase
-                    , newPassphrase = req ^. #newPassphrase
-                    }
+            , putWalletPassphrase = 
+                \wid -> \case 
+                WalletPutPassphraseData (Left req) ->
+                    _putWalletPassphrase wid 
+                        $ ByronWalletPutPassphraseData 
+                        $ Left 
+                        $ ByronWalletPutPassphraseOldPassphraseData 
+                        { oldPassphrase = Just $ coerce <$> req ^. #oldPassphrase
+                        , newPassphrase = req ^. #newPassphrase
+                        }
+                WalletPutPassphraseData (Right req) ->
+                    _putWalletPassphrase wid 
+                        $ ByronWalletPutPassphraseData 
+                        $ Right req
             , getWalletUtxoSnapshot = _getWalletUtxoSnapshot
             , getWalletUtxoStatistics = _getWalletUtxoStatistics
             }

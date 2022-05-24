@@ -1,6 +1,10 @@
 {-# LANGUAGE DeriveFunctor #-}
 
-module Cardano.Wallet.Api.Aeson.Variant (variant, variants) where
+module Cardano.Wallet.Api.Aeson.Variant
+    ( variants
+    , Variant
+    , variant
+    ) where
 
 import Prelude
 

@@ -4139,16 +4139,13 @@ registerWorker ctx before coworker wid =
   where
     re = ctx ^. workerRegistry @s @k
     df = ctx ^. dbFactory
-    discover = case maybeDiscover @IO @s of
-        Nothing -> (\ _q s -> pure (mempty, s))
-        Just fn -> fn
     config = MkWorker
         { workerAcquire = withDatabase df wid
         , workerBefore = before
         , workerAfter = defaultWorkerAfter
         -- fixme: ADP-641 Review error handling here
         , workerMain = \ctx' _ -> race_
-            (unsafeRunExceptT $ W.restoreWallet ctx' wid discover)
+            (unsafeRunExceptT $ W.restoreWallet ctx' wid)
             (race_
                 (forever $ W.runLocalTxSubmissionPool txCfg ctx' wid)
                 (coworker ctx' wid))

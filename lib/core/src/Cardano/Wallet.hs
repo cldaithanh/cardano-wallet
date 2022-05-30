@@ -317,6 +317,7 @@ import Cardano.Wallet.Primitive.AddressDiscovery
     , IsOurs (..)
     , IsOwned (..)
     , KnownAddresses (..)
+    , MaybeLight (..)
     )
 import Cardano.Wallet.Primitive.AddressDiscovery.Random
     ( ErrImportAddress (..), RndStateLike )
@@ -340,7 +341,6 @@ import Cardano.Wallet.Primitive.Model
     , availableUTxO
     , currentTip
     , discoverFromBlockList
-    , discoverFromState
     , firstHeader
     , getState
     , initWallet
@@ -950,12 +950,12 @@ restoreWallet
         , MonadIO m
         , MonadUnliftIO m
         , MonadFail m
+        , MaybeLight m s
         )
     => ctx
     -> WalletId
-    -> ((Either Address RewardAccount -> m ChainEvents) -> s -> m (ChainEvents, s))
     -> ExceptT ErrNoSuchWallet m ()
-restoreWallet ctx wid discover = db & \DBLayer{..} ->
+restoreWallet ctx wid = db & \DBLayer{..} ->
     let
         readLocalTip :: m [ChainPoint]
         readLocalTip = atomically $ listCheckpoints wid
@@ -972,6 +972,10 @@ restoreWallet ctx wid discover = db & \DBLayer{..} ->
         rollForward' = \getChainEvents blockdata tip -> throwInIO $
             restoreBlocks @_ @s @k
                 ctx (contramap MsgWalletFollow tr) wid blockdata tip getChainEvents
+
+        discover = case maybeDiscover @m @s of
+            Nothing -> (\ _q s -> pure (mempty, s))
+            Just fn -> fn
     in
       catchFromIO $ case lightSync nw of
         Just (sync, query) ->
@@ -982,7 +986,7 @@ restoreWallet ctx wid discover = db & \DBLayer{..} ->
                         Left blocks ->
                             rollForward' (discoverFromBlockList blocks) (List blocks)
                         Right summary ->
-                            rollForward' (discoverFromState query discover) (Summary summary)
+                            rollForward' (discover query) (Summary summary)
                 , rollBackward
                 }
         _ -> -- light-mode not available

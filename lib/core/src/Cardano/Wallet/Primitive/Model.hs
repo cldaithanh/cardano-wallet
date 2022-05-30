@@ -67,7 +67,6 @@ module Cardano.Wallet.Primitive.Model
     , changeUTxO
     , discoverAddressesBlock
     , discoverFromBlockList
-    , discoverFromState
     , updateOurs
     ) where
 
@@ -648,13 +647,6 @@ discoverFromBlockList blocks !s0 =
     pure (fromBlockEvents . map fromEntireBlock $ NE.toList blocks , s1)
   where
     s1 = L.foldl' (\s bl -> snd $ discoverAddressesBlock bl s) s0 $ NE.toList blocks
-
-discoverFromState
-    :: (Either Address RewardAccount -> m ChainEvents)
-    -> ((Either Address RewardAccount -> m ChainEvents) -> s -> m (ChainEvents, s))
-    -> s
-    -> m (ChainEvents, s)
-discoverFromState query discoverTxs !s0 = discoverTxs query s0
 
 -- | Indicates whether an address is known to be ours, without updating the
 -- address discovery state.

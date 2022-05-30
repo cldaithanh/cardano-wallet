@@ -394,7 +394,7 @@ import Cardano.Wallet.Primitive.AddressDiscovery
     , IsOurs
     , IsOwned
     , KnownAddresses
-    , MaybeLight
+    , MaybeLight (..)
     , isOwned
     )
 import Cardano.Wallet.Primitive.AddressDiscovery.Random
@@ -857,7 +857,9 @@ postShelleyWallet
     -> Handler ApiWallet
 postShelleyWallet ctx generateKey body = do
     let state = mkSeqStateFromRootXPrv (rootXPrv, pwdP) purposeCIP1852 g
-        discover = undefined
+        discover = case maybeDiscover @IO @s of
+            Nothing -> (\ _q s -> pure (mempty, s))
+            Just fn -> fn
         query = undefined
     void $ liftHandler $ createWalletWorker @_ @s @k ctx wid
         (\wrk -> W.createWallet @(WorkerCtx ctx) @_ @s @k wrk wid wName discover query state)
@@ -900,7 +902,9 @@ postAccountWallet
 postAccountWallet ctx mkWallet liftKey coworker body = do
     let state = mkSeqStateFromAccountXPub
             (liftKey accXPub) Nothing purposeCIP1852 g
-        discover = undefined
+        discover = case maybeDiscover @IO @s of
+            Nothing -> (\ _q s -> pure (mempty, s))
+            Just fn -> fn
         query = undefined
     void $ liftHandler $ createWalletWorker @_ @s @k ctx wid
         (\wrk -> W.createWallet @(WorkerCtx ctx) @_ @s @k wrk wid wName discover query state)
@@ -1047,7 +1051,9 @@ postSharedWalletFromRootXPrv ctx generateKey body = do
     ix' <- liftHandler $ withExceptT ErrConstructSharedWalletInvalidIndex $
         W.guardHardIndex ix
     let state = mkSharedStateFromRootXPrv (rootXPrv, pwdP) ix' g pTemplate dTemplateM
-        discover = undefined
+        discover = case maybeDiscover @IO @s of
+            Nothing -> (\ _q s -> pure (mempty, s))
+            Just fn -> fn
         query = undefined
     void $ liftHandler $ createWalletWorker @_ @s @k ctx wid
         (\wrk -> W.createWallet @(WorkerCtx ctx) @_ @s @k wrk wid wName discover query state)
@@ -1095,7 +1101,9 @@ postSharedWalletFromAccountXPub ctx liftKey body = do
     acctIx <- liftHandler $ withExceptT ErrConstructSharedWalletInvalidIndex $
         W.guardHardIndex ix
     let state = mkSharedStateFromAccountXPub (liftKey accXPub) acctIx g pTemplate dTemplateM
-        discover = undefined
+        discover = case maybeDiscover @IO @s of
+            Nothing -> (\ _q s -> pure (mempty, s))
+            Just fn -> fn
         query = undefined
     void $ liftHandler $ createWalletWorker @_ @s @k ctx wid
         (\wrk -> W.createWallet @(WorkerCtx ctx) @_ @s @k wrk wid wName discover query state)
@@ -1313,7 +1321,9 @@ postRandomWallet
 postRandomWallet ctx body = do
     s <- liftIO $ mkRndState rootXPrv <$> getStdRandom random
     let
-        discover = undefined
+        discover = case maybeDiscover @IO @s of
+            Nothing -> (\ _q state -> pure (mempty, state))
+            Just fn -> fn
         query = undefined
     postLegacyWallet ctx (rootXPrv, pwd) $ \wrk wid ->
         W.createWallet @(WorkerCtx ctx) @_ @s @k wrk wid wName discover query s
@@ -1337,7 +1347,9 @@ postRandomWalletFromXPrv
 postRandomWalletFromXPrv ctx body = do
     s <- liftIO $ mkRndState byronKey <$> getStdRandom random
     let
-        discover = undefined
+        discover = case maybeDiscover @IO @s of
+            Nothing -> (\ _q state -> pure (mempty, state))
+            Just fn -> fn
         query = undefined
     void $ liftHandler $ createWalletWorker @_ @s @k ctx wid
         (\wrk -> W.createWallet @(WorkerCtx ctx) @_ @s @k wrk wid wName discover query s)
@@ -1366,7 +1378,9 @@ postIcarusWallet
     -> Handler ApiByronWallet
 postIcarusWallet ctx body = do
     let
-        discover = undefined
+        discover = case maybeDiscover @IO @s of
+            Nothing -> (\ _q s -> pure (mempty, s))
+            Just fn -> fn
         query = undefined
     postLegacyWallet ctx (rootXPrv, pwd) $ \wrk wid ->
         W.createIcarusWallet @(WorkerCtx ctx) @s @k wrk wid wName
@@ -1392,7 +1406,9 @@ postTrezorWallet
     -> Handler ApiByronWallet
 postTrezorWallet ctx body = do
     let
-        discover = undefined
+        discover = case maybeDiscover @IO @s of
+            Nothing -> (\ _q s -> pure (mempty, s))
+            Just fn -> fn
         query = undefined
     postLegacyWallet ctx (rootXPrv, pwd) $ \wrk wid ->
         W.createIcarusWallet @(WorkerCtx ctx) @s @k wrk wid wName
@@ -1418,7 +1434,9 @@ postLedgerWallet
     -> Handler ApiByronWallet
 postLedgerWallet ctx body = do
     let
-        discover = undefined
+        discover = case maybeDiscover @IO @s of
+            Nothing -> (\ _q s -> pure (mempty, s))
+            Just fn -> fn
         query = undefined
     postLegacyWallet ctx (rootXPrv, pwd) $ \wrk wid ->
         W.createIcarusWallet @(WorkerCtx ctx) @s @k wrk wid wName
@@ -4165,7 +4183,9 @@ registerWorker ctx before coworker wid =
   where
     re = ctx ^. workerRegistry @s @k
     df = ctx ^. dbFactory
-    discover = undefined
+    discover = case maybeDiscover @IO @s of
+        Nothing -> (\ _q s -> pure (mempty, s))
+        Just fn -> fn
     query = undefined
     config = MkWorker
         { workerAcquire = withDatabase df wid

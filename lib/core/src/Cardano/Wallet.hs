@@ -317,7 +317,6 @@ import Cardano.Wallet.Primitive.AddressDiscovery
     , IsOurs (..)
     , IsOwned (..)
     , KnownAddresses (..)
-    , MaybeLight (..)
     )
 import Cardano.Wallet.Primitive.AddressDiscovery.Random
     ( ErrImportAddress (..), RndStateLike )
@@ -953,7 +952,6 @@ restoreWallet
         , MonadIO m
         , MonadUnliftIO m
         , MonadFail m
-        , MaybeLight m s
         )
     => ctx
     -> WalletId
@@ -977,14 +975,14 @@ restoreWallet ctx wid discover query = db & \DBLayer{..} ->
             restoreBlocks @_ @s @k
                 ctx (contramap MsgWalletFollow tr) wid blockdata tip discover query
     in
-      catchFromIO $ case (maybeDiscover @m @s, lightSync nw) of
-        (Just _, Just sync) ->
+      catchFromIO $ case lightSync nw of
+        Just sync ->
             sync $ ChainFollower
                 { readLocalTip
                 , rollForward = rollForward' . either List Summary
                 , rollBackward
                 }
-        (_,_) -> -- light-mode not available
+        _ -> -- light-mode not available
             chainSync nw (contramap MsgChainFollow tr) $ ChainFollower
                 { readLocalTip
                 , rollForward = rollForward' . List

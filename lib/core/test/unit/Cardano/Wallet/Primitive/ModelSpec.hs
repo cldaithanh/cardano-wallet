@@ -70,7 +70,7 @@ import Cardano.Wallet.Primitive.Types
 import Cardano.Wallet.Primitive.Types.Address
     ( Address (..) )
 import Cardano.Wallet.Primitive.Types.Address.Gen
-    ( Parity (..), addressParity, coarbitraryAddress )
+    ( Parity (..), addressParity, coarbitraryAddress, genAddress )
 import Cardano.Wallet.Primitive.Types.Coin
     ( Coin (..) )
 import Cardano.Wallet.Primitive.Types.Coin.Gen
@@ -108,7 +108,7 @@ import Cardano.Wallet.Primitive.Types.Tx.Gen
 import Cardano.Wallet.Primitive.Types.UTxO
     ( UTxO (..), balance, dom, excluding, filterByAddress, restrictedTo )
 import Cardano.Wallet.Primitive.Types.UTxO.Gen
-    ( genUTxO, shrinkUTxO )
+    ( genTxsFromUTxO, genUTxO, shrinkUTxO )
 import Cardano.Wallet.Util
     ( ShowFmt (..), invariant )
 import Control.DeepSeq
@@ -168,6 +168,7 @@ import Test.QuickCheck
     , counterexample
     , cover
     , elements
+    , forAll
     , forAllShrink
     , frequency
     , genericShrink
@@ -317,6 +318,10 @@ spec = do
     parallel $ describe "Light-mode" $ do
         it "discovery on blocks = discovery on summary" $
             property prop_discoverFromBlockData
+
+    parallel $ describe "Sequences of transactions" $ do
+        it "prop_applyTxsToUTxO" $
+            prop_applyTxsToUTxO & property
 
 {-------------------------------------------------------------------------------
                                 Properties
@@ -2267,3 +2272,19 @@ instance Show (Address -> Bool) where
 
 instance Show (RewardAccount -> Bool) where
     show = const "(RewardAccount -> Bool)"
+
+--------------------------------------------------------------------------------
+-- Sequences of transactions
+--------------------------------------------------------------------------------
+
+applyTxsToUTxO :: [Tx] -> UTxO -> UTxO
+applyTxsToUTxO txs u0 = F.foldl' (flip applyTxToUTxO) u0 txs
+
+prop_applyTxsToUTxO :: Property
+prop_applyTxsToUTxO =
+    forAll (genUTxO) $ \u0 ->
+    forAll (genTxsFromUTxO genAddress u0) $ \(txs, u1) ->
+    applyTxsToUTxO txs u0 === u1
+
+_genBlocksFromTxs :: [Tx] -> Gen [Block]
+_genBlocksFromTxs _txs = undefined

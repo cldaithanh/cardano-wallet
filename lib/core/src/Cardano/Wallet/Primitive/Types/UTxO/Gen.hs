@@ -1,26 +1,52 @@
+{-# LANGUAGE DuplicateRecordFields #-}
+
 module Cardano.Wallet.Primitive.Types.UTxO.Gen
     ( genUTxO
     , genUTxOLarge
     , genUTxOLargeN
     , selectUTxOEntries
     , shrinkUTxO
+    -- Generation of transaction sequences from UTxOs
+    , genTxFromUTxO
+    , genTxsFromUTxO
     ) where
 
 import Prelude
 
+import Cardano.Wallet.Primitive.Model
+    ( applyTxToUTxO )
+import Cardano.Wallet.Primitive.Types.Address
+    ( Address )
+import Cardano.Wallet.Primitive.Types.Coin
+    ( Coin (..) )
+import Cardano.Wallet.Primitive.Types.TokenBundle.Gen
+    ( genTokenBundlePartitionNonNull )
 import Cardano.Wallet.Primitive.Types.Tx
-    ( TxIn, TxOut )
+    ( Tx (..), TxIn, TxOut (..) )
 import Cardano.Wallet.Primitive.Types.Tx.Gen
-    ( genTxIn, genTxInLargeRange, genTxOut, shrinkTxIn, shrinkTxOut )
+    ( TxWithoutId (..)
+    , genTxIn
+    , genTxInLargeRange
+    , genTxOut
+    , shrinkTxIn
+    , shrinkTxOut
+    , txWithoutIdToTx
+    )
 import Cardano.Wallet.Primitive.Types.UTxO
     ( UTxO (..) )
 import Control.Monad
-    ( replicateM )
+    ( foldM, replicateM )
+import Data.Bifunctor
+    ( first )
+import Data.Maybe
+    ( listToMaybe )
 import Test.QuickCheck
-    ( Gen, choose, shrinkList, sized )
+    ( Gen, choose, chooseInt, elements, shrinkList, sized, vectorOf )
 import Test.QuickCheck.Extra
     ( selectMapEntries, shrinkInterleaved )
 
+import qualified Cardano.Wallet.Primitive.Types.TokenBundle as TokenBundle
+import qualified Data.Foldable as F
 import qualified Data.Map.Strict as Map
 
 --------------------------------------------------------------------------------
@@ -79,3 +105,53 @@ genEntryLargeRange = (,)
 --
 selectUTxOEntries :: UTxO -> Int -> Gen ([(TxIn, TxOut)], UTxO)
 selectUTxOEntries = (fmap (fmap UTxO) .) . selectMapEntries . unUTxO
+
+--------------------------------------------------------------------------------
+-- Transaction sequences
+--------------------------------------------------------------------------------
+
+genTxFromUTxO :: Gen Address -> UTxO -> Gen Tx
+genTxFromUTxO genAddr u = do
+    (inputs, _) <-
+        selectUTxOEntries u =<< chooseInt (1, 4)
+    (collateralInputs, _) <-
+        selectUTxOEntries u =<< chooseInt (1, 2)
+    let inputValue =
+            F.foldMap (tokens . snd) inputs
+    let collateralInputValue =
+            F.foldMap (tokens . snd) collateralInputs
+    outputBundles <-
+        genTokenBundlePartitionNonNull inputValue =<< chooseInt (1, 4)
+    collateralOutputBundles <-
+        elements [[], [collateralInputValue]]
+    outputAddresses <-
+        vectorOf (length outputBundles) genAddr
+    collateralOutputAddresses <-
+        vectorOf (length collateralOutputBundles) genAddr
+    pure $ txWithoutIdToTx TxWithoutId
+        { fee =
+            Just (Coin 0)
+        , resolvedInputs =
+            fmap (TokenBundle.getCoin . tokens) <$> inputs
+        , resolvedCollateralInputs =
+            fmap (TokenBundle.getCoin . tokens) <$> collateralInputs
+        , outputs =
+            zipWith TxOut outputAddresses outputBundles
+        , collateralOutput = listToMaybe $
+            zipWith TxOut collateralOutputAddresses collateralOutputBundles
+        , metadata =
+            Nothing
+        , withdrawals =
+            mempty
+        , scriptValidity =
+            Nothing
+        }
+
+genTxsFromUTxO :: Gen Address -> UTxO -> Gen ([Tx], UTxO)
+genTxsFromUTxO genAddr u0 = sized $ \txCount ->
+    first reverse <$> foldM (const . genOne) ([], u0) (replicate txCount ())
+  where
+    genOne :: ([Tx], UTxO) -> Gen ([Tx], UTxO)
+    genOne (txs, u) = do
+        tx <- genTxFromUTxO genAddr u
+        pure (tx : txs, applyTxToUTxO tx u)

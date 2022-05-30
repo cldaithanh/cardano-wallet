@@ -2273,3 +2273,10 @@ instance Show (Address -> Bool) where
 
 instance Show (RewardAccount -> Bool) where
     show = const "(RewardAccount -> Bool)"
+
+--------------------------------------------------------------------------------
+-- Sequences of transactions
+--------------------------------------------------------------------------------
+
+_genBlocksFromTxs :: [Tx] -> Gen [Block]
+_genBlocksFromTxs _txs = undefined

@@ -110,8 +110,8 @@ selectUTxOEntries = (fmap (fmap UTxO) .) . selectMapEntries . unUTxO
 -- Transaction sequences
 --------------------------------------------------------------------------------
 
-genTxFromUTxO :: Gen Address -> UTxO -> Gen Tx
-genTxFromUTxO genAddr u = do
+genTxFromUTxO :: UTxO -> Gen Address -> Gen Tx
+genTxFromUTxO u genAddr = do
     (inputs, _) <-
         selectUTxOEntries u =<< chooseInt (1, 4)
     (collateralInputs, _) <-
@@ -147,11 +147,11 @@ genTxFromUTxO genAddr u = do
             Nothing
         }
 
-genTxsFromUTxO :: Gen Address -> UTxO -> Gen ([Tx], UTxO)
-genTxsFromUTxO genAddr u0 = sized $ \txCount ->
+genTxsFromUTxO :: UTxO -> Gen Address -> Gen ([Tx], UTxO)
+genTxsFromUTxO u0 genAddr = sized $ \txCount ->
     first reverse <$> foldM (const . genOne) ([], u0) (replicate txCount ())
   where
     genOne :: ([Tx], UTxO) -> Gen ([Tx], UTxO)
     genOne (txs, u) = do
-        tx <- genTxFromUTxO genAddr u
+        tx <- genTxFromUTxO u genAddr
         pure (tx : txs, applyTxToUTxO tx u)

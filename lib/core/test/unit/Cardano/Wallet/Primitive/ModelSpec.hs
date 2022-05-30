@@ -2283,7 +2283,7 @@ applyTxsToUTxO txs u0 = F.foldl' (flip applyTxToUTxO) u0 txs
 prop_applyTxsToUTxO :: Property
 prop_applyTxsToUTxO =
     forAll (genUTxO) $ \u0 ->
-    forAll (genTxsFromUTxO genAddress u0) $ \(txs, u1) ->
+    forAll (genTxsFromUTxO u0 genAddress) $ \(txs, u1) ->
     applyTxsToUTxO txs u0 === u1
 
 _genBlocksFromTxs :: [Tx] -> Gen [Block]

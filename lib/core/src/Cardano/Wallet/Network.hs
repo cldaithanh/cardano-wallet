@@ -44,7 +44,7 @@ import Cardano.BM.Data.Severity
 import Cardano.BM.Data.Tracer
     ( HasPrivacyAnnotation (..), HasSeverityAnnotation (..) )
 import Cardano.Wallet.Primitive.BlockSummary
-    ( LightSummary )
+    ( ChainEvents, LightSummary )
 import Cardano.Wallet.Primitive.Slotting
     ( PastHorizonException, TimeInterpreter )
 import Cardano.Wallet.Primitive.SyncProgress
@@ -57,6 +57,8 @@ import Cardano.Wallet.Primitive.Types
     , SlottingParameters (..)
     , StakePoolsSummary
     )
+import Cardano.Wallet.Primitive.Types.Address
+    ( Address )
 import Cardano.Wallet.Primitive.Types.Coin
     ( Coin )
 import Cardano.Wallet.Primitive.Types.RewardAccount
@@ -117,10 +119,10 @@ data NetworkLayer m block = NetworkLayer
         -- the arrival of new blocks, and rollbacks.
 
     , lightSync
-        :: Maybe (
-            ChainFollower m ChainPoint BlockHeader (LightBlocks block)
-            -> m ()
-          )
+        :: Maybe
+           ( (ChainFollower m ChainPoint BlockHeader (LightBlocks block) -> m ())
+           , (Either Address RewardAccount -> m ChainEvents)
+           )
         -- ^ Connect to a data source that offers an efficient
         -- query @Address -> Transactions@.
 
@@ -194,7 +196,9 @@ instance Functor m => Functor (NetworkLayer m) where
         { chainSync = \tr follower ->
             chainSync nl tr $ mapChainFollower id id id (fmap f) follower
         , lightSync =
-            (\sync -> sync . mapChainFollower id id id (first $ fmap f))
+            (\(sync, query)
+             -> (sync . mapChainFollower id id id (first $ fmap f), query)
+            )
             <$> lightSync nl
         }
 

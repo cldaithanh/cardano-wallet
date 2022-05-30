@@ -94,8 +94,8 @@ hoistLightSyncSource f x = LightSyncSource
     , getAddressTxs = \a b c -> f $ getAddressTxs x a b c
     }
 
-type LightBlocks block addr txs =
-    Either (NonEmpty block) (BlockSummary addr txs)
+type LightBlocks block =
+    Either (NonEmpty block) BlockSummary
 
 -- | Retrieve the 'ChainPoint' with the highest 'Slot'.
 latest :: [ChainPoint] -> ChainPoint
@@ -114,9 +114,10 @@ lightSync
     :: (Monad m, MonadDelay m)
     => Tracer m LightLayerLog
     -> LightSyncSource m block addr txs
-    -> ChainFollower m ChainPoint BlockHeader (LightBlocks block addr txs)
+    -> ChainFollower m ChainPoint BlockHeader (LightBlocks block)
+    -> Int
     -> m Void
-lightSync tr light follower = do
+lightSync tr light follower _x = do
     pts <- readLocalTip follower
     syncFrom $ latest pts
   where
@@ -196,7 +197,7 @@ secondsPerSlot = 2
 mkBlockSummary
     :: BlockHeader
     -> BlockHeader
-    -> BlockSummary addr txs
+    -> BlockSummary
 mkBlockSummary old new = BlockSummary
     { from = old
     , to = new

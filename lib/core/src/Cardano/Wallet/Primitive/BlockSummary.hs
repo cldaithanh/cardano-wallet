@@ -82,14 +82,13 @@ import qualified Data.Map.Strict as Map
 -- In addition, this query function is monadic, which means that it
 -- can call out to an external data source.
 --
-data BlockSummary addr txs = BlockSummary
+data BlockSummary = BlockSummary
     { from  :: !BlockHeader
     , to    :: !BlockHeader
     } deriving (Generic)
 
 -- | 'BlockSummary' used for light-mode.
-type LightSummary =
-    BlockSummary (Either Address RewardAccount) ChainEvents
+type LightSummary = BlockSummary
 
 {-------------------------------------------------------------------------------
     ChainEvents

@@ -66,7 +66,8 @@ module Cardano.Wallet.Primitive.Model
     , applyOurTxToUTxO
     , changeUTxO
     , discoverAddressesBlock
-    , discoverFromBlockData
+    , discoverFromBlockList
+    , discoverFromState
     , updateOurs
     ) where
 
@@ -232,14 +233,13 @@ initWallet
     :: (IsOurs s Address, IsOurs s RewardAccount, Monad m)
     => Block
         -- ^ The genesis block
-    -> ((Either Address RewardAccount -> m ChainEvents) -> s -> m (ChainEvents, s))
-    -> (Either Address RewardAccount -> m ChainEvents)
     -> s
         -- ^ Initial address discovery state
     -> m ([(Tx, TxMeta)], Wallet s)
-initWallet block0 discover query s = do
+initWallet block0 s = do
     let w0 = Wallet mempty undefined s
-    (FilteredBlock{transactions}, (_, w1)) <- applyBlock block0 discover query w0
+    (FilteredBlock{transactions}, (_, w1)) <-
+        applyBlock block0 (discoverFromBlockList $ block0 :| []) w0
     pure (transactions, w1)
 
 -- | Construct a wallet from the exact given state.
@@ -293,13 +293,14 @@ data FilteredBlock = FilteredBlock
 applyBlock
     :: (IsOurs s Address, IsOurs s RewardAccount, Monad m)
     => Block
-    -> ((Either Address RewardAccount -> m ChainEvents) -> s -> m (ChainEvents, s))
-    -> (Either Address RewardAccount -> m ChainEvents)
+    -> (s -> m (ChainEvents, s))
     -> Wallet s
     -> m (FilteredBlock, (DeltaWallet s, Wallet s))
-applyBlock block discover query =
-    fmap (first fromFiltered) . applyBlockData (List $ block :| []) discover query
+applyBlock block getChainEvents =
+    fmap (first fromFiltered)
+    . applyBlockData (List blocks) getChainEvents
   where
+    blocks = block :| []
     fromFiltered [] = FilteredBlock
         { slot = toSlot $ chainPointFromBlockHeader (block ^. #header)
         , transactions = []
@@ -340,34 +341,32 @@ applyBlock block discover query =
 --
 applyBlocks
     :: (IsOurs s Address, IsOurs s RewardAccount, Monad m)
-    => BlockData (Either Address RewardAccount) ChainEvents s
-    -> ((Either Address RewardAccount -> m ChainEvents) -> s -> m (ChainEvents, s))
-    -> (Either Address RewardAccount -> m ChainEvents)
+    => BlockData
+    -> (s -> m (ChainEvents, s))
     -> Wallet s
     -> m (NonEmpty ([FilteredBlock], (DeltaWallet s, Wallet s)))
-applyBlocks (List (block0 :| blocks)) discover query w0 = do
-    let firstApply = first (:[]) <$> applyBlock block0 discover query w0
+applyBlocks (List (block0 :| blocks)) getChainEvents w0 = do
+    let firstApply = first (:[]) <$> applyBlock block0 getChainEvents w0
     sequence $ NE.scanl (\mPrev block -> do
                              prev <- mPrev
                              applyBlock' prev block
                         ) firstApply blocks
   where
-    applyBlock' (_,(_,w)) block = first (:[]) <$> applyBlock block discover query w
-applyBlocks summary@(Summary _) discover query w =
-    (NE.:| []) <$> applyBlockData summary discover query w
+    applyBlock' (_,(_,w)) block = first (:[]) <$> applyBlock block getChainEvents w
+applyBlocks summary@(Summary _) getChainEvents w =
+    (NE.:| []) <$> applyBlockData summary getChainEvents w
 
 -- | Apply multiple blocks in sequence to an existing wallet
 -- and return the final wallet state as well as the transactions
 -- that were applied.
 applyBlockData
     :: (IsOurs s Address, IsOurs s RewardAccount, Monad m)
-    => BlockData (Either Address RewardAccount) ChainEvents s
-    -> ((Either Address RewardAccount -> m ChainEvents) -> s -> m (ChainEvents, s))
-    -> (Either Address RewardAccount -> m ChainEvents)
+    => BlockData
+    -> (s -> m (ChainEvents, s))
     -> Wallet s
     -> m ([FilteredBlock], (DeltaWallet s, Wallet s))
-applyBlockData blocks discover query (Wallet !u0 _ s0) = do
-    (chainEvents, s1) <- discoverFromBlockData blocks s0 query discover
+applyBlockData blocks getChainEvents (Wallet !u0 _ s0) = do
+    (chainEvents, s1) <- getChainEvents s0
     let
         blockEvents = toAscBlockEvents chainEvents
         applies u blockEvent = applyBlockEventsToUTxO blockEvent s1 u
@@ -390,19 +389,19 @@ mapAccumL' f = go []
         (!o,!s1) -> go (o:os) s1 xs
 
 -- | BlockData which has been paired with discovery facilities.
-data BlockData addr tx s
+data BlockData
     = List (NonEmpty Block)
-    | Summary (BlockSummary addr tx)
+    | Summary BlockSummary
 
 -- | First 'BlockHeader' of the blocks represented
 -- by 'BlockData'.
-firstHeader :: BlockData addr txs s -> BlockHeader
+firstHeader :: BlockData -> BlockHeader
 firstHeader (List xs) = header $ NE.head xs
 firstHeader (Summary BlockSummary{from}) = from
 
 -- | Last 'BlockHeader' of the blocks represented
 -- by 'BlockData'.
-lastHeader :: BlockData addr txs s -> BlockHeader
+lastHeader :: BlockData -> BlockHeader
 lastHeader (List xs) = header $ NE.last xs
 lastHeader (Summary BlockSummary{to}) = to
 
@@ -640,19 +639,22 @@ discoverAddressesBlock block s0 = (Delta.Replace s2, s2)
         L.foldl' updateOurs s $ Map.keys (tx ^. #withdrawals)
 
 -- | Perform address and transaction discovery on 'BlockData',
-discoverFromBlockData
+discoverFromBlockList
     :: (IsOurs s Address, IsOurs s RewardAccount, Monad m)
-    => BlockData (Either Address RewardAccount) ChainEvents s
+    => NonEmpty Block
     -> s
-    -> (Either Address RewardAccount -> m ChainEvents)
-    -> ((Either Address RewardAccount -> m ChainEvents) -> s -> m (ChainEvents, s))
     -> m (ChainEvents, s)
-discoverFromBlockData (List blocks) !s0 _query _discover =
+discoverFromBlockList blocks !s0 =
     pure (fromBlockEvents . map fromEntireBlock $ NE.toList blocks , s1)
   where
     s1 = L.foldl' (\s bl -> snd $ discoverAddressesBlock bl s) s0 $ NE.toList blocks
-discoverFromBlockData (Summary _summary) !s0 query discoverTxs =
-    discoverTxs query s0
+
+discoverFromState
+    :: (Either Address RewardAccount -> m ChainEvents)
+    -> ((Either Address RewardAccount -> m ChainEvents) -> s -> m (ChainEvents, s))
+    -> s
+    -> m (ChainEvents, s)
+discoverFromState query discoverTxs !s0 = discoverTxs query s0
 
 -- | Indicates whether an address is known to be ours, without updating the
 -- address discovery state.

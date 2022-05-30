@@ -339,6 +339,8 @@ import Cardano.Wallet.Primitive.Model
     , applyBlocks
     , availableUTxO
     , currentTip
+    , discoverFromBlockList
+    , discoverFromState
     , firstHeader
     , getState
     , initWallet
@@ -749,12 +751,10 @@ createWallet
     => ctx
     -> WalletId
     -> WalletName
-    -> ((Either Address RewardAccount -> m ChainEvents) -> s -> m (ChainEvents, s))
-    -> (Either Address RewardAccount -> m ChainEvents)
     -> s
     -> ExceptT ErrWalletAlreadyExists m WalletId
-createWallet ctx wid wname discover query s = db & \DBLayer{..} -> do
-    (hist, cp) <- lift $ initWallet block0 discover query s
+createWallet ctx wid wname s = db & \DBLayer{..} -> do
+    (hist, cp) <- lift $ initWallet block0 s
     now <- lift getCurrentTime
     let meta = WalletMetadata
             { name = wname
@@ -789,13 +789,11 @@ createIcarusWallet
     -> WalletId
     -> WalletName
     -> (k 'RootK XPrv, Passphrase "encryption")
-    -> ((Either Address RewardAccount -> m ChainEvents) -> s -> m (ChainEvents, s))
-    -> (Either Address RewardAccount -> m ChainEvents)
     -> ExceptT ErrWalletAlreadyExists m WalletId
-createIcarusWallet ctx wid wname credentials discover query = db & \DBLayer{..} -> do
+createIcarusWallet ctx wid wname credentials = db & \DBLayer{..} -> do
     let g  = defaultAddressPoolGap
     let s = mkSeqStateFromRootXPrv @n credentials purposeBIP44 g
-    (hist, cp) <- lift $ initWallet block0 discover query s
+    (hist, cp) <- lift $ initWallet block0 s
     now <- lift getCurrentTime
     let meta = WalletMetadata
             { name = wname
@@ -956,9 +954,8 @@ restoreWallet
     => ctx
     -> WalletId
     -> ((Either Address RewardAccount -> m ChainEvents) -> s -> m (ChainEvents, s))
-    -> (Either Address RewardAccount -> m ChainEvents)
     -> ExceptT ErrNoSuchWallet m ()
-restoreWallet ctx wid discover query = db & \DBLayer{..} ->
+restoreWallet ctx wid discover = db & \DBLayer{..} ->
     let
         readLocalTip :: m [ChainPoint]
         readLocalTip = atomically $ listCheckpoints wid
@@ -968,24 +965,31 @@ restoreWallet ctx wid discover query = db & \DBLayer{..} ->
             throwInIO . rollbackBlocks @_ @s @k ctx wid . toSlot
 
         rollForward'
-            :: BlockData (Either Address RewardAccount) ChainEvents s
+            :: (s -> m (ChainEvents, s))
+            -> BlockData
             -> BlockHeader
             -> m ()
-        rollForward' = \blockdata tip -> throwInIO $
+        rollForward' = \getChainEvents blockdata tip -> throwInIO $
             restoreBlocks @_ @s @k
-                ctx (contramap MsgWalletFollow tr) wid blockdata tip discover query
+                ctx (contramap MsgWalletFollow tr) wid blockdata tip getChainEvents
     in
       catchFromIO $ case lightSync nw of
-        Just sync ->
+        Just (sync, query) ->
             sync $ ChainFollower
                 { readLocalTip
-                , rollForward = rollForward' . either List Summary
+                , rollForward =
+                    \case
+                        Left blocks ->
+                            rollForward' (discoverFromBlockList blocks) (List blocks)
+                        Right summary ->
+                            rollForward' (discoverFromState query discover) (Summary summary)
                 , rollBackward
                 }
         _ -> -- light-mode not available
             chainSync nw (contramap MsgChainFollow tr) $ ChainFollower
                 { readLocalTip
-                , rollForward = rollForward' . List
+                , rollForward = \blocks ->
+                        rollForward' (discoverFromBlockList blocks) (List blocks)
                 , rollBackward
                 }
   where
@@ -1066,12 +1070,11 @@ restoreBlocks
     => ctx
     -> Tracer m WalletFollowLog
     -> WalletId
-    -> BlockData (Either Address RewardAccount) ChainEvents s
+    -> BlockData
     -> BlockHeader
-    -> ((Either Address RewardAccount -> m ChainEvents) -> s -> m (ChainEvents, s))
-    -> (Either Address RewardAccount -> m ChainEvents)
+    -> (s -> m (ChainEvents, s))
     -> ExceptT ErrNoSuchWallet m ()
-restoreBlocks ctx tr wid blocks nodeTip discover query = db & \DBLayer{..} -> do
+restoreBlocks ctx tr wid blocks nodeTip getChainEvents = db & \DBLayer{..} -> do
     cp0  <- mapExceptT atomically $ withNoSuchWallet wid (readCheckpoint wid)
     sp   <- lift $ currentSlottingParameters nl
     unless (cp0 `isParentOf` firstHeader blocks) $ fail $ T.unpack $ T.unwords
@@ -1080,7 +1083,7 @@ restoreBlocks ctx tr wid blocks nodeTip discover query = db & \DBLayer{..} -> do
         , "but the given chain continues starting from:"
         , pretty (firstHeader blocks)
         ]
-    (filteredBlocks', cps') <- lift $ NE.unzip <$> applyBlocks @s blocks discover query cp0
+    (filteredBlocks', cps') <- lift $ NE.unzip <$> applyBlocks @s blocks getChainEvents cp0
     let cps = NE.map snd cps'
         filteredBlocks = concat filteredBlocks'
     let slotPoolDelegations =

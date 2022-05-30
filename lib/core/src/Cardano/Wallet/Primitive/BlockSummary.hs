@@ -54,8 +54,6 @@ import Cardano.Wallet.Primitive.Types.Tx
     ( Tx (..), TxOut (..) )
 import Data.Foldable
     ( Foldable (toList) )
-import Data.Functor.Identity
-    ( Identity (..) )
 import Data.List.NonEmpty
     ( NonEmpty (..) )
 import Data.Map
@@ -83,15 +81,14 @@ import qualified Data.Map.Strict as Map
 -- In addition, this query function is monadic, which means that it
 -- can call out to an external data source.
 --
-data BlockSummary m addr txs = BlockSummary
+data BlockSummary addr txs = BlockSummary
     { from  :: !BlockHeader
     , to    :: !BlockHeader
-    , query :: addr -> m txs
     } deriving (Generic)
 
 -- | 'BlockSummary' used for light-mode.
-type LightSummary m =
-    BlockSummary m (Either Address RewardAccount) ChainEvents
+type LightSummary =
+    BlockSummary (Either Address RewardAccount) ChainEvents
 
 {-------------------------------------------------------------------------------
     ChainEvents
@@ -238,12 +235,10 @@ fromEntireBlock Block{header,transactions,delegations} = BlockEvents
 -- Convert a list of blocks into a 'BlockSummary'.
 -- Unfortunately, as 'TxIn' references are not resolved,
 -- we can only find transactions with relevant 'TxOut'.
-summarizeOnTxOut :: NonEmpty Block -> LightSummary Identity
+summarizeOnTxOut :: NonEmpty Block -> LightSummary
 summarizeOnTxOut bs = BlockSummary
     { from = header . NE.head $ bs
     , to = header . NE.last $ bs
-    , query = \q -> pure
-        . fromBlockEvents . map (filterBlock q) $ NE.toList bs
     }
 
 filterBlock :: Either Address RewardAccount -> Block -> BlockEvents

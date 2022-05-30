@@ -750,10 +750,11 @@ createWallet
     => ctx
     -> WalletId
     -> WalletName
+    -> (Either Address RewardAccount -> m ChainEvents)
     -> s
     -> ExceptT ErrWalletAlreadyExists m WalletId
-createWallet ctx wid wname s = db & \DBLayer{..} -> do
-    let (hist, cp) = initWallet block0 s
+createWallet ctx wid wname query s = db & \DBLayer{..} -> do
+    (hist, cp) <- lift $ initWallet block0 query s
     now <- lift getCurrentTime
     let meta = WalletMetadata
             { name = wname
@@ -774,23 +775,26 @@ createWallet ctx wid wname s = db & \DBLayer{..} -> do
 -- To work-around this, we scan the genesis block with an arbitrary big gap and
 -- resort to a default gap afterwards.
 createIcarusWallet
-    :: forall ctx s k n.
+    :: forall ctx s k n m.
         ( HasGenesisData ctx
         , HasDBLayer IO s k ctx
         , PaymentAddress n k
         , k ~ IcarusKey
         , s ~ SeqState n k
         , Typeable n
+        , MonadIO m
+        , MonadTime m
         )
     => ctx
     -> WalletId
     -> WalletName
     -> (k 'RootK XPrv, Passphrase "encryption")
-    -> ExceptT ErrWalletAlreadyExists IO WalletId
-createIcarusWallet ctx wid wname credentials = db & \DBLayer{..} -> do
+    -> (Either Address RewardAccount -> m ChainEvents)
+    -> ExceptT ErrWalletAlreadyExists m WalletId
+createIcarusWallet ctx wid wname credentials query = db & \DBLayer{..} -> do
     let g  = defaultAddressPoolGap
     let s = mkSeqStateFromRootXPrv @n credentials purposeBIP44 g
-    let (hist, cp) = initWallet block0 s
+    (hist, cp) <- lift $ initWallet block0 query s
     now <- lift getCurrentTime
     let meta = WalletMetadata
             { name = wname
@@ -798,7 +802,7 @@ createIcarusWallet ctx wid wname credentials = db & \DBLayer{..} -> do
             , passphraseInfo = Nothing
             , delegation = WalletDelegation NotDelegating []
             }
-    mapExceptT atomically $
+    mapExceptT (liftIO . atomically) $
         -- FIXME: Why `updateState s cp` and not `cp`?
         -- The genesis block could very well update the address discovery state.
         initializeWallet wid (updateState s cp) meta hist gp $> wid
@@ -937,27 +941,40 @@ listUtxoStatistics ctx wid = do
 -- and apply them, or roll back to a previous point whenever
 -- the chain switches.
 restoreWallet
-    :: forall ctx s k.
-        ( HasNetworkLayer IO ctx
-        , HasDBLayer IO s k ctx
-        , HasLogger IO WalletWorkerLog ctx
+    :: forall ctx s k m.
+        ( HasNetworkLayer m ctx
+        , HasDBLayer m s k ctx
+        , HasLogger m WalletWorkerLog ctx
         , IsOurs s Address
         , IsOurs s RewardAccount
         , AddressBookIso s
         , MaybeLight s
+        , MonadIO m
+        , MonadUnliftIO m
+        , MonadFail m
         )
     => ctx
     -> WalletId
-    -> ExceptT ErrNoSuchWallet IO ()
-restoreWallet ctx wid = db & \DBLayer{..} ->
-    let readLocalTip = liftIO $ atomically $ listCheckpoints wid
+    -> (Either Address RewardAccount -> m ChainEvents)
+    -> ExceptT ErrNoSuchWallet m ()
+restoreWallet ctx wid query = db & \DBLayer{..} ->
+    let
+        readLocalTip :: m [ChainPoint]
+        readLocalTip = atomically $ listCheckpoints wid
+
+        rollBackward :: ChainPoint -> m ChainPoint
         rollBackward =
             throwInIO . rollbackBlocks @_ @s @k ctx wid . toSlot
+
+        rollForward'
+            :: BlockData (Either Address RewardAccount) ChainEvents s
+            -> BlockHeader
+            -> m ()
         rollForward' = \blockdata tip -> throwInIO $
             restoreBlocks @_ @s @k
-                ctx (contramap MsgWalletFollow tr) wid blockdata tip
+                ctx (contramap MsgWalletFollow tr) wid blockdata tip query
     in
-      catchFromIO $ case (maybeDiscover, lightSync nw) of
+      catchFromIO $ case (maybeDiscover @s, lightSync nw) of
         (Just discover, Just sync) ->
             sync $ ChainFollower
                 { readLocalTip
@@ -971,17 +988,17 @@ restoreWallet ctx wid = db & \DBLayer{..} ->
                 , rollBackward
                 }
   where
-    db = ctx ^. dbLayer @IO @s @k
-    nw = ctx ^. networkLayer @IO
-    tr = ctx ^. logger @_ @WalletWorkerLog
+    db = ctx ^. dbLayer @m @s @k
+    nw = ctx ^. networkLayer @m
+    tr = ctx ^. logger @m @WalletWorkerLog
 
     -- See Note [CheckedExceptionsAndCallbacks]
-    throwInIO :: ExceptT ErrNoSuchWallet IO a -> IO a
+    throwInIO :: ExceptT ErrNoSuchWallet m a -> m a
     throwInIO x = runExceptT x >>= \case
         Right a -> pure a
-        Left  e -> throwIO $ UncheckErrNoSuchWallet e
+        Left  e -> liftIO . throwIO $ UncheckErrNoSuchWallet e
 
-    catchFromIO :: IO a -> ExceptT ErrNoSuchWallet IO a
+    catchFromIO :: m a -> ExceptT ErrNoSuchWallet m a
     catchFromIO m = ExceptT $
         (Right <$> m) `catch` (\(UncheckErrNoSuchWallet e) -> pure $ Left e)
 
@@ -1022,46 +1039,46 @@ and present it as a checked exception.
 -- | Rewind the UTxO snapshots, transaction history and other information to a
 -- the earliest point in the past that is before or is the point of rollback.
 rollbackBlocks
-    :: forall ctx s k.
-        ( HasDBLayer IO s k ctx
-        )
+    :: forall ctx s k m.
+        ( HasDBLayer m s k ctx )
     => ctx
     -> WalletId
     -> Slot
-    -> ExceptT ErrNoSuchWallet IO ChainPoint
+    -> ExceptT ErrNoSuchWallet m ChainPoint
 rollbackBlocks ctx wid point = db & \DBLayer{..} -> do
     mapExceptT atomically $ rollbackTo wid point
   where
-    db = ctx ^. dbLayer @IO @s @k
+    db = ctx ^. dbLayer @m @s @k
 
 -- | Apply the given blocks to the wallet and update the wallet state,
 -- transaction history and corresponding metadata.
 restoreBlocks
-    :: forall ctx s k.
-        ( HasDBLayer IO s k ctx
-        , HasNetworkLayer IO ctx
+    :: forall ctx s k m.
+        ( HasDBLayer m s k ctx
+        , HasNetworkLayer m ctx
         , IsOurs s Address
         , IsOurs s RewardAccount
         , AddressBookIso s
+        , MonadIO m
+        , MonadFail m
         )
     => ctx
-    -> Tracer IO WalletFollowLog
+    -> Tracer m WalletFollowLog
     -> WalletId
-    -> BlockData IO (Either Address RewardAccount) ChainEvents s
+    -> BlockData (Either Address RewardAccount) ChainEvents s
     -> BlockHeader
-    -> ExceptT ErrNoSuchWallet IO ()
-restoreBlocks ctx tr wid blocks nodeTip = db & \DBLayer{..} -> mapExceptT atomically $ do
-    cp0  <- withNoSuchWallet wid (readCheckpoint wid)
-    sp   <- liftIO $ currentSlottingParameters nl
-
+    -> (Either Address RewardAccount -> m ChainEvents)
+    -> ExceptT ErrNoSuchWallet m ()
+restoreBlocks ctx tr wid blocks nodeTip query = db & \DBLayer{..} -> do
+    cp0  <- mapExceptT atomically $ withNoSuchWallet wid (readCheckpoint wid)
+    sp   <- lift $ currentSlottingParameters nl
     unless (cp0 `isParentOf` firstHeader blocks) $ fail $ T.unpack $ T.unwords
         [ "restoreBlocks: given chain isn't a valid continuation."
         , "Wallet is at:", pretty (currentTip cp0)
         , "but the given chain continues starting from:"
         , pretty (firstHeader blocks)
         ]
-
-    (filteredBlocks', cps') <- liftIO $ NE.unzip <$> applyBlocks @s blocks cp0
+    (filteredBlocks', cps') <- lift $ NE.unzip <$> applyBlocks @s blocks query cp0
     let cps = NE.map snd cps'
         filteredBlocks = concat filteredBlocks'
     let slotPoolDelegations =
@@ -1074,13 +1091,12 @@ restoreBlocks ctx tr wid blocks nodeTip = db & \DBLayer{..} -> mapExceptT atomic
     let txs = fold $ view #transactions <$> filteredBlocks
     let epochStability = (3*) <$> getSecurityParameter sp
     let localTip = currentTip $ NE.last cps
-
-    putTxHistory wid txs
-    updatePendingTxForExpiry wid (view #slotNo localTip)
+    mapExceptT atomically $ do
+        putTxHistory wid txs
+        updatePendingTxForExpiry wid (view #slotNo localTip)
     forM_ slotPoolDelegations $ \delegation@(slotNo, cert) -> do
-        liftIO $ logDelegation delegation
-        putDelegationCertificate wid cert slotNo
-
+        lift $ logDelegation delegation
+        mapExceptT atomically $ putDelegationCertificate wid cert slotNo
     -- FIXME LATER during ADP-1403
     -- We need to rethink checkpoint creation and consider the case
     -- where the blocks are given as a 'Summary' and not a full 'List'
@@ -1126,23 +1142,23 @@ restoreBlocks ctx tr wid blocks nodeTip = db & \DBLayer{..} -> mapExceptT atomic
             | wcp <- map (snd . fromWallet) cpsKeep
             ]
 
-    liftIO $ mapM_ logCheckpoint cpsKeep
-    ExceptT $ modifyDBMaybe walletsDB $
+    lift $ mapM_ logCheckpoint cpsKeep
+    mapExceptT atomically $ ExceptT $ modifyDBMaybe walletsDB $
         adjustNoSuchWallet wid id $ \_ -> Right ( delta, () )
 
-    prune wid epochStability
+    mapExceptT atomically $ prune wid epochStability
 
-    liftIO $ do
+    lift $ do
         traceWith tr $ MsgDiscoveredTxs txs
         traceWith tr $ MsgDiscoveredTxsContent txs
   where
-    nl = ctx ^. networkLayer
-    db = ctx ^. dbLayer @IO @s @k
+    nl = ctx ^. networkLayer @m
+    db = ctx ^. dbLayer @m @s @k
 
-    logCheckpoint :: Wallet s -> IO ()
+    logCheckpoint :: Wallet s -> m ()
     logCheckpoint cp = traceWith tr $ MsgCheckpoint (currentTip cp)
 
-    logDelegation :: (SlotNo, DelegationCertificate) -> IO ()
+    logDelegation :: (SlotNo, DelegationCertificate) -> m ()
     logDelegation = traceWith tr . uncurry MsgDiscoveredDelegationCert
 
     isParentOf :: Wallet s -> BlockHeader -> Bool

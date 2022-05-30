@@ -855,8 +855,9 @@ postShelleyWallet
     -> Handler ApiWallet
 postShelleyWallet ctx generateKey body = do
     let state = mkSeqStateFromRootXPrv (rootXPrv, pwdP) purposeCIP1852 g
+        query = undefined
     void $ liftHandler $ createWalletWorker @_ @s @k ctx wid
-        (\wrk -> W.createWallet @(WorkerCtx ctx) @_ @s @k wrk wid wName state)
+        (\wrk -> W.createWallet @(WorkerCtx ctx) @_ @s @k wrk wid wName query state)
         (\wrk _ -> W.manageRewardBalance @(WorkerCtx ctx) @s @k (Proxy @n) wrk wid)
     withWorkerCtx @_ @s @k ctx wid liftE liftE $ \wrk -> liftHandler $
         W.attachPrivateKeyFromPwd @_ @s @k wrk wid (rootXPrv, pwd)
@@ -896,8 +897,9 @@ postAccountWallet
 postAccountWallet ctx mkWallet liftKey coworker body = do
     let state = mkSeqStateFromAccountXPub
             (liftKey accXPub) Nothing purposeCIP1852 g
+        query = undefined
     void $ liftHandler $ createWalletWorker @_ @s @k ctx wid
-        (\wrk -> W.createWallet @(WorkerCtx ctx) @_ @s @k wrk wid wName state)
+        (\wrk -> W.createWallet @(WorkerCtx ctx) @_ @s @k wrk wid wName query state)
         coworker
     fst <$> getWallet ctx mkWallet (ApiT wid)
   where
@@ -1041,8 +1043,9 @@ postSharedWalletFromRootXPrv ctx generateKey body = do
     ix' <- liftHandler $ withExceptT ErrConstructSharedWalletInvalidIndex $
         W.guardHardIndex ix
     let state = mkSharedStateFromRootXPrv (rootXPrv, pwdP) ix' g pTemplate dTemplateM
+        query = undefined
     void $ liftHandler $ createWalletWorker @_ @s @k ctx wid
-        (\wrk -> W.createWallet @(WorkerCtx ctx) @_ @s @k wrk wid wName state)
+        (\wrk -> W.createWallet @(WorkerCtx ctx) @_ @s @k wrk wid wName query state)
         idleWorker
     withWorkerCtx @_ @s @k ctx wid liftE liftE $ \wrk -> liftHandler $
         W.attachPrivateKeyFromPwd @_ @s @k wrk wid (rootXPrv, pwd)
@@ -1087,8 +1090,9 @@ postSharedWalletFromAccountXPub ctx liftKey body = do
     acctIx <- liftHandler $ withExceptT ErrConstructSharedWalletInvalidIndex $
         W.guardHardIndex ix
     let state = mkSharedStateFromAccountXPub (liftKey accXPub) acctIx g pTemplate dTemplateM
+        query = undefined
     void $ liftHandler $ createWalletWorker @_ @s @k ctx wid
-        (\wrk -> W.createWallet @(WorkerCtx ctx) @_ @s @k wrk wid wName state)
+        (\wrk -> W.createWallet @(WorkerCtx ctx) @_ @s @k wrk wid wName query state)
         idleWorker
     fst <$> getWallet ctx (mkSharedWallet @_ @s @k) (ApiT wid)
   where
@@ -1302,8 +1306,9 @@ postRandomWallet
     -> Handler ApiByronWallet
 postRandomWallet ctx body = do
     s <- liftIO $ mkRndState rootXPrv <$> getStdRandom random
+    let query = undefined
     postLegacyWallet ctx (rootXPrv, pwd) $ \wrk wid ->
-        W.createWallet @(WorkerCtx ctx) @_ @s @k wrk wid wName s
+        W.createWallet @(WorkerCtx ctx) @_ @s @k wrk wid wName query s
   where
     wName    = body ^. #name . #getApiT
     seed     = body ^. #mnemonicSentence . #getApiMnemonicT
@@ -1323,8 +1328,9 @@ postRandomWalletFromXPrv
     -> Handler ApiByronWallet
 postRandomWalletFromXPrv ctx body = do
     s <- liftIO $ mkRndState byronKey <$> getStdRandom random
+    let query = undefined
     void $ liftHandler $ createWalletWorker @_ @s @k ctx wid
-        (\wrk -> W.createWallet @(WorkerCtx ctx) @_ @s @k wrk wid wName s)
+        (\wrk -> W.createWallet @(WorkerCtx ctx) @_ @s @k wrk wid wName query s)
         idleWorker
     withWorkerCtx ctx wid liftE liftE $ \wrk -> liftHandler $
         W.attachPrivateKeyFromPwdHash wrk wid (byronKey, pwd)
@@ -1349,9 +1355,10 @@ postIcarusWallet
     -> ByronWalletPostData '[12,15,18,21,24]
     -> Handler ApiByronWallet
 postIcarusWallet ctx body = do
+    let query = undefined
     postLegacyWallet ctx (rootXPrv, pwd) $ \wrk wid ->
         W.createIcarusWallet @(WorkerCtx ctx) @s @k wrk wid wName
-            (rootXPrv, pwdP)
+            (rootXPrv, pwdP) query
   where
     wName    = body ^. #name . #getApiT
     seed     = body ^. #mnemonicSentence . #getApiMnemonicT
@@ -1372,9 +1379,10 @@ postTrezorWallet
     -> ByronWalletPostData '[12,15,18,21,24]
     -> Handler ApiByronWallet
 postTrezorWallet ctx body = do
+    let query = undefined
     postLegacyWallet ctx (rootXPrv, pwd) $ \wrk wid ->
         W.createIcarusWallet @(WorkerCtx ctx) @s @k wrk wid wName
-            (rootXPrv, pwdP)
+            (rootXPrv, pwdP) query
   where
     wName    = body ^. #name . #getApiT
     seed     = body ^. #mnemonicSentence . #getApiMnemonicT
@@ -1395,9 +1403,10 @@ postLedgerWallet
     -> ByronWalletPostData '[12,15,18,21,24]
     -> Handler ApiByronWallet
 postLedgerWallet ctx body = do
+    let query = undefined
     postLegacyWallet ctx (rootXPrv, pwd) $ \wrk wid ->
         W.createIcarusWallet @(WorkerCtx ctx) @s @k wrk wid wName
-            (rootXPrv, pwdP)
+            (rootXPrv, pwdP) query
   where
     wName    = body ^. #name . #getApiT
     mw       = body ^. #mnemonicSentence . #getApiMnemonicT
@@ -4140,13 +4149,14 @@ registerWorker ctx before coworker wid =
   where
     re = ctx ^. workerRegistry @s @k
     df = ctx ^. dbFactory
+    query = undefined
     config = MkWorker
         { workerAcquire = withDatabase df wid
         , workerBefore = before
         , workerAfter = defaultWorkerAfter
         -- fixme: ADP-641 Review error handling here
         , workerMain = \ctx' _ -> race_
-            (unsafeRunExceptT $ W.restoreWallet ctx' wid)
+            (unsafeRunExceptT $ W.restoreWallet ctx' wid query)
             (race_
                 (forever $ W.runLocalTxSubmissionPool txCfg ctx' wid)
                 (coworker ctx' wid))

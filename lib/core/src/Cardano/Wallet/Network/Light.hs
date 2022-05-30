@@ -82,7 +82,7 @@ data LightSyncSource m block addr txs = LightSyncSource
 hoistLightSyncSource
     :: (forall a. m a -> n a)
     -> LightSyncSource m block addr txs
-    -> LightSyncSource n block addr txs 
+    -> LightSyncSource n block addr txs
 hoistLightSyncSource f x = LightSyncSource
     { stabilityWindow = stabilityWindow x
     , getHeader = getHeader x
@@ -94,8 +94,8 @@ hoistLightSyncSource f x = LightSyncSource
     , getAddressTxs = \a b c -> f $ getAddressTxs x a b c
     }
 
-type LightBlocks m block addr txs =
-    Either (NonEmpty block) (BlockSummary m addr txs)
+type LightBlocks block addr txs =
+    Either (NonEmpty block) (BlockSummary addr txs)
 
 -- | Retrieve the 'ChainPoint' with the highest 'Slot'.
 latest :: [ChainPoint] -> ChainPoint
@@ -114,7 +114,7 @@ lightSync
     :: (Monad m, MonadDelay m)
     => Tracer m LightLayerLog
     -> LightSyncSource m block addr txs
-    -> ChainFollower m ChainPoint BlockHeader (LightBlocks m block addr txs)
+    -> ChainFollower m ChainPoint BlockHeader (LightBlocks block addr txs)
     -> m Void
 lightSync tr light follower = do
     pts <- readLocalTip follower
@@ -132,7 +132,7 @@ lightSync tr light follower = do
                 traceWith tr $ MsgLightRollBackward pt prev
                 rollBackward follower prev
             Stable old new tip -> do
-                let summary = mkBlockSummary light old new
+                let summary = mkBlockSummary old new
                 traceWith tr $
                     MsgLightRollForward (chainPointFromBlockHeader old) new tip
                 rollForward follower (Right summary) tip
@@ -192,16 +192,14 @@ isUnstable stabilityWindow_ old tip =
 secondsPerSlot :: DiffTime
 secondsPerSlot = 2
 
--- | Create a 'BlockSummary' 
+-- | Create a 'BlockSummary'
 mkBlockSummary
-    :: LightSyncSource m block addr txs
+    :: BlockHeader
     -> BlockHeader
-    -> BlockHeader
-    -> BlockSummary m addr txs
-mkBlockSummary light old new = BlockSummary
+    -> BlockSummary addr txs
+mkBlockSummary old new = BlockSummary
     { from = old
     , to = new
-    , query = getAddressTxs light old new
     }
 
 blockHeightToInteger :: Quantity "block" Word32 -> Integer

@@ -123,8 +123,6 @@ import Data.Delta
     ( Delta (..) )
 import Data.Foldable
     ( Foldable (toList) )
-import Data.Functor.Identity
-    ( Identity (..) )
 import Data.Generics.Internal.VL.Lens
     ( (^.) )
 import Data.List.NonEmpty
@@ -231,16 +229,17 @@ instance Delta (DeltaWallet s) where
 --
 -- The wallet tip will be the genesis block header.
 initWallet
-    :: (IsOurs s Address, IsOurs s RewardAccount)
+    :: (IsOurs s Address, IsOurs s RewardAccount, Monad m)
     => Block
         -- ^ The genesis block
+    -> (Either Address RewardAccount -> m ChainEvents)
     -> s
         -- ^ Initial address discovery state
-    -> ([(Tx, TxMeta)], Wallet s)
-initWallet block0 s = (transactions, w1)
-  where
-    w0 = Wallet mempty undefined s
-    (FilteredBlock{transactions}, (_, w1)) = applyBlock block0 w0
+    -> m ([(Tx, TxMeta)], Wallet s)
+initWallet block0 query s = do
+    let w0 = Wallet mempty undefined s
+    (FilteredBlock{transactions}, (_, w1)) <- applyBlock block0 query w0
+    pure (transactions, w1)
 
 -- | Construct a wallet from the exact given state.
 --
@@ -291,12 +290,13 @@ data FilteredBlock = FilteredBlock
 -- Returns an updated wallet, as well as the address data relevant to the wallet
 -- that were discovered while applying the block.
 applyBlock
-    :: (IsOurs s Address, IsOurs s RewardAccount)
+    :: (IsOurs s Address, IsOurs s RewardAccount, Monad m)
     => Block
+    -> (Either Address RewardAccount -> m ChainEvents)
     -> Wallet s
-    -> (FilteredBlock, (DeltaWallet s, Wallet s))
-applyBlock block =
-    first fromFiltered . runIdentity . applyBlockData (List $ block :| [])
+    -> m (FilteredBlock, (DeltaWallet s, Wallet s))
+applyBlock block query =
+    fmap (first fromFiltered) . applyBlockData (List $ block :| []) query
   where
     fromFiltered [] = FilteredBlock
         { slot = toSlot $ chainPointFromBlockHeader (block ^. #header)
@@ -338,27 +338,34 @@ applyBlock block =
 --
 applyBlocks
     :: (IsOurs s Address, IsOurs s RewardAccount, Monad m)
-    => BlockData m (Either Address RewardAccount) ChainEvents s
+    => BlockData (Either Address RewardAccount) ChainEvents s
+    -> (Either Address RewardAccount -> m ChainEvents)
     -> Wallet s
     -> m (NonEmpty ([FilteredBlock], (DeltaWallet s, Wallet s)))
-applyBlocks (List (block0 :| blocks)) w0 = pure $
-    NE.scanl applyBlock' (first (:[]) $ applyBlock block0 w0) blocks
+applyBlocks (List (block0 :| blocks)) query w0 = do
+    let firstApply = first (:[]) <$> applyBlock block0 query w0
+    sequence $ NE.scanl (\mPrev block -> do
+                             prev <- mPrev
+                             applyBlock' prev block
+                        ) firstApply blocks
   where
-    applyBlock' (_,(_,w)) block = first (:[]) $ applyBlock block w
-applyBlocks summary@(Summary _ _) w =
-    (NE.:| []) <$> applyBlockData summary w
+    applyBlock' (_,(_,w)) block = first (:[]) <$> applyBlock block query w
+applyBlocks summary@(Summary _ _) query w =
+    (NE.:| []) <$> applyBlockData summary query w
 
 -- | Apply multiple blocks in sequence to an existing wallet
 -- and return the final wallet state as well as the transactions
 -- that were applied.
 applyBlockData
     :: (IsOurs s Address, IsOurs s RewardAccount, Monad m)
-    => BlockData m (Either Address RewardAccount) ChainEvents s
+    => BlockData (Either Address RewardAccount) ChainEvents s
+    -> (Either Address RewardAccount -> m ChainEvents)
     -> Wallet s
     -> m ([FilteredBlock], (DeltaWallet s, Wallet s))
-applyBlockData blocks (Wallet !u0 _ s0) = do
-    (chainEvents, s1) <- discoverFromBlockData blocks s0
-    let blockEvents = toAscBlockEvents chainEvents
+applyBlockData blocks query (Wallet !u0 _ s0) = do
+    (chainEvents, s1) <- discoverFromBlockData blocks s0 query
+    let
+        blockEvents = toAscBlockEvents chainEvents
         applies u blockEvent = applyBlockEventsToUTxO blockEvent s1 u
         (processedBlocks, u1) = mapAccumL' applies u0 blockEvents
         filteredBlocks = map fst processedBlocks
@@ -379,19 +386,19 @@ mapAccumL' f = go []
         (!o,!s1) -> go (o:os) s1 xs
 
 -- | BlockData which has been paired with discovery facilities.
-data BlockData m addr tx s
+data BlockData addr tx s
     = List (NonEmpty Block)
-    | Summary (DiscoverTxs addr tx s) (BlockSummary m addr tx)
+    | Summary (DiscoverTxs addr tx s) (BlockSummary addr tx)
 
 -- | First 'BlockHeader' of the blocks represented
 -- by 'BlockData'.
-firstHeader :: BlockData m addr txs s -> BlockHeader
+firstHeader :: BlockData addr txs s -> BlockHeader
 firstHeader (List xs) = header $ NE.head xs
 firstHeader (Summary _ BlockSummary{from}) = from
 
 -- | Last 'BlockHeader' of the blocks represented
 -- by 'BlockData'.
-lastHeader :: BlockData m addr txs s -> BlockHeader
+lastHeader :: BlockData addr txs s -> BlockHeader
 lastHeader (List xs) = header $ NE.last xs
 lastHeader (Summary _ BlockSummary{to}) = to
 
@@ -631,15 +638,16 @@ discoverAddressesBlock block s0 = (Delta.Replace s2, s2)
 -- | Perform address and transaction discovery on 'BlockData',
 discoverFromBlockData
     :: (IsOurs s Address, IsOurs s RewardAccount, Monad m)
-    => BlockData m (Either Address RewardAccount) ChainEvents s
+    => BlockData (Either Address RewardAccount) ChainEvents s
     -> s
+    -> (Either Address RewardAccount -> m ChainEvents)
     -> m (ChainEvents, s)
-discoverFromBlockData (List blocks) !s0 =
+discoverFromBlockData (List blocks) !s0 _query =
     pure (fromBlockEvents . map fromEntireBlock $ NE.toList blocks , s1)
   where
     s1 = L.foldl' (\s bl -> snd $ discoverAddressesBlock bl s) s0 $ NE.toList blocks
-discoverFromBlockData (Summary dis summary) !s0 =
-    discoverTxs dis (summary ^. #query) s0
+discoverFromBlockData (Summary dis _summary) !s0 query =
+    discoverTxs dis query s0
 
 -- | Indicates whether an address is known to be ours, without updating the
 -- address discovery state.

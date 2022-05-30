@@ -108,7 +108,7 @@ import qualified Data.List.NonEmpty as NE
 -- | Interface for network capabilities.
 data NetworkLayer m block = NetworkLayer
     { chainSync
-        :: Tracer IO ChainFollowLog
+        :: Tracer m ChainFollowLog
         -> ChainFollower m ChainPoint BlockHeader (NonEmpty block)
         -> m ()
         -- ^ Connect to the node and run the ChainSync protocol.
@@ -118,7 +118,7 @@ data NetworkLayer m block = NetworkLayer
 
     , lightSync
         :: Maybe (
-            ChainFollower m ChainPoint BlockHeader (LightBlocks m block)
+            ChainFollower m ChainPoint BlockHeader (LightBlocks block)
             -> m ()
           )
         -- ^ Connect to a data source that offers an efficient
@@ -187,7 +187,7 @@ data NetworkLayer m block = NetworkLayer
 
 -- | In light-mode, we receive either a list of blocks as usual,
 -- or a 'LightSummary' of blocks.
-type LightBlocks m block = Either (NonEmpty block) (LightSummary m)
+type LightBlocks block = Either (NonEmpty block) LightSummary
 
 instance Functor m => Functor (NetworkLayer m) where
     fmap f nl = nl

@@ -1,4 +1,7 @@
 {-# LANGUAGE DuplicateRecordFields #-}
+{-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE TupleSections #-}
 
 module Cardano.Wallet.Primitive.Types.UTxO.Gen
     ( genUTxO
@@ -9,6 +12,7 @@ module Cardano.Wallet.Primitive.Types.UTxO.Gen
     -- Generation of transaction sequences from UTxOs
     , genTxFromUTxO
     , genTxsFromUTxO
+    , TxSeq (..)
     ) where
 
 import Prelude
@@ -38,10 +42,22 @@ import Control.Monad
     ( foldM, replicateM )
 import Data.Bifunctor
     ( first )
+import Data.List
+    ( inits )
+import Data.List.Extra
+    ( dropEnd )
 import Data.Maybe
     ( listToMaybe )
 import Test.QuickCheck
-    ( Gen, choose, chooseInt, elements, shrinkList, sized, vectorOf )
+    ( Gen
+    , ShrinkState (..)
+    , choose
+    , chooseInt
+    , elements
+    , shrinkList
+    , sized
+    , vectorOf
+    )
 import Test.QuickCheck.Extra
     ( selectMapEntries, shrinkInterleaved )
 
@@ -155,3 +171,31 @@ genTxsFromUTxO u0 genAddr = sized $ \txCount ->
     genOne (txs, u) = do
         tx <- genTxFromUTxO u genAddr
         pure (tx : txs, applyTxToUTxO tx u)
+
+data TxSeq = TxSeq UTxO [(Tx, UTxO)]
+
+instance ShrinkState TxSeqShrinkState TxSeq where
+    shrinkInit _ = TxSeqShrinkStateUnshrunk
+    shrinkState txSeq = \case
+        TxSeqShrinkStateUnshrunk ->
+            (, TxSeqShrinkStatePrefix) <$> txSeqPrefixes txSeq
+        TxSeqShrinkStatePrefix ->
+            (, TxSeqShrinkStateSuffix) <$> txSeqSuffixes txSeq
+        TxSeqShrinkStateSuffix ->
+            []
+
+-- shrinkTxSeqToPrefix
+txSeqPrefixes :: TxSeq -> [TxSeq]
+txSeqPrefixes (TxSeq u0 ps) = [TxSeq u0 p | p <- dropEnd 1 (inits ps)]
+
+-- shrinkTxSeqToSuffix
+txSeqSuffixes :: TxSeq -> [TxSeq]
+txSeqSuffixes = const [] -- TODO
+
+-- Can try to remove suffix
+-- Can try to remove prefix
+--
+data TxSeqShrinkState
+    = TxSeqShrinkStateUnshrunk
+    | TxSeqShrinkStatePrefix
+    | TxSeqShrinkStateSuffix

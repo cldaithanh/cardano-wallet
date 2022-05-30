@@ -22,6 +22,7 @@ module Cardano.Wallet.Primitive.BlockSummary
     -- * Block Events
     , BlockEvents (..)
     , fromEntireBlock
+    , filterBlock
 
     -- * Sublist
     , Sublist

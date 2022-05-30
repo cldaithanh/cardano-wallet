@@ -750,11 +750,12 @@ createWallet
     => ctx
     -> WalletId
     -> WalletName
+    -> ((Either Address RewardAccount -> m ChainEvents) -> s -> m (ChainEvents, s))
     -> (Either Address RewardAccount -> m ChainEvents)
     -> s
     -> ExceptT ErrWalletAlreadyExists m WalletId
-createWallet ctx wid wname query s = db & \DBLayer{..} -> do
-    (hist, cp) <- lift $ initWallet block0 query s
+createWallet ctx wid wname discover query s = db & \DBLayer{..} -> do
+    (hist, cp) <- lift $ initWallet block0 discover query s
     now <- lift getCurrentTime
     let meta = WalletMetadata
             { name = wname
@@ -789,12 +790,13 @@ createIcarusWallet
     -> WalletId
     -> WalletName
     -> (k 'RootK XPrv, Passphrase "encryption")
+    -> ((Either Address RewardAccount -> m ChainEvents) -> s -> m (ChainEvents, s))
     -> (Either Address RewardAccount -> m ChainEvents)
     -> ExceptT ErrWalletAlreadyExists m WalletId
-createIcarusWallet ctx wid wname credentials query = db & \DBLayer{..} -> do
+createIcarusWallet ctx wid wname credentials discover query = db & \DBLayer{..} -> do
     let g  = defaultAddressPoolGap
     let s = mkSeqStateFromRootXPrv @n credentials purposeBIP44 g
-    (hist, cp) <- lift $ initWallet block0 query s
+    (hist, cp) <- lift $ initWallet block0 discover query s
     now <- lift getCurrentTime
     let meta = WalletMetadata
             { name = wname
@@ -948,16 +950,17 @@ restoreWallet
         , IsOurs s Address
         , IsOurs s RewardAccount
         , AddressBookIso s
-        , MaybeLight s
         , MonadIO m
         , MonadUnliftIO m
         , MonadFail m
+        , MaybeLight m s
         )
     => ctx
     -> WalletId
+    -> ((Either Address RewardAccount -> m ChainEvents) -> s -> m (ChainEvents, s))
     -> (Either Address RewardAccount -> m ChainEvents)
     -> ExceptT ErrNoSuchWallet m ()
-restoreWallet ctx wid query = db & \DBLayer{..} ->
+restoreWallet ctx wid discover query = db & \DBLayer{..} ->
     let
         readLocalTip :: m [ChainPoint]
         readLocalTip = atomically $ listCheckpoints wid
@@ -972,13 +975,13 @@ restoreWallet ctx wid query = db & \DBLayer{..} ->
             -> m ()
         rollForward' = \blockdata tip -> throwInIO $
             restoreBlocks @_ @s @k
-                ctx (contramap MsgWalletFollow tr) wid blockdata tip query
+                ctx (contramap MsgWalletFollow tr) wid blockdata tip discover query
     in
-      catchFromIO $ case (maybeDiscover @s, lightSync nw) of
-        (Just discover, Just sync) ->
+      catchFromIO $ case (maybeDiscover @m @s, lightSync nw) of
+        (Just _, Just sync) ->
             sync $ ChainFollower
                 { readLocalTip
-                , rollForward = rollForward' . either List (Summary discover)
+                , rollForward = rollForward' . either List Summary
                 , rollBackward
                 }
         (_,_) -> -- light-mode not available
@@ -1067,9 +1070,10 @@ restoreBlocks
     -> WalletId
     -> BlockData (Either Address RewardAccount) ChainEvents s
     -> BlockHeader
+    -> ((Either Address RewardAccount -> m ChainEvents) -> s -> m (ChainEvents, s))
     -> (Either Address RewardAccount -> m ChainEvents)
     -> ExceptT ErrNoSuchWallet m ()
-restoreBlocks ctx tr wid blocks nodeTip query = db & \DBLayer{..} -> do
+restoreBlocks ctx tr wid blocks nodeTip discover query = db & \DBLayer{..} -> do
     cp0  <- mapExceptT atomically $ withNoSuchWallet wid (readCheckpoint wid)
     sp   <- lift $ currentSlottingParameters nl
     unless (cp0 `isParentOf` firstHeader blocks) $ fail $ T.unpack $ T.unwords
@@ -1078,7 +1082,7 @@ restoreBlocks ctx tr wid blocks nodeTip query = db & \DBLayer{..} -> do
         , "but the given chain continues starting from:"
         , pretty (firstHeader blocks)
         ]
-    (filteredBlocks', cps') <- lift $ NE.unzip <$> applyBlocks @s blocks query cp0
+    (filteredBlocks', cps') <- lift $ NE.unzip <$> applyBlocks @s blocks discover query cp0
     let cps = NE.map snd cps'
         filteredBlocks = concat filteredBlocks'
     let slotPoolDelegations =

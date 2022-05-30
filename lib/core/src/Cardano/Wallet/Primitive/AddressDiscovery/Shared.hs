@@ -552,7 +552,7 @@ instance Typeable n => KnownAddresses (SharedState n k) where
             Active pool -> map swivel $ Map.toList $ AddressPool.addresses pool
         swivel (k,(ix,s)) = (liftPaymentAddress @n k, s, decoratePath st ix)
 
-instance MaybeLight (SharedState n k) where
+instance MaybeLight m (SharedState n k) where
     maybeDiscover = Nothing
 
 {-------------------------------------------------------------------------------

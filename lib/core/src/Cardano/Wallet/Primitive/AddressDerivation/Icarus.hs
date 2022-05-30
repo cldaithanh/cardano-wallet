@@ -66,7 +66,7 @@ import Cardano.Wallet.Primitive.AddressDerivation
     , hex
     )
 import Cardano.Wallet.Primitive.AddressDiscovery
-    ( DiscoverTxs (..), GetPurpose (..), IsOurs (..), MaybeLight (..) )
+    ( GetPurpose (..), IsOurs (..), MaybeLight (..) )
 import Cardano.Wallet.Primitive.AddressDiscovery.Sequential
     ( SeqState, coinTypeAda, discoverSeq, purposeBIP44 )
 import Cardano.Wallet.Primitive.Passphrase
@@ -401,8 +401,9 @@ instance PaymentAddress n IcarusKey
 instance IsOurs (SeqState n IcarusKey) RewardAccount where
     isOurs _account state = (Nothing, state)
 
-instance PaymentAddress n IcarusKey => MaybeLight (SeqState n IcarusKey) where
-    maybeDiscover = Just $ DiscoverTxs discoverSeq
+instance (Monad m, PaymentAddress n IcarusKey)
+  => MaybeLight m (SeqState n IcarusKey) where
+    maybeDiscover = Just discoverSeq
 
 {-------------------------------------------------------------------------------
                           Storing and retrieving keys

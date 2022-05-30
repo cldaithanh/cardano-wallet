@@ -30,7 +30,7 @@ module Cardano.Wallet.Primitive.AddressDiscovery
     , GetAccount (..)
     , coinTypeAda
     , MaybeLight (..)
-    , DiscoverTxs (..)
+    -- , DiscoverTxs (..)
     ) where
 
 import Prelude
@@ -172,15 +172,9 @@ class GetAccount s (key :: Depth -> Type -> Type) | s -> key  where
 -- | Checks whether the address discovery state @s@ works in light-mode
 -- and returns a procedure for discovering addresses
 -- if that is indeed the case.
-class MaybeLight s where
-    maybeDiscover :: Maybe (LightDiscoverTxs s)
-
-type LightDiscoverTxs s =
-    DiscoverTxs (Either Address RewardAccount) ChainEvents s
-
--- | Function that discovers transactions based on an address.
-newtype DiscoverTxs addr txs s = DiscoverTxs
-    { discoverTxs
-        :: forall m. Monad m
-        => (addr -> m txs) -> s -> m (txs, s)
-    }
+class MaybeLight m s where
+    maybeDiscover
+        :: Maybe ( (Either Address RewardAccount -> m ChainEvents)
+                   -> s
+                   -> m (ChainEvents, s)
+                 )

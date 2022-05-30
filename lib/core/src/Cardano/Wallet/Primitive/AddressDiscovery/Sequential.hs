@@ -870,5 +870,5 @@ instance SupportsDiscovery n k => CompareDiscovery (SeqAnyState n k p) where
 instance PaymentAddress n k => KnownAddresses (SeqAnyState n k p) where
     knownAddresses (SeqAnyState s) = knownAddresses s
 
-instance MaybeLight (SeqAnyState n k p) where
+instance MaybeLight m (SeqAnyState n k p) where
     maybeDiscover = Nothing

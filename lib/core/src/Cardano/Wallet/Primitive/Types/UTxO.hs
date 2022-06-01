@@ -235,7 +235,7 @@ instance Semigroup DeltaUTxO where
         excluded'db = excluded db `excludingS` received da
 
 -- | Exclude the inputs of a 'UTxO' from a 'Set' of inputs.
-excludingS :: Set TxIn -> UTxO -> Set TxIn 
+excludingS :: Set TxIn -> UTxO -> Set TxIn
 excludingS a (UTxO b) = Set.filter (not . (`Map.member` b)) a
 
 -- | Restrict a 'Set' of inputs by the inputs of a 'UTxO'.

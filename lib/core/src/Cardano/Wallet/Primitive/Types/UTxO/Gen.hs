@@ -43,9 +43,7 @@ import Control.Monad
 import Data.Bifunctor
     ( first )
 import Data.List
-    ( inits )
-import Data.List.Extra
-    ( dropEnd )
+    ( inits, tails )
 import Data.Maybe
     ( listToMaybe )
 import Test.QuickCheck
@@ -172,6 +170,8 @@ genTxsFromUTxO u0 genAddr = sized $ \txCount ->
         tx <- genTxFromUTxO u genAddr
         pure (tx : txs, applyTxToUTxO tx u)
 
+-- move this to separate module.
+
 data TxSeq = TxSeq UTxO [(Tx, UTxO)]
 
 instance ShrinkState TxSeqShrinkState TxSeq where
@@ -184,13 +184,20 @@ instance ShrinkState TxSeqShrinkState TxSeq where
         TxSeqShrinkStateSuffix ->
             []
 
--- shrinkTxSeqToPrefix
-txSeqPrefixes :: TxSeq -> [TxSeq]
-txSeqPrefixes (TxSeq u0 ps) = [TxSeq u0 p | p <- dropEnd 1 (inits ps)]
+tqSeqValid :: TxSeq -> Bool
+tqSeqValid (TxSeq u0 transitions) = undefined
 
--- shrinkTxSeqToSuffix
+txSeqAppendTx :: TxSeq -> Tx -> Maybe TxSeq
+txSeqAppendTx = undefined
+
+txSeqPrefixes :: TxSeq -> [TxSeq]
+txSeqPrefixes (TxSeq u ps) = TxSeq u <$> inits ps
+
 txSeqSuffixes :: TxSeq -> [TxSeq]
-txSeqSuffixes = const [] -- TODO
+txSeqSuffixes (TxSeq u ps) = undefined -- TxSeq u <$> tails ps
+
+txSeqUnwrap :: TxSeq -> (UTxO, [(Tx, UTxO)])
+txSeqUnwrap = undefined
 
 -- Can try to remove suffix
 -- Can try to remove prefix

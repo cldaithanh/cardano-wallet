@@ -4,8 +4,10 @@ module Cardano.Wallet.Primitive.Types.TxSeq
     ( TxSeq
     , appendTx
     , appendTxs
-    , initialUTxO
-    , finalUTxO
+    , dropHeadTx
+    , dropLastTx
+    , headUTxO
+    , lastUTxO
     , prefixes
     , suffixes
     , size
@@ -35,11 +37,15 @@ import qualified Cardano.Wallet.Primitive.Types.UTxO as UTxO
 
 newtype TxSeq = TxSeq {unTxSeq :: StateDeltaSeq UTxO Tx}
 
-initialUTxO :: TxSeq -> UTxO
-initialUTxO = Seq.initialState . unTxSeq
+--------------------------------------------------------------------------------
+-- Concrete interface
+--------------------------------------------------------------------------------
 
-finalUTxO :: TxSeq -> UTxO
-finalUTxO = Seq.finalState . unTxSeq
+headUTxO :: TxSeq -> UTxO
+headUTxO = Seq.headState . unTxSeq
+
+lastUTxO :: TxSeq -> UTxO
+lastUTxO = Seq.lastState . unTxSeq
 
 appendTx :: MonadFail m => TxSeq -> Tx -> m TxSeq
 appendTx s = fmap TxSeq . Seq.append (flip safeApplyTxToUTxO) (unTxSeq s)
@@ -55,6 +61,16 @@ prefixes = fmap TxSeq . Seq.prefixes . unTxSeq
 
 suffixes :: TxSeq -> NonEmpty TxSeq
 suffixes = fmap TxSeq . Seq.suffixes . unTxSeq
+
+dropHeadTx :: TxSeq -> Maybe TxSeq
+dropHeadTx = fmap TxSeq . Seq.dropHead . unTxSeq
+
+dropLastTx :: TxSeq -> Maybe TxSeq
+dropLastTx = fmap TxSeq . Seq.dropLast . unTxSeq
+
+--------------------------------------------------------------------------------
+-- Utility functions
+--------------------------------------------------------------------------------
 
 canApplyTxToUTxO :: Tx -> UTxO -> Bool
 canApplyTxToUTxO tx u =  (&&)

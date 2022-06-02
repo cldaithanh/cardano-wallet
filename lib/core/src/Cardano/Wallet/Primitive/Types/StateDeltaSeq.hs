@@ -6,9 +6,11 @@ module Cardano.Wallet.Primitive.Types.StateDeltaSeq
     ( StateDeltaSeq
     , append
     , appendMany
-    , fromInitialState
-    , finalState
-    , initialState
+    , fromState
+    , headState
+    , lastState
+    , dropHead
+    , dropLast
     , isPrefixOf
     , isSuffixOf
     , prefixes
@@ -36,30 +38,28 @@ import qualified Data.List.NonEmpty as NE
 import qualified Data.Vector as V
 
 data StateDeltaSeq state delta = StateDeltaSeq
-    { initialState :: state
-    , deltaStates :: Vector (delta, state)
+    { headState :: state
+    , deltas :: Vector (delta, state)
     }
     deriving (Eq, Show)
 
-finalState :: StateDeltaSeq state delta -> state
-finalState StateDeltaSeq {initialState, deltaStates}
-    | null deltaStates =
-        initialState
-    | otherwise =
-        snd (V.last deltaStates)
+lastState :: StateDeltaSeq state delta -> state
+lastState StateDeltaSeq {headState, deltas}
+    | null deltas = headState
+    | otherwise = snd (V.last deltas)
 
 size :: StateDeltaSeq state delta -> Int
-size = length . deltaStates
+size = length . deltas
 
-fromInitialState :: state -> StateDeltaSeq state delta
-fromInitialState state = StateDeltaSeq state V.empty
+fromState :: state -> StateDeltaSeq state delta
+fromState state = StateDeltaSeq state V.empty
 
 toDeltaList :: StateDeltaSeq state delta -> [delta]
-toDeltaList = fmap fst . F.toList . deltaStates
+toDeltaList = fmap fst . F.toList . deltas
 
 toStateList :: StateDeltaSeq state delta -> NonEmpty state
-toStateList StateDeltaSeq {initialState, deltaStates} =
-    initialState :| (snd <$> F.toList deltaStates)
+toStateList StateDeltaSeq {headState, deltas} =
+    headState :| (snd <$> F.toList deltas)
 
 append
     :: Functor m
@@ -67,12 +67,9 @@ append
     -> StateDeltaSeq state delta
     -> delta
     -> m (StateDeltaSeq state delta)
-append nextState seq@StateDeltaSeq {initialState, deltaStates} delta =
-    nextState (finalState seq) delta <&>
-        \state -> StateDeltaSeq
-            { initialState
-            , deltaStates = deltaStates `V.snoc` (delta, state)
-            }
+append nextState seq@StateDeltaSeq {headState, deltas} delta =
+    nextState (lastState seq) delta <&> \state -> StateDeltaSeq
+        {headState, deltas = deltas `V.snoc` (delta, state)}
 
 appendMany
     :: (Foldable f, Monad m)
@@ -92,27 +89,23 @@ suffixes :: StateDeltaSeq state delta -> NonEmpty (StateDeltaSeq state delta)
 suffixes seq0 =
     loop (seq0 :| []) seq0
   where
-    loop !acc !seq = maybe acc (\s -> loop (s `NE.cons` acc) s) (dropTail seq)
+    loop !acc !seq = maybe acc (\s -> loop (s `NE.cons` acc) s) (dropLast seq)
 
 dropHead
     :: StateDeltaSeq state delta
     -> Maybe (StateDeltaSeq state delta)
-dropHead StateDeltaSeq {initialState, deltaStates}
-    | null deltaStates = Nothing
+dropHead StateDeltaSeq {headState, deltas}
+    | null deltas = Nothing
     | otherwise = Just StateDeltaSeq
-        { initialState
-        , deltaStates = V.take (length deltaStates - 1) deltaStates
-        }
+        {headState, deltas = V.take (length deltas - 1) deltas}
 
-dropTail
+dropLast
     :: StateDeltaSeq state delta
     -> Maybe (StateDeltaSeq state delta)
-dropTail StateDeltaSeq {deltaStates}
-    | null deltaStates = Nothing
+dropLast StateDeltaSeq {deltas}
+    | null deltas = Nothing
     | otherwise = Just StateDeltaSeq
-        { initialState = snd $ V.head deltaStates
-        , deltaStates = V.drop 1 deltaStates
-        }
+        {headState = snd $ V.head deltas, deltas = V.drop 1 deltas}
 
 isPrefixOf
     :: (Eq state, Eq delta)

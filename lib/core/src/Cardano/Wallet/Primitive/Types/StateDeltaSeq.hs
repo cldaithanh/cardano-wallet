@@ -5,13 +5,16 @@ module Cardano.Wallet.Primitive.Types.StateDeltaSeq
     ( StateDeltaSeq
     , append
     , appendMany
-    , initialState
     , finalState
     , fromInitialState
+    , initialState
     , isPrefixOf
+    , isSuffixOf
     , prefixes
     , size
+    , suffixes
     , toDeltaList
+    , toStateList
     ) where
 
 import Prelude hiding
@@ -22,7 +25,7 @@ import Control.Monad
 import Data.Functor
     ( (<&>) )
 import Data.List.NonEmpty
-    ( NonEmpty )
+    ( NonEmpty (..) )
 import Data.Maybe
     ( listToMaybe )
 
@@ -48,6 +51,10 @@ fromInitialState state = StateDeltaSeq state []
 toDeltaList :: StateDeltaSeq state delta -> [delta]
 toDeltaList = reverse . fmap fst . deltaStates
 
+toStateList :: StateDeltaSeq state delta -> NonEmpty state
+toStateList StateDeltaSeq {initialState, deltaStates} =
+    initialState :| reverse (snd <$> deltaStates)
+
 append
     :: Functor m
     => (state -> delta -> m state)
@@ -70,11 +77,23 @@ prefixes :: StateDeltaSeq state delta -> NonEmpty (StateDeltaSeq state delta)
 prefixes seq = StateDeltaSeq (initialState seq) <$>
     NE.reverse (NE.tails (deltaStates seq))
 
+suffixes :: StateDeltaSeq state delta -> NonEmpty (StateDeltaSeq state delta)
+suffixes seq = undefined
+
 isPrefixOf
     :: (Eq state, Eq delta)
     => StateDeltaSeq state delta
     -> StateDeltaSeq state delta
     -> Bool
 isPrefixOf s1 s2 = (&&)
-    (initialState s1 == initialState s2)
-    (deltaStates s1 `L.isSuffixOf` deltaStates s2)
+    (toDeltaList s1  `L.isPrefixOf` toDeltaList s2)
+    (NE.toList (toStateList s1) `L.isPrefixOf` NE.toList (toStateList s2))
+
+isSuffixOf
+    :: (Eq state, Eq delta)
+    => StateDeltaSeq state delta
+    -> StateDeltaSeq state delta
+    -> Bool
+isSuffixOf s1 s2 = (&&)
+    (toDeltaList s1  `L.isSuffixOf` toDeltaList s2)
+    (NE.toList (toStateList s1) `L.isSuffixOf` NE.toList (toStateList s2))

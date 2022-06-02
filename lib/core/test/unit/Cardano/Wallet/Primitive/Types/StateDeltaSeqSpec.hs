@@ -50,6 +50,18 @@ spec = do
         it "prop_fromInitialState_appendMany_prefixes_isPrefixOf" $
             prop_fromInitialState_appendMany_prefixes_isPrefixOf
                 @(Sum Int) @Int & property
+{-        it "prop_fromInitialState_appendMany_suffixes_head" $
+            prop_fromInitialState_appendMany_suffixes_head
+                @(Sum Int) @Int & property
+        it "prop_fromInitialState_appendMany_suffixes_last" $
+            prop_fromInitialState_appendMany_suffixes_last
+                @(Sum Int) @Int & property
+        it "prop_fromInitialState_appendMany_suffixes_length" $
+            prop_fromInitialState_appendMany_suffixes_length
+                @(Sum Int) @Int & property
+        it "prop_fromInitialState_appendMany_suffixes_isPrefixOf" $
+            prop_fromInitialState_appendMany_suffixes_isPrefixOf
+                @(Sum Int) @Int & property -}
         it "prop_fromInitialState_appendMany_size" $
             prop_fromInitialState_appendMany_size
                 @(Sum Int) @Int & property
@@ -76,6 +88,16 @@ prop_fromInitialState_appendMany_initialState initialState nextStateFn deltas =
     initialSeq = Seq.fromInitialState initialState
     nextState = fmap (fmap Just) (applyFun2 nextStateFn)
     Just result = Seq.appendMany nextState initialSeq deltas
+
+--------------------------------------------------------------------------------
+-- Longest proper suffix
+--------------------------------------------------------------------------------
+
+-- prop_fromInitialState_appendMany_longestProperSuffix_isSuffix
+
+--------------------------------------------------------------------------------
+-- Prefixes
+--------------------------------------------------------------------------------
 
 prop_fromInitialState_appendMany_prefixes_head
     :: forall state delta. (Eq state, Show state, Eq delta, Show delta)
@@ -134,6 +156,69 @@ prop_fromInitialState_appendMany_prefixes_isPrefixOf
     nextState = fmap (fmap Just) (applyFun2 nextStateFn)
     Just result = Seq.appendMany nextState initialSeq deltas
 
+--------------------------------------------------------------------------------
+-- Suffixes
+--------------------------------------------------------------------------------
+
+prop_fromInitialState_appendMany_suffixes_head
+    :: forall state delta. (Eq state, Show state, Eq delta, Show delta)
+    => state
+    -> Fun (state, delta) state
+    -> [delta]
+    -> Property
+prop_fromInitialState_appendMany_suffixes_head
+    initialState nextStateFn deltas =
+        NE.head (Seq.suffixes result) === initialSeq
+  where
+    initialSeq = Seq.fromInitialState initialState
+    nextState = fmap (fmap Just) (applyFun2 nextStateFn)
+    Just result = Seq.appendMany nextState initialSeq deltas
+
+prop_fromInitialState_appendMany_suffixes_last
+    :: forall state delta. (Eq state, Show state, Eq delta, Show delta)
+    => state
+    -> Fun (state, delta) state
+    -> [delta]
+    -> Property
+prop_fromInitialState_appendMany_suffixes_last
+    initialState nextStateFn deltas =
+        NE.last (Seq.suffixes result) === result
+  where
+    initialSeq = Seq.fromInitialState initialState
+    nextState = fmap (fmap Just) (applyFun2 nextStateFn)
+    Just result = Seq.appendMany nextState initialSeq deltas
+
+prop_fromInitialState_appendMany_suffixes_length
+    :: forall state delta. (Eq state, Show state, Eq delta, Show delta)
+    => state
+    -> Fun (state, delta) state
+    -> [delta]
+    -> Property
+prop_fromInitialState_appendMany_suffixes_length
+    initialState nextStateFn deltas =
+        NE.length (Seq.suffixes result) === length deltas + 1
+  where
+    initialSeq = Seq.fromInitialState initialState
+    nextState = fmap (fmap Just) (applyFun2 nextStateFn)
+    Just result = Seq.appendMany nextState initialSeq deltas
+
+prop_fromInitialState_appendMany_suffixes_isPrefixOf
+    :: forall state delta. (Eq state, Show state, Eq delta)
+    => state
+    -> Fun (state, delta) state
+    -> [delta]
+    -> Property
+prop_fromInitialState_appendMany_suffixes_isPrefixOf
+    initialState nextStateFn deltas =
+        all (uncurry Seq.isPrefixOf) (consecutivePairs (Seq.suffixes result))
+            === True
+  where
+    initialSeq = Seq.fromInitialState initialState
+    nextState = fmap (fmap Just) (applyFun2 nextStateFn)
+    Just result = Seq.appendMany nextState initialSeq deltas
+
+--------------------------------------------------------------------------------
+
 prop_fromInitialState_appendMany_size
     :: forall state delta. (Eq state, Show state)
     => state
@@ -146,6 +231,10 @@ prop_fromInitialState_appendMany_size initialState nextStateFn deltas =
     initialSeq = Seq.fromInitialState initialState
     nextState = fmap (fmap Just) (applyFun2 nextStateFn)
     Just result = Seq.appendMany nextState initialSeq deltas
+
+--------------------------------------------------------------------------------
+-- Utility functions
+--------------------------------------------------------------------------------
 
 consecutivePairs :: Foldable f => f a -> [(a, a)]
 consecutivePairs (F.toList -> xs) = case tailMay xs of

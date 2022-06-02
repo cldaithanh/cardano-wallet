@@ -1,43 +1,36 @@
+{-# LANGUAGE ScopedTypeVariables #-}
+
 module Cardano.Wallet.Primitive.Types.TxSeq
     ( TxSeq
---    , appendTx
---    , fromUTxO
-    , isInfixOf
-    , isPrefixOf
-    , isSuffixOf
-    , prefixes
+    , append
     , removeTxIn
     , removeTxIns
-    , suffixes
     ) where
 
-import Prelude
+import Prelude hiding
+    ( seq )
 
 import Cardano.Wallet.Primitive.Model
     ( applyTxToUTxO )
 import Cardano.Wallet.Primitive.Types.Coin
     ( Coin )
+import Cardano.Wallet.Primitive.Types.StateDeltaSeq
+    ( StateDeltaSeq )
 import Cardano.Wallet.Primitive.Types.Tx
     ( Tx, TxIn )
 import Cardano.Wallet.Primitive.Types.UTxO
     ( UTxO )
 import Data.Function
     ( (&) )
-import Data.Maybe
-    ( isJust )
 
+import qualified Cardano.Wallet.Primitive.Types.StateDeltaSeq as Seq
 import qualified Cardano.Wallet.Primitive.Types.Tx as Tx
 import qualified Cardano.Wallet.Primitive.Types.UTxO as UTxO
-import qualified Data.List as L
 
---------------------------------------------------------------------------------
--- Concrete interface
---------------------------------------------------------------------------------
+type TxSeq = StateDeltaSeq UTxO Tx
 
-type TxSeq = TxSeqOf UTxO Tx
-
-appendTx :: MonadFail m => TxSeq -> Tx -> m TxSeq
-appendTx = appendTxWith appendInner
+append :: MonadFail m => TxSeq -> Tx -> m TxSeq
+append = Seq.append appendInner
   where
     appendInner u tx
         | tx `canApplyTxToUTxO` u =
@@ -60,54 +53,3 @@ removeTxIn = undefined
 
 removeTxIns :: TxSeq -> [TxSeq]
 removeTxIns = undefined
-
---------------------------------------------------------------------------------
--- Abstract interface
---------------------------------------------------------------------------------
-
-data TxSeqOf state tx = TxSeq state [(tx, state)]
-
-fromInitialState :: state -> TxSeqOf state tx
-fromInitialState s0 = TxSeq s0 []
-
-initialState :: TxSeqOf state tx -> state
-initialState (TxSeq s0 _) = s0
-
-finalState :: TxSeqOf state tx -> state
-finalState s = case deltas s of
-    []          -> initialState s
-    (_, sf) : _ -> sf
-
-size :: TxSeqOf state tx -> Int
-size = length . deltas
-
-deltas :: TxSeqOf state tx -> [(tx, state)]
-deltas (TxSeq _ ds) = ds
-
-appendTxWith
-    :: Functor f
-    => (state -> tx -> f state)
-    -> TxSeqOf state tx
-    -> tx
-    -> f (TxSeqOf state tx)
-appendTxWith nextState s t =
-    appendInner <$> nextState (finalState s) t
-  where
-    appendInner fs = TxSeq (initialState s) ((t, fs) : deltas s)
-
-prefixes :: TxSeqOf state tx -> [TxSeqOf state tx]
-prefixes s = TxSeq (initialState s) <$> L.tails (deltas s)
-
-suffixes :: TxSeqOf state tx -> [TxSeqOf state tx]
-suffixes (TxSeq _ _) = undefined -- TxSeq u <$> L.tails ps
-
-isPrefixOf :: (Eq state, Eq tx) => TxSeqOf state tx -> TxSeqOf state tx -> Bool
-isPrefixOf s1 s2 = (&&)
-    (initialState s1 == initialState s2)
-    (deltas s1 `L.isPrefixOf` deltas s2)
-
-isSuffixOf :: (Eq state, Eq tx) => TxSeqOf state tx -> TxSeqOf state tx -> Bool
-isSuffixOf = undefined
-
-isInfixOf :: (Eq state, Eq tx) => TxSeqOf state tx -> TxSeqOf state tx -> Bool
-isInfixOf = undefined

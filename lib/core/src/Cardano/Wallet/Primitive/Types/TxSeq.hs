@@ -38,7 +38,7 @@ import qualified Cardano.Wallet.Primitive.Types.UTxO as UTxO
 newtype TxSeq = TxSeq {unTxSeq :: StateDeltaSeq UTxO Tx}
 
 --------------------------------------------------------------------------------
--- Concrete interface
+-- Public interface
 --------------------------------------------------------------------------------
 
 headUTxO :: TxSeq -> UTxO

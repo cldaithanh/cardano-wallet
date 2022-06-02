@@ -24,36 +24,43 @@ import Control.Monad
     ( foldM )
 import Data.Functor
     ( (<&>) )
+import Data.Vector
+    ( Vector )
 import Data.List.NonEmpty
     ( NonEmpty (..) )
 import Data.Maybe
     ( listToMaybe )
 
+import qualified Data.Foldable as F
 import qualified Data.List as L
 import qualified Data.List.NonEmpty as NE
+import qualified Data.Vector as V
 
 data StateDeltaSeq state delta = StateDeltaSeq
     { initialState :: state
-    , deltaStates :: [(delta, state)]
+    , deltaStates :: Vector (delta, state)
     }
     deriving (Eq, Show)
 
 finalState :: StateDeltaSeq state delta -> state
-finalState StateDeltaSeq {initialState, deltaStates} =
-    maybe initialState snd (listToMaybe deltaStates)
+finalState StateDeltaSeq {initialState, deltaStates}
+    | null deltaStates =
+        initialState
+    | otherwise =
+        snd (V.last deltaStates)
 
 size :: StateDeltaSeq state delta -> Int
 size = length . deltaStates
 
 fromInitialState :: state -> StateDeltaSeq state delta
-fromInitialState state = StateDeltaSeq state []
+fromInitialState state = StateDeltaSeq state V.empty
 
 toDeltaList :: StateDeltaSeq state delta -> [delta]
-toDeltaList = reverse . fmap fst . deltaStates
+toDeltaList = fmap fst . F.toList . deltaStates
 
 toStateList :: StateDeltaSeq state delta -> NonEmpty state
 toStateList StateDeltaSeq {initialState, deltaStates} =
-    initialState :| reverse (snd <$> deltaStates)
+    initialState :| (snd <$> F.toList deltaStates)
 
 append
     :: Functor m
@@ -61,9 +68,12 @@ append
     -> StateDeltaSeq state delta
     -> delta
     -> m (StateDeltaSeq state delta)
-append nextState seq delta =
+append nextState seq@StateDeltaSeq {initialState, deltaStates} delta =
     nextState (finalState seq) delta <&> \state ->
-        StateDeltaSeq (initialState seq) ((delta, state) : deltaStates seq)
+        StateDeltaSeq
+            { initialState
+            , deltaStates = deltaStates `V.snoc` (delta, state)
+            }
 
 appendMany
     :: forall f m state delta. (Foldable f, Monad m)
@@ -74,8 +84,11 @@ appendMany
 appendMany = foldM . append
 
 prefixes :: StateDeltaSeq state delta -> NonEmpty (StateDeltaSeq state delta)
-prefixes seq = StateDeltaSeq (initialState seq) <$>
-    NE.reverse (NE.tails (deltaStates seq))
+prefixes StateDeltaSeq {initialState, deltaStates} =
+    StateDeltaSeq initialState <$> deltaStatePrefixes
+  where
+    deltaStatePrefixes =
+        (`V.take` deltaStates) <$> (0 :| [1 .. length deltaStates])
 
 suffixes :: StateDeltaSeq state delta -> NonEmpty (StateDeltaSeq state delta)
 suffixes seq = undefined

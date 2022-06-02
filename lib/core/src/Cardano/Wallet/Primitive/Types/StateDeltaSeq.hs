@@ -86,29 +86,29 @@ prefixes :: StateDeltaSeq state delta -> NonEmpty (StateDeltaSeq state delta)
 prefixes seq0 =
     loop (seq0 :| []) seq0
   where
-    loop !acc !seq = maybe acc (\p -> loop (p `NE.cons` acc) p) (dropHead seq)
+    loop !acc !seq = maybe acc (\p -> loop (p `NE.cons` acc) p) (dropLast seq)
 
 suffixes :: StateDeltaSeq state delta -> NonEmpty (StateDeltaSeq state delta)
 suffixes seq0 =
     loop (seq0 :| []) seq0
   where
-    loop !acc !seq = maybe acc (\s -> loop (s `NE.cons` acc) s) (dropLast seq)
+    loop !acc !seq = maybe acc (\s -> loop (s `NE.cons` acc) s) (dropHead seq)
 
 dropHead
     :: StateDeltaSeq state delta
     -> Maybe (StateDeltaSeq state delta)
-dropHead StateDeltaSeq {head, tail}
+dropHead StateDeltaSeq {tail}
     | null tail = Nothing
     | otherwise = Just StateDeltaSeq
-        {head, tail = V.take (length tail - 1) tail}
+        {head = snd $ V.head tail, tail = V.drop 1 tail}
 
 dropLast
     :: StateDeltaSeq state delta
     -> Maybe (StateDeltaSeq state delta)
-dropLast StateDeltaSeq {tail}
+dropLast StateDeltaSeq {head, tail}
     | null tail = Nothing
     | otherwise = Just StateDeltaSeq
-        {head = snd $ V.head tail, tail = V.drop 1 tail}
+        {head, tail = V.take (length tail - 1) tail}
 
 isPrefixOf
     :: (Eq state, Eq delta)

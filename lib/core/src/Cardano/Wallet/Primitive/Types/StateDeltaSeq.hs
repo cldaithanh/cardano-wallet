@@ -68,8 +68,8 @@ append
     -> delta
     -> m (StateDeltaSeq state delta)
 append nextState seq@StateDeltaSeq {initialState, deltaStates} delta =
-    nextState (finalState seq) delta <&> \state ->
-        StateDeltaSeq
+    nextState (finalState seq) delta <&>
+        \state -> StateDeltaSeq
             { initialState
             , deltaStates = deltaStates `V.snoc` (delta, state)
             }
@@ -86,32 +86,28 @@ prefixes :: StateDeltaSeq state delta -> NonEmpty (StateDeltaSeq state delta)
 prefixes seq0 =
     loop (seq0 :| []) seq0
   where
-    loop !acc !seq = case longestProperPrefix seq of
-        Just prefix -> loop (NE.cons prefix acc) prefix
-        Nothing -> acc
+    loop !acc !seq = maybe acc (\p -> loop (p `NE.cons` acc) p) (dropHead seq)
 
 suffixes :: StateDeltaSeq state delta -> NonEmpty (StateDeltaSeq state delta)
 suffixes seq0 =
     loop (seq0 :| []) seq0
   where
-    loop !acc !seq = case longestProperSuffix seq of
-        Just suffix -> loop (NE.cons suffix acc) suffix
-        Nothing -> acc
+    loop !acc !seq = maybe acc (\s -> loop (s `NE.cons` acc) s) (dropTail seq)
 
-longestProperPrefix
+dropHead
     :: StateDeltaSeq state delta
     -> Maybe (StateDeltaSeq state delta)
-longestProperPrefix StateDeltaSeq {initialState, deltaStates}
+dropHead StateDeltaSeq {initialState, deltaStates}
     | null deltaStates = Nothing
     | otherwise = Just StateDeltaSeq
         { initialState
         , deltaStates = V.take (length deltaStates - 1) deltaStates
         }
 
-longestProperSuffix
+dropTail
     :: StateDeltaSeq state delta
     -> Maybe (StateDeltaSeq state delta)
-longestProperSuffix StateDeltaSeq {deltaStates}
+dropTail StateDeltaSeq {deltaStates}
     | null deltaStates = Nothing
     | otherwise = Just StateDeltaSeq
         { initialState = snd $ V.head deltaStates

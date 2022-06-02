@@ -8,8 +8,6 @@ module Cardano.Wallet.Primitive.Types.StateDeltaSeqSpec
 
 import Prelude
 
-import Cardano.Wallet.Primitive.Types.StateDeltaSeq
-    ( StateDeltaSeq )
 import Data.Function
     ( (&) )
 import Data.Monoid
@@ -50,7 +48,7 @@ spec = do
         it "prop_fromInitialState_appendMany_prefixes_isPrefixOf" $
             prop_fromInitialState_appendMany_prefixes_isPrefixOf
                 @(Sum Int) @Int & property
-{-        it "prop_fromInitialState_appendMany_suffixes_head" $
+        it "prop_fromInitialState_appendMany_suffixes_head" $
             prop_fromInitialState_appendMany_suffixes_head
                 @(Sum Int) @Int & property
         it "prop_fromInitialState_appendMany_suffixes_last" $
@@ -59,9 +57,9 @@ spec = do
         it "prop_fromInitialState_appendMany_suffixes_length" $
             prop_fromInitialState_appendMany_suffixes_length
                 @(Sum Int) @Int & property
-        it "prop_fromInitialState_appendMany_suffixes_isPrefixOf" $
-            prop_fromInitialState_appendMany_suffixes_isPrefixOf
-                @(Sum Int) @Int & property -}
+        it "prop_fromInitialState_appendMany_suffixes_isSuffixOf" $
+            prop_fromInitialState_appendMany_suffixes_isSuffixOf
+                @(Sum Int) @Int & property
         it "prop_fromInitialState_appendMany_size" $
             prop_fromInitialState_appendMany_size
                 @(Sum Int) @Int & property
@@ -168,7 +166,8 @@ prop_fromInitialState_appendMany_suffixes_head
     -> Property
 prop_fromInitialState_appendMany_suffixes_head
     initialState nextStateFn deltas =
-        NE.head (Seq.suffixes result) === initialSeq
+        NE.head (Seq.suffixes result)
+            === Seq.fromInitialState (Seq.finalState result)
   where
     initialSeq = Seq.fromInitialState initialState
     nextState = fmap (fmap Just) (applyFun2 nextStateFn)
@@ -202,15 +201,15 @@ prop_fromInitialState_appendMany_suffixes_length
     nextState = fmap (fmap Just) (applyFun2 nextStateFn)
     Just result = Seq.appendMany nextState initialSeq deltas
 
-prop_fromInitialState_appendMany_suffixes_isPrefixOf
+prop_fromInitialState_appendMany_suffixes_isSuffixOf
     :: forall state delta. (Eq state, Show state, Eq delta)
     => state
     -> Fun (state, delta) state
     -> [delta]
     -> Property
-prop_fromInitialState_appendMany_suffixes_isPrefixOf
+prop_fromInitialState_appendMany_suffixes_isSuffixOf
     initialState nextStateFn deltas =
-        all (uncurry Seq.isPrefixOf) (consecutivePairs (Seq.suffixes result))
+        all (uncurry Seq.isSuffixOf) (consecutivePairs (Seq.suffixes result))
             === True
   where
     initialSeq = Seq.fromInitialState initialState

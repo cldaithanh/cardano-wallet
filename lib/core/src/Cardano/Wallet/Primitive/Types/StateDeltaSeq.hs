@@ -1,3 +1,4 @@
+{-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
@@ -5,14 +6,14 @@ module Cardano.Wallet.Primitive.Types.StateDeltaSeq
     ( StateDeltaSeq
     , append
     , appendMany
-    , finalState
     , fromInitialState
+    , finalState
     , initialState
     , isPrefixOf
     , isSuffixOf
     , prefixes
-    , size
     , suffixes
+    , size
     , toDeltaList
     , toStateList
     ) where
@@ -74,7 +75,7 @@ append nextState seq@StateDeltaSeq {initialState, deltaStates} delta =
             }
 
 appendMany
-    :: forall f m state delta. (Foldable f, Monad m)
+    :: (Foldable f, Monad m)
     => (state -> delta -> m state)
     -> StateDeltaSeq state delta
     -> f delta
@@ -82,14 +83,40 @@ appendMany
 appendMany = foldM . append
 
 prefixes :: StateDeltaSeq state delta -> NonEmpty (StateDeltaSeq state delta)
-prefixes StateDeltaSeq {initialState, deltaStates} =
-    StateDeltaSeq initialState <$> deltaStatePrefixes
+prefixes seq0 =
+    loop (seq0 :| []) seq0
   where
-    deltaStatePrefixes =
-        (`V.take` deltaStates) <$> (0 :| [1 .. length deltaStates])
+    loop !acc !seq = case longestProperPrefix seq of
+        Just prefix -> loop (NE.cons prefix acc) prefix
+        Nothing -> acc
 
 suffixes :: StateDeltaSeq state delta -> NonEmpty (StateDeltaSeq state delta)
-suffixes seq = undefined
+suffixes seq0 =
+    loop (seq0 :| []) seq0
+  where
+    loop !acc !seq = case longestProperSuffix seq of
+        Just suffix -> loop (NE.cons suffix acc) suffix
+        Nothing -> acc
+
+longestProperPrefix
+    :: StateDeltaSeq state delta
+    -> Maybe (StateDeltaSeq state delta)
+longestProperPrefix StateDeltaSeq {initialState, deltaStates}
+    | null deltaStates = Nothing
+    | otherwise = Just StateDeltaSeq
+        { initialState
+        , deltaStates = V.take (length deltaStates - 1) deltaStates
+        }
+
+longestProperSuffix
+    :: StateDeltaSeq state delta
+    -> Maybe (StateDeltaSeq state delta)
+longestProperSuffix StateDeltaSeq {deltaStates}
+    | null deltaStates = Nothing
+    | otherwise = Just StateDeltaSeq
+        { initialState = snd $ V.head deltaStates
+        , deltaStates = V.drop 1 deltaStates
+        }
 
 isPrefixOf
     :: (Eq state, Eq delta)

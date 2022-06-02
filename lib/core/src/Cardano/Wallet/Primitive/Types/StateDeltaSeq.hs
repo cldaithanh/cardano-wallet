@@ -21,7 +21,7 @@ module Cardano.Wallet.Primitive.Types.StateDeltaSeq
     ) where
 
 import Prelude hiding
-    ( seq )
+    ( head, seq, tail )
 
 import Control.Monad
     ( foldM )
@@ -38,28 +38,31 @@ import qualified Data.List.NonEmpty as NE
 import qualified Data.Vector as V
 
 data StateDeltaSeq state delta = StateDeltaSeq
-    { headState :: state
-    , deltas :: Vector (delta, state)
+    { head :: state
+    , tail :: Vector (delta, state)
     }
     deriving (Eq, Show)
 
+headState :: StateDeltaSeq state delta -> state
+headState StateDeltaSeq {head} = head
+
 lastState :: StateDeltaSeq state delta -> state
-lastState StateDeltaSeq {headState, deltas}
-    | null deltas = headState
-    | otherwise = snd (V.last deltas)
+lastState StateDeltaSeq {head, tail}
+    | null tail = head
+    | otherwise = snd (V.last tail)
 
 size :: StateDeltaSeq state delta -> Int
-size = length . deltas
+size = length . tail
 
 fromState :: state -> StateDeltaSeq state delta
 fromState state = StateDeltaSeq state V.empty
 
 toDeltaList :: StateDeltaSeq state delta -> [delta]
-toDeltaList = fmap fst . F.toList . deltas
+toDeltaList = fmap fst . F.toList . tail
 
 toStateList :: StateDeltaSeq state delta -> NonEmpty state
-toStateList StateDeltaSeq {headState, deltas} =
-    headState :| (snd <$> F.toList deltas)
+toStateList StateDeltaSeq {head, tail} =
+    head :| (snd <$> F.toList tail)
 
 append
     :: Functor m
@@ -67,9 +70,9 @@ append
     -> StateDeltaSeq state delta
     -> delta
     -> m (StateDeltaSeq state delta)
-append nextState seq@StateDeltaSeq {headState, deltas} delta =
+append nextState seq@StateDeltaSeq {head, tail} delta =
     nextState (lastState seq) delta <&> \state -> StateDeltaSeq
-        {headState, deltas = deltas `V.snoc` (delta, state)}
+        {head, tail = tail `V.snoc` (delta, state)}
 
 appendMany
     :: (Foldable f, Monad m)
@@ -94,18 +97,18 @@ suffixes seq0 =
 dropHead
     :: StateDeltaSeq state delta
     -> Maybe (StateDeltaSeq state delta)
-dropHead StateDeltaSeq {headState, deltas}
-    | null deltas = Nothing
+dropHead StateDeltaSeq {head, tail}
+    | null tail = Nothing
     | otherwise = Just StateDeltaSeq
-        {headState, deltas = V.take (length deltas - 1) deltas}
+        {head, tail = V.take (length tail - 1) tail}
 
 dropLast
     :: StateDeltaSeq state delta
     -> Maybe (StateDeltaSeq state delta)
-dropLast StateDeltaSeq {deltas}
-    | null deltas = Nothing
+dropLast StateDeltaSeq {tail}
+    | null tail = Nothing
     | otherwise = Just StateDeltaSeq
-        {headState = snd $ V.head deltas, deltas = V.drop 1 deltas}
+        {head = snd $ V.head tail, tail = V.drop 1 tail}
 
 isPrefixOf
     :: (Eq state, Eq delta)

@@ -28,8 +28,6 @@ import Data.Vector
     ( Vector )
 import Data.List.NonEmpty
     ( NonEmpty (..) )
-import Data.Maybe
-    ( listToMaybe )
 
 import qualified Data.Foldable as F
 import qualified Data.List as L

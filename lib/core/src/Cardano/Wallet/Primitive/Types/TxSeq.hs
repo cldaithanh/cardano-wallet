@@ -2,6 +2,7 @@
 
 module Cardano.Wallet.Primitive.Types.TxSeq
     ( TxSeq
+    , fromUTxO
     , appendTx
     , appendTxs
     , dropHeadTx
@@ -40,6 +41,9 @@ newtype TxSeq = TxSeq {unTxSeq :: StateDeltaSeq UTxO Tx}
 --------------------------------------------------------------------------------
 -- Public interface
 --------------------------------------------------------------------------------
+
+fromUTxO :: UTxO -> TxSeq
+fromUTxO = TxSeq . Seq.fromState
 
 headUTxO :: TxSeq -> UTxO
 headUTxO = Seq.headState . unTxSeq

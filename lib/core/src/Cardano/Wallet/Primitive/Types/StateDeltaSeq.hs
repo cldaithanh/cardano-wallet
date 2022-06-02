@@ -27,10 +27,10 @@ import Control.Monad
     ( foldM )
 import Data.Functor
     ( (<&>) )
-import Data.Vector
-    ( Vector )
 import Data.List.NonEmpty
     ( NonEmpty (..) )
+import Data.Vector
+    ( Vector )
 
 import qualified Data.Foldable as F
 import qualified Data.List as L

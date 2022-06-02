@@ -17,7 +17,7 @@ import Safe
 import Test.Hspec
     ( Spec, describe, it )
 import Test.QuickCheck
-    ( Fun, Property, (===), applyFun2, property )
+    ( Fun, Property, applyFun2, property, (===) )
 
 import qualified Cardano.Wallet.Primitive.Types.StateDeltaSeq as Seq
 import qualified Data.Foldable as F

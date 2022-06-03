@@ -13,6 +13,8 @@ module Cardano.Wallet.Primitive.Types.StateDeltaSeq
     , dropLast
     , isPrefixOf
     , isSuffixOf
+    , mergeHead
+    , mergeLast
     , prefixes
     , suffixes
     , size
@@ -30,7 +32,7 @@ import Data.Functor
 import Data.List.NonEmpty
     ( NonEmpty (..) )
 import Data.Vector
-    ( Vector )
+    ( Vector, (!) )
 
 import qualified Data.Foldable as F
 import qualified Data.List as L
@@ -109,6 +111,44 @@ dropLast StateDeltaSeq {head, tail}
     | null tail = Nothing
     | otherwise = Just StateDeltaSeq
         {head, tail = V.take (length tail - 1) tail}
+
+-- Performs the following transformation:
+--
+--    state_0 : delta_0_1 : state_1 : delta_1_2 : state_2 : ...
+--    state_0 : delta_0_1 +           delta_1_2 : state_2 : ...
+--
+mergeHead
+    :: StateDeltaSeq state delta
+    -> (delta -> delta -> delta)
+    -> Maybe (StateDeltaSeq state delta)
+mergeHead StateDeltaSeq {head, tail} merge
+    | length tail < 2 = Nothing
+    | otherwise = Just StateDeltaSeq
+        { head
+        , tail = (merge d_0_1 d_1_2, s_2) `V.cons` V.drop 2 tail
+        }
+  where
+    (d_0_1, _s_1) = tail ! 0
+    (d_1_2,  s_2) = tail ! 1
+
+-- Performs the following transformation:
+--
+--    ... : state_2 : delta_2_1 : state_1 : delta_1_0 : state_0
+--    ... : state_2 : delta_2-1 +         : delta_1_0 : state_0
+--
+mergeLast
+    :: StateDeltaSeq state delta
+    -> (delta -> delta -> delta)
+    -> Maybe (StateDeltaSeq state delta)
+mergeLast StateDeltaSeq {head, tail} merge
+    | length tail < 2 = Nothing
+    | otherwise = Just StateDeltaSeq
+        { head
+        , tail = V.take (length tail - 2) tail `V.snoc` (merge d_2_1 d_1_0, s_0)
+        }
+  where
+    (d_1_0,  s_0) = tail ! (length tail - 1)
+    (d_2_1, _s_1) = tail ! (length tail - 2)
 
 isPrefixOf
     :: (Eq state, Eq delta)

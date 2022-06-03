@@ -30,6 +30,8 @@ import Prelude hiding
 
 import Control.Monad
     ( foldM )
+import Data.Function
+    ( on )
 import Data.Functor
     ( (<&>) )
 import Data.List.NonEmpty
@@ -62,6 +64,11 @@ size = length . tail
 
 fromState :: s -> StateDeltaSeq s d
 fromState state = StateDeltaSeq state V.empty
+
+toStateDeltaList :: StateDeltaSeq s d -> NonEmpty (Either s d)
+toStateDeltaList s = NE.fromList $ interleave
+    (Left  <$> F.toList (toStateList s))
+    (Right <$> F.toList (toDeltaList s))
 
 toDeltaList :: StateDeltaSeq s d -> [d]
 toDeltaList = fmap fst . F.toList . tail
@@ -155,14 +162,15 @@ mergeLasts :: (d -> d -> d) -> StateDeltaSeq s d -> NonEmpty (StateDeltaSeq s d)
 mergeLasts = iterate . mergeLast
 
 isPrefixOf :: (Eq s, Eq d) => StateDeltaSeq s d -> StateDeltaSeq s d -> Bool
-isPrefixOf s1 s2 = (&&)
-    (toDeltaList s1  `L.isPrefixOf` toDeltaList s2)
-    (NE.toList (toStateList s1) `L.isPrefixOf` NE.toList (toStateList s2))
+isPrefixOf = L.isPrefixOf `on` F.toList . toStateDeltaList
 
 isSuffixOf :: (Eq s, Eq d) => StateDeltaSeq s d -> StateDeltaSeq s d -> Bool
-isSuffixOf s1 s2 = (&&)
-    (toDeltaList s1  `L.isSuffixOf` toDeltaList s2)
-    (NE.toList (toStateList s1) `L.isSuffixOf` NE.toList (toStateList s2))
+isSuffixOf = L.isSuffixOf `on` F.toList . toStateDeltaList
 
 isValid :: (s -> d -> Maybe s) -> StateDeltaSeq s d -> Bool
 isValid seq nextState = undefined
+
+interleave :: [a] -> [a] -> [a]
+interleave (a1 : a1s) (a2 : a2s) = a1 : a2 : interleave a1s a2s
+interleave       a1s  []         = a1s
+interleave []               a2s  = a2s

@@ -42,32 +42,32 @@ spec = do
             prop_fromState_appendMany_size
                 @(Sum Int) @Int & property
 
-    describe "prefixes" $ do
-        it "prop_fromState_appendMany_prefixes_head" $
-            prop_fromState_appendMany_prefixes_head
+    describe "dropLasts" $ do
+        it "prop_fromState_appendMany_dropLasts_head" $
+            prop_fromState_appendMany_dropLasts_head
                 @(Sum Int) @Int & property
-        it "prop_fromState_appendMany_prefixes_last" $
-            prop_fromState_appendMany_prefixes_last
+        it "prop_fromState_appendMany_dropLasts_last" $
+            prop_fromState_appendMany_dropLasts_last
                 @(Sum Int) @Int & property
-        it "prop_fromState_appendMany_prefixes_length" $
-            prop_fromState_appendMany_prefixes_length
+        it "prop_fromState_appendMany_dropLasts_length" $
+            prop_fromState_appendMany_dropLasts_length
                 @(Sum Int) @Int & property
-        it "prop_fromState_appendMany_prefixes_isPrefixOf" $
-            prop_fromState_appendMany_prefixes_isPrefixOf
+        it "prop_fromState_appendMany_dropLasts_isPrefixOf" $
+            prop_fromState_appendMany_dropLasts_isPrefixOf
                 @(Sum Int) @Int & property
 
-    describe "suffixes" $ do
-        it "prop_fromState_appendMany_suffixes_head" $
-            prop_fromState_appendMany_suffixes_head
+    describe "dropHeads" $ do
+        it "prop_fromState_appendMany_dropHeads_head" $
+            prop_fromState_appendMany_dropHeads_head
                 @(Sum Int) @Int & property
-        it "prop_fromState_appendMany_suffixes_last" $
-            prop_fromState_appendMany_suffixes_last
+        it "prop_fromState_appendMany_dropHeads_last" $
+            prop_fromState_appendMany_dropHeads_last
                 @(Sum Int) @Int & property
-        it "prop_fromState_appendMany_suffixes_length" $
-            prop_fromState_appendMany_suffixes_length
+        it "prop_fromState_appendMany_dropHeads_length" $
+            prop_fromState_appendMany_dropHeads_length
                 @(Sum Int) @Int & property
-        it "prop_fromState_appendMany_suffixes_isSuffixOf" $
-            prop_fromState_appendMany_suffixes_isSuffixOf
+        it "prop_fromState_appendMany_dropHeads_isSuffixOf" $
+            prop_fromState_appendMany_dropHeads_isSuffixOf
                 @(Sum Int) @Int & property
 
 --------------------------------------------------------------------------------
@@ -113,106 +113,106 @@ prop_fromState_appendMany_size state nextStateFn deltas =
     Just result = Seq.appendMany nextState (Seq.fromState state) deltas
 
 --------------------------------------------------------------------------------
--- prefixes
+-- dropLasts
 --------------------------------------------------------------------------------
 
-prop_fromState_appendMany_prefixes_head
+prop_fromState_appendMany_dropLasts_head
     :: (Eq state, Show state, Eq delta, Show delta)
     => state
     -> Fun (state, delta) state
     -> [delta]
     -> Property
-prop_fromState_appendMany_prefixes_head state nextStateFn deltas =
-    NE.head (Seq.prefixes result) === Seq.fromState state
+prop_fromState_appendMany_dropLasts_head state nextStateFn deltas =
+    NE.head (Seq.dropLasts result) === Seq.fromState state
   where
     nextState = fmap (fmap Just) (applyFun2 nextStateFn)
     Just result = Seq.appendMany nextState (Seq.fromState state) deltas
 
-prop_fromState_appendMany_prefixes_last
+prop_fromState_appendMany_dropLasts_last
     :: (Eq state, Show state, Eq delta, Show delta)
     => state
     -> Fun (state, delta) state
     -> [delta]
     -> Property
-prop_fromState_appendMany_prefixes_last state nextStateFn deltas =
-    NE.last (Seq.prefixes result) === result
+prop_fromState_appendMany_dropLasts_last state nextStateFn deltas =
+    NE.last (Seq.dropLasts result) === result
   where
     nextState = fmap (fmap Just) (applyFun2 nextStateFn)
     Just result = Seq.appendMany nextState (Seq.fromState state) deltas
 
-prop_fromState_appendMany_prefixes_length
+prop_fromState_appendMany_dropLasts_length
     :: (Eq state, Show state, Eq delta, Show delta)
     => state
     -> Fun (state, delta) state
     -> [delta]
     -> Property
-prop_fromState_appendMany_prefixes_length state nextStateFn deltas =
-    NE.length (Seq.prefixes result) === length deltas + 1
+prop_fromState_appendMany_dropLasts_length state nextStateFn deltas =
+    NE.length (Seq.dropLasts result) === length deltas + 1
   where
     nextState = fmap (fmap Just) (applyFun2 nextStateFn)
     Just result = Seq.appendMany nextState (Seq.fromState state) deltas
 
-prop_fromState_appendMany_prefixes_isPrefixOf
+prop_fromState_appendMany_dropLasts_isPrefixOf
     :: (Eq state, Show state, Eq delta)
     => state
     -> Fun (state, delta) state
     -> [delta]
     -> Property
-prop_fromState_appendMany_prefixes_isPrefixOf state nextStateFn deltas =
-    all (uncurry Seq.isPrefixOf) (consecutivePairs (Seq.prefixes result))
+prop_fromState_appendMany_dropLasts_isPrefixOf state nextStateFn deltas =
+    all (uncurry Seq.isPrefixOf) (consecutivePairs (Seq.dropLasts result))
         === True
   where
     nextState = fmap (fmap Just) (applyFun2 nextStateFn)
     Just result = Seq.appendMany nextState (Seq.fromState state) deltas
 
 --------------------------------------------------------------------------------
--- suffixes
+-- dropHeads
 --------------------------------------------------------------------------------
 
-prop_fromState_appendMany_suffixes_head
+prop_fromState_appendMany_dropHeads_head
     :: (Eq state, Show state, Eq delta, Show delta)
     => state
     -> Fun (state, delta) state
     -> [delta]
     -> Property
-prop_fromState_appendMany_suffixes_head state nextStateFn deltas =
-    NE.head (Seq.suffixes result) === Seq.fromState (Seq.lastState result)
+prop_fromState_appendMany_dropHeads_head state nextStateFn deltas =
+    NE.head (Seq.dropHeads result) === Seq.fromState (Seq.lastState result)
   where
     nextState = fmap (fmap Just) (applyFun2 nextStateFn)
     Just result = Seq.appendMany nextState (Seq.fromState state) deltas
 
-prop_fromState_appendMany_suffixes_last
+prop_fromState_appendMany_dropHeads_last
     :: (Eq state, Show state, Eq delta, Show delta)
     => state
     -> Fun (state, delta) state
     -> [delta]
     -> Property
-prop_fromState_appendMany_suffixes_last state nextStateFn deltas =
-    NE.last (Seq.suffixes result) === result
+prop_fromState_appendMany_dropHeads_last state nextStateFn deltas =
+    NE.last (Seq.dropHeads result) === result
   where
     nextState = fmap (fmap Just) (applyFun2 nextStateFn)
     Just result = Seq.appendMany nextState (Seq.fromState state) deltas
 
-prop_fromState_appendMany_suffixes_length
+prop_fromState_appendMany_dropHeads_length
     :: (Eq state, Show state, Eq delta, Show delta)
     => state
     -> Fun (state, delta) state
     -> [delta]
     -> Property
-prop_fromState_appendMany_suffixes_length state nextStateFn deltas =
-    NE.length (Seq.suffixes result) === length deltas + 1
+prop_fromState_appendMany_dropHeads_length state nextStateFn deltas =
+    NE.length (Seq.dropHeads result) === length deltas + 1
   where
     nextState = fmap (fmap Just) (applyFun2 nextStateFn)
     Just result = Seq.appendMany nextState (Seq.fromState state) deltas
 
-prop_fromState_appendMany_suffixes_isSuffixOf
+prop_fromState_appendMany_dropHeads_isSuffixOf
     :: (Eq state, Show state, Eq delta)
     => state
     -> Fun (state, delta) state
     -> [delta]
     -> Property
-prop_fromState_appendMany_suffixes_isSuffixOf state nextStateFn deltas =
-    all (uncurry Seq.isSuffixOf) (consecutivePairs (Seq.suffixes result))
+prop_fromState_appendMany_dropHeads_isSuffixOf state nextStateFn deltas =
+    all (uncurry Seq.isSuffixOf) (consecutivePairs (Seq.dropHeads result))
         === True
   where
     nextState = fmap (fmap Just) (applyFun2 nextStateFn)

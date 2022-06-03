@@ -6,11 +6,11 @@ module Cardano.Wallet.Primitive.Types.TxSeq
     , appendTx
     , appendTxs
     , dropHeadTx
+    , dropHeadTxs
     , dropLastTx
+    , dropLastTxs
     , headUTxO
     , lastUTxO
-    , prefixes
-    , suffixes
     , size
     ) where
 
@@ -60,17 +60,17 @@ appendTxs s = fmap TxSeq . Seq.appendMany (flip safeApplyTxToUTxO) (unTxSeq s)
 size :: TxSeq -> Int
 size = Seq.size . unTxSeq
 
-prefixes :: TxSeq -> NonEmpty TxSeq
-prefixes = fmap TxSeq . Seq.prefixes . unTxSeq
-
-suffixes :: TxSeq -> NonEmpty TxSeq
-suffixes = fmap TxSeq . Seq.suffixes . unTxSeq
-
 dropHeadTx :: TxSeq -> Maybe TxSeq
 dropHeadTx = fmap TxSeq . Seq.dropHead . unTxSeq
 
+dropHeadTxs :: TxSeq -> NonEmpty TxSeq
+dropHeadTxs = fmap TxSeq . Seq.dropHeads . unTxSeq
+
 dropLastTx :: TxSeq -> Maybe TxSeq
 dropLastTx = fmap TxSeq . Seq.dropLast . unTxSeq
+
+dropLastTxs :: TxSeq -> NonEmpty TxSeq
+dropLastTxs = fmap TxSeq . Seq.dropLasts . unTxSeq
 
 --------------------------------------------------------------------------------
 -- Utility functions

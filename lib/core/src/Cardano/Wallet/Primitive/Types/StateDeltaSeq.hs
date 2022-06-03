@@ -9,14 +9,16 @@ module Cardano.Wallet.Primitive.Types.StateDeltaSeq
     , fromState
     , headState
     , lastState
-    , dropHead
-    , dropLast
     , isPrefixOf
     , isSuffixOf
+    , dropHead
+    , dropHeads
+    , dropLast
+    , dropLasts
     , mergeHead
+    , mergeHeads
     , mergeLast
-    , prefixes
-    , suffixes
+    , mergeLasts
     , size
     , toDeltaList
     , toStateList
@@ -94,24 +96,6 @@ iterate transform seq0 =
   where
     loop !acc !seq = maybe acc (\p -> loop (p `NE.cons` acc) p) (transform seq)
 
-prefixes :: StateDeltaSeq state delta -> NonEmpty (StateDeltaSeq state delta)
-prefixes = iterate dropLast
-
-suffixes :: StateDeltaSeq state delta -> NonEmpty (StateDeltaSeq state delta)
-suffixes = iterate dropHead
-
-mergeHeads
-    :: StateDeltaSeq state delta
-    -> (delta -> delta -> delta)
-    -> NonEmpty (StateDeltaSeq state delta)
-mergeHeads seq0 merge = iterate (`mergeHead` merge) seq0
-
-mergeLasts
-    :: StateDeltaSeq state delta
-    -> (delta -> delta -> delta)
-    -> NonEmpty (StateDeltaSeq state delta)
-mergeLasts seq0 merge = iterate (`mergeLast` merge) seq0
-
 dropHead
     :: StateDeltaSeq state delta
     -> Maybe (StateDeltaSeq state delta)
@@ -127,6 +111,12 @@ dropLast StateDeltaSeq {head, tail}
     | null tail = Nothing
     | otherwise = Just StateDeltaSeq
         {head, tail = V.dropLast 1 tail}
+
+dropHeads :: StateDeltaSeq state delta -> NonEmpty (StateDeltaSeq state delta)
+dropHeads = iterate dropHead
+
+dropLasts :: StateDeltaSeq state delta -> NonEmpty (StateDeltaSeq state delta)
+dropLasts = iterate dropLast
 
 -- Performs the following transformation:
 --
@@ -165,6 +155,18 @@ mergeLast StateDeltaSeq {head, tail} merge
   where
     (d_1_0,  s_0) = tail ! (length tail - 1)
     (d_2_1, _s_1) = tail ! (length tail - 2)
+
+mergeHeads
+    :: StateDeltaSeq state delta
+    -> (delta -> delta -> delta)
+    -> NonEmpty (StateDeltaSeq state delta)
+mergeHeads seq0 merge = iterate (`mergeHead` merge) seq0
+
+mergeLasts
+    :: StateDeltaSeq state delta
+    -> (delta -> delta -> delta)
+    -> NonEmpty (StateDeltaSeq state delta)
+mergeLasts seq0 merge = iterate (`mergeLast` merge) seq0
 
 isPrefixOf
     :: (Eq state, Eq delta)

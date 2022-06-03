@@ -97,6 +97,26 @@ suffixes seq0 =
   where
     loop !acc !seq = maybe acc (\s -> loop (s `NE.cons` acc) s) (dropHead seq)
 
+mergeHeads
+    :: StateDeltaSeq state delta
+    -> (delta -> delta -> delta)
+    -> NonEmpty (StateDeltaSeq state delta)
+mergeHeads seq0 merge =
+    loop (seq0 :| []) seq0
+  where
+    loop !acc !seq =
+        maybe acc (\p -> loop (p `NE.cons` acc) p) (mergeHead seq merge)
+
+mergeLasts
+    :: StateDeltaSeq state delta
+    -> (delta -> delta -> delta)
+    -> NonEmpty (StateDeltaSeq state delta)
+mergeLasts seq0 merge =
+    loop (seq0 :| []) seq0
+  where
+    loop !acc !seq =
+        maybe acc (\p -> loop (p `NE.cons` acc) p) (mergeLast seq merge)
+
 dropHead
     :: StateDeltaSeq state delta
     -> Maybe (StateDeltaSeq state delta)

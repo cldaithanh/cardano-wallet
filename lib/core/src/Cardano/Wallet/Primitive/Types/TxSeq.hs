@@ -12,6 +12,7 @@ module Cardano.Wallet.Primitive.Types.TxSeq
     , headUTxO
     , lastUTxO
     , size
+    , isValid
     ) where
 
 import Prelude hiding
@@ -71,6 +72,9 @@ dropLastTx = fmap TxSeq . Seq.dropLast . unTxSeq
 
 dropLastTxs :: TxSeq -> NonEmpty TxSeq
 dropLastTxs = fmap TxSeq . Seq.dropLasts . unTxSeq
+
+isValid :: TxSeq -> Bool
+isValid = Seq.isValid (flip safeApplyTxToUTxO) . unTxSeq
 
 --------------------------------------------------------------------------------
 -- Utility functions

@@ -11,6 +11,7 @@ module Cardano.Wallet.Primitive.Types.StateDeltaSeq
     , lastState
     , isPrefixOf
     , isSuffixOf
+    , isValid
     , dropHead
     , dropHeads
     , dropLast
@@ -162,3 +163,6 @@ isSuffixOf :: (Eq s, Eq d) => StateDeltaSeq s d -> StateDeltaSeq s d -> Bool
 isSuffixOf s1 s2 = (&&)
     (toDeltaList s1  `L.isSuffixOf` toDeltaList s2)
     (NE.toList (toStateList s1) `L.isSuffixOf` NE.toList (toStateList s2))
+
+isValid :: (s -> d -> Maybe s) -> StateDeltaSeq s d -> Bool
+isValid seq nextState = undefined

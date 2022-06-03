@@ -171,8 +171,11 @@ isPrefixOf = L.isPrefixOf `on` F.toList . toStateDeltaList
 isSuffixOf :: (Eq s, Eq d) => StateDeltaSeq s d -> StateDeltaSeq s d -> Bool
 isSuffixOf = L.isSuffixOf `on` F.toList . toStateDeltaList
 
-isValid :: (s -> d -> Maybe s) -> StateDeltaSeq s d -> Bool
-isValid seq nextState = undefined
+isValid :: (Eq s, Eq d) => (s -> d -> Maybe s) -> StateDeltaSeq s d -> Bool
+isValid nextState seq@StateDeltaSeq {head} =
+    appendMany nextState (fromState head) (toDeltaList seq)
+    ==
+    Just seq
 
 interleave :: [a] -> [a] -> [a]
 interleave (a1 : a1s) (a2 : a2s) = a1 : a2 : interleave a1s a2s

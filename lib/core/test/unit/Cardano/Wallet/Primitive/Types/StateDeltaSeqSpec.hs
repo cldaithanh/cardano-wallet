@@ -55,6 +55,9 @@ spec = do
         it "prop_dropHeads_isSuffixOf" $
             prop_dropHeads_isSuffixOf
                 @(Sum Int) @Int & property
+        it "prop_dropHeads_isValid" $
+            prop_dropHeads_isValid
+                @(Sum Int) @Int & property
 
     describe "dropLasts" $ do
         it "prop_dropLasts_head" $
@@ -68,6 +71,9 @@ spec = do
                 @(Sum Int) @Int & property
         it "prop_dropLasts_isPrefixOf" $
             prop_dropLasts_isPrefixOf
+                @(Sum Int) @Int & property
+        it "prop_dropLasts_isValid" $
+            prop_dropLasts_isValid
                 @(Sum Int) @Int & property
 
 --------------------------------------------------------------------------------
@@ -141,6 +147,15 @@ prop_dropHeads_isSuffixOf state nextStateFn deltas =
     nextState = fmap (fmap Just) (applyFun2 nextStateFn)
     Just result = Seq.appendMany nextState (Seq.fromState state) deltas
 
+prop_dropHeads_isValid
+    :: (Eq s, Show s, Eq d) => s -> Fun (s, d) s -> [d] -> Property
+prop_dropHeads_isValid state nextStateFn deltas =
+    all (Seq.isValid nextState) (Seq.dropHeads result)
+        === True
+  where
+    nextState = fmap (fmap Just) (applyFun2 nextStateFn)
+    Just result = Seq.appendMany nextState (Seq.fromState state) deltas
+
 --------------------------------------------------------------------------------
 -- dropLasts
 --------------------------------------------------------------------------------
@@ -173,6 +188,15 @@ prop_dropLasts_isPrefixOf
     :: (Eq s, Show s, Eq d) => s -> Fun (s, d) s -> [d] -> Property
 prop_dropLasts_isPrefixOf state nextStateFn deltas =
     all (uncurry Seq.isPrefixOf) (consecutivePairs (Seq.dropLasts result))
+        === True
+  where
+    nextState = fmap (fmap Just) (applyFun2 nextStateFn)
+    Just result = Seq.appendMany nextState (Seq.fromState state) deltas
+
+prop_dropLasts_isValid
+    :: (Eq s, Show s, Eq d) => s -> Fun (s, d) s -> [d] -> Property
+prop_dropLasts_isValid state nextStateFn deltas =
+    all (Seq.isValid nextState) (Seq.dropLasts result)
         === True
   where
     nextState = fmap (fmap Just) (applyFun2 nextStateFn)

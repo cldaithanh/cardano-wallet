@@ -66,8 +66,7 @@ toDeltaList :: StateDeltaSeq s d -> [d]
 toDeltaList = fmap fst . F.toList . tail
 
 toStateList :: StateDeltaSeq s d -> NonEmpty s
-toStateList StateDeltaSeq {head, tail} =
-    head :| (snd <$> F.toList tail)
+toStateList StateDeltaSeq {head, tail} = head :| (snd <$> F.toList tail)
 
 append
     :: Functor m

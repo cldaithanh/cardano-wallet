@@ -1,23 +1,43 @@
+{-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE StandaloneDeriving #-}
 {-# LANGUAGE TypeApplications #-}
+{-# LANGUAGE UndecidableInstances #-}
 {-# LANGUAGE ViewPatterns #-}
 
 module Cardano.Wallet.Primitive.Types.StateDeltaSeqSpec
     ( spec
     ) where
 
-import Prelude
+import Prelude hiding
+    ( seq )
 
+import Cardano.Wallet.Primitive.Types.StateDeltaSeq
+    ( StateDeltaSeq )
 import Data.Function
     ( (&) )
 import Data.Monoid
     ( Sum )
+import GHC.Generics
+    ( Generic )
 import Safe
     ( tailMay )
 import Test.Hspec
     ( Spec, describe, it )
 import Test.QuickCheck
-    ( Fun, Property, applyFun2, property, (===) )
+    ( Arbitrary (..)
+    , CoArbitrary (..)
+    , Fun
+    , Function (..)
+    , Property
+    , applyArbitrary3
+    , applyFun2
+    , genericShrink
+    , property
+    , (===)
+    )
 
 import qualified Cardano.Wallet.Primitive.Types.StateDeltaSeq as Seq
 import qualified Data.Foldable as F
@@ -115,96 +135,94 @@ prop_appendMany_size state nextStateFn deltas =
 --------------------------------------------------------------------------------
 
 prop_dropHeads_head
-    :: (Eq s, Show s, Eq d, Show d) => s -> Fun (s, d) s -> [d] -> Property
-prop_dropHeads_head state nextStateFn deltas =
-    NE.head (Seq.dropHeads result) === Seq.fromState (Seq.lastState result)
-  where
-    nextState = fmap (fmap Just) (applyFun2 nextStateFn)
-    Just result = Seq.appendMany nextState (Seq.fromState state) deltas
+    :: (Eq s, Eq d, Show s, Show d) => StateDeltaSeqData s d -> Property
+prop_dropHeads_head (stateDeltaSeqData -> (seq, _nextState)) =
+    NE.head (Seq.dropHeads seq) === Seq.fromState (Seq.lastState seq)
 
 prop_dropHeads_last
-    :: (Eq s, Show s, Eq d, Show d) => s -> Fun (s, d) s -> [d] -> Property
-prop_dropHeads_last state nextStateFn deltas =
-    NE.last (Seq.dropHeads result) === result
-  where
-    nextState = fmap (fmap Just) (applyFun2 nextStateFn)
-    Just result = Seq.appendMany nextState (Seq.fromState state) deltas
+    :: (Eq s, Show s, Eq d, Show d) => StateDeltaSeqData s d -> Property
+prop_dropHeads_last (stateDeltaSeqData -> (seq, _nextState)) =
+    NE.last (Seq.dropHeads seq) === seq
 
 prop_dropHeads_length
-    :: (Eq s, Show s, Eq d, Show d) => s -> Fun (s, d) s -> [d] -> Property
-prop_dropHeads_length state nextStateFn deltas =
-    NE.length (Seq.dropHeads result) === length deltas + 1
-  where
-    nextState = fmap (fmap Just) (applyFun2 nextStateFn)
-    Just result = Seq.appendMany nextState (Seq.fromState state) deltas
+    :: (Eq s, Eq d) => StateDeltaSeqData s d -> Property
+prop_dropHeads_length (stateDeltaSeqData -> (seq, _nextState)) =
+    NE.length (Seq.dropHeads seq) === Seq.size seq + 1
 
 prop_dropHeads_isSuffixOf
-    :: (Eq s, Show s, Eq d) => s -> Fun (s, d) s -> [d] -> Property
-prop_dropHeads_isSuffixOf state nextStateFn deltas =
-    all (uncurry Seq.isSuffixOf) (consecutivePairs (Seq.dropHeads result))
-        === True
-  where
-    nextState = fmap (fmap Just) (applyFun2 nextStateFn)
-    Just result = Seq.appendMany nextState (Seq.fromState state) deltas
+    :: (Eq s, Eq d) => StateDeltaSeqData s d -> Property
+prop_dropHeads_isSuffixOf (stateDeltaSeqData -> (seq, _nextState)) =
+    all (uncurry Seq.isSuffixOf) (consecutivePairs (Seq.dropHeads seq))
+    === True
 
 prop_dropHeads_isValid
-    :: (Eq s, Show s, Eq d) => s -> Fun (s, d) s -> [d] -> Property
-prop_dropHeads_isValid state nextStateFn deltas =
-    all (Seq.isValid nextState) (Seq.dropHeads result)
-        === True
-  where
-    nextState = fmap (fmap Just) (applyFun2 nextStateFn)
-    Just result = Seq.appendMany nextState (Seq.fromState state) deltas
+    :: (Eq s, Eq d) => StateDeltaSeqData s d -> Property
+prop_dropHeads_isValid (stateDeltaSeqData -> (seq, nextState)) =
+    all (Seq.isValid nextState) (Seq.dropHeads seq) === True
 
 --------------------------------------------------------------------------------
 -- dropLasts
 --------------------------------------------------------------------------------
 
 prop_dropLasts_head
-    :: (Eq s, Show s, Eq d, Show d) => s -> Fun (s, d) s -> [d] -> Property
-prop_dropLasts_head state nextStateFn deltas =
-    NE.head (Seq.dropLasts result) === Seq.fromState state
-  where
-    nextState = fmap (fmap Just) (applyFun2 nextStateFn)
-    Just result = Seq.appendMany nextState (Seq.fromState state) deltas
+    :: (Eq s, Eq d, Show s, Show d) => StateDeltaSeqData s d -> Property
+prop_dropLasts_head (stateDeltaSeqData -> (seq, _nextState)) =
+    NE.head (Seq.dropLasts seq) === Seq.fromState (Seq.headState seq)
 
 prop_dropLasts_last
-    :: (Eq s, Show s, Eq d, Show d) => s -> Fun (s, d) s -> [d] -> Property
-prop_dropLasts_last state nextStateFn deltas =
-    NE.last (Seq.dropLasts result) === result
-  where
-    nextState = fmap (fmap Just) (applyFun2 nextStateFn)
-    Just result = Seq.appendMany nextState (Seq.fromState state) deltas
+    :: (Eq s, Show s, Eq d, Show d) => StateDeltaSeqData s d -> Property
+prop_dropLasts_last (stateDeltaSeqData -> (seq, _nextState)) =
+    NE.last (Seq.dropLasts seq) === seq
 
 prop_dropLasts_length
-    :: (Eq s, Show s, Eq d, Show d) => s -> Fun (s, d) s -> [d] -> Property
-prop_dropLasts_length state nextStateFn deltas =
-    NE.length (Seq.dropLasts result) === length deltas + 1
-  where
-    nextState = fmap (fmap Just) (applyFun2 nextStateFn)
-    Just result = Seq.appendMany nextState (Seq.fromState state) deltas
+    :: (Eq s, Eq d) => StateDeltaSeqData s d -> Property
+prop_dropLasts_length (stateDeltaSeqData -> (seq, _nextState)) =
+    NE.length (Seq.dropLasts seq) === Seq.size seq + 1
 
 prop_dropLasts_isPrefixOf
-    :: (Eq s, Show s, Eq d) => s -> Fun (s, d) s -> [d] -> Property
-prop_dropLasts_isPrefixOf state nextStateFn deltas =
-    all (uncurry Seq.isPrefixOf) (consecutivePairs (Seq.dropLasts result))
-        === True
-  where
-    nextState = fmap (fmap Just) (applyFun2 nextStateFn)
-    Just result = Seq.appendMany nextState (Seq.fromState state) deltas
+    :: (Eq s, Eq d) => StateDeltaSeqData s d -> Property
+prop_dropLasts_isPrefixOf (stateDeltaSeqData -> (seq, _nextState)) =
+    all (uncurry Seq.isPrefixOf) (consecutivePairs (Seq.dropLasts seq))
+    === True
 
 prop_dropLasts_isValid
-    :: (Eq s, Show s, Eq d) => s -> Fun (s, d) s -> [d] -> Property
-prop_dropLasts_isValid state nextStateFn deltas =
-    all (Seq.isValid nextState) (Seq.dropLasts result)
-        === True
-  where
-    nextState = fmap (fmap Just) (applyFun2 nextStateFn)
-    Just result = Seq.appendMany nextState (Seq.fromState state) deltas
+    :: (Eq s, Eq d) => StateDeltaSeqData s d -> Property
+prop_dropLasts_isValid (stateDeltaSeqData -> (seq, nextState)) =
+    all (Seq.isValid nextState) (Seq.dropLasts seq) === True
 
 --------------------------------------------------------------------------------
--- Utility functions
+-- Utility types and functions
 --------------------------------------------------------------------------------
+
+data StateDeltaSeqData s d = StateDeltaSeqData
+    { state :: s
+    , deltas :: [d]
+    , nextStateFn :: Fun (s, d) s
+    }
+    deriving (Generic, Show)
+
+stateDeltaSeqData
+    :: StateDeltaSeqData s d -> (StateDeltaSeq s d, (s -> d -> Maybe s))
+stateDeltaSeqData StateDeltaSeqData {state, deltas, nextStateFn} =
+    (seq, nextState)
+  where
+    nextState = fmap (fmap Just) (applyFun2 nextStateFn)
+    Just seq = Seq.appendMany nextState (Seq.fromState state) deltas
+
+deriving instance (Eq s, Eq d, Eq (Fun (s, d) s)) => Eq (StateDeltaSeqData s d)
+
+instance
+    ( Arbitrary d
+    , Arbitrary s
+    , CoArbitrary d
+    , CoArbitrary s
+    , Function d
+    , Function s
+    ) =>
+    Arbitrary (StateDeltaSeqData s d)
+  where
+    arbitrary = applyArbitrary3 StateDeltaSeqData
+    shrink = genericShrink
 
 consecutivePairs :: Foldable f => f a -> [(a, a)]
 consecutivePairs (F.toList -> xs) = case tailMay xs of

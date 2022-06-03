@@ -124,10 +124,10 @@ dropLasts = iterate dropLast
 --    state_0 : delta_0_1 +           delta_1_2 : state_2 : ...
 --
 mergeHead
-    :: StateDeltaSeq state delta
-    -> (delta -> delta -> delta)
+    :: (delta -> delta -> delta)
+    -> StateDeltaSeq state delta
     -> Maybe (StateDeltaSeq state delta)
-mergeHead StateDeltaSeq {head, tail} merge
+mergeHead merge StateDeltaSeq {head, tail}
     | length tail < 2 = Nothing
     | otherwise = Just StateDeltaSeq
         { head
@@ -143,10 +143,10 @@ mergeHead StateDeltaSeq {head, tail} merge
 --    ... : state_2 : delta_2-1 +         : delta_1_0 : state_0
 --
 mergeLast
-    :: StateDeltaSeq state delta
-    -> (delta -> delta -> delta)
+    :: (delta -> delta -> delta)
+    -> StateDeltaSeq state delta
     -> Maybe (StateDeltaSeq state delta)
-mergeLast StateDeltaSeq {head, tail} merge
+mergeLast merge StateDeltaSeq {head, tail}
     | length tail < 2 = Nothing
     | otherwise = Just StateDeltaSeq
         { head
@@ -157,16 +157,16 @@ mergeLast StateDeltaSeq {head, tail} merge
     (d_2_1, _s_1) = tail ! (length tail - 2)
 
 mergeHeads
-    :: StateDeltaSeq state delta
-    -> (delta -> delta -> delta)
+    :: (delta -> delta -> delta)
+    -> StateDeltaSeq state delta
     -> NonEmpty (StateDeltaSeq state delta)
-mergeHeads seq0 merge = iterate (`mergeHead` merge) seq0
+mergeHeads = iterate . mergeHead
 
 mergeLasts
-    :: StateDeltaSeq state delta
-    -> (delta -> delta -> delta)
+    :: (delta -> delta -> delta)
+    -> StateDeltaSeq state delta
     -> NonEmpty (StateDeltaSeq state delta)
-mergeLasts seq0 merge = iterate (`mergeLast` merge) seq0
+mergeLasts = iterate . mergeLast
 
 isPrefixOf
     :: (Eq state, Eq delta)

@@ -38,6 +38,7 @@ import qualified Data.Foldable as F
 import qualified Data.List as L
 import qualified Data.List.NonEmpty as NE
 import qualified Data.Vector as V
+import qualified Data.Vector.Extra as V
 
 data StateDeltaSeq state delta = StateDeltaSeq
     { head :: state
@@ -102,7 +103,7 @@ dropHead
 dropHead StateDeltaSeq {tail}
     | null tail = Nothing
     | otherwise = Just StateDeltaSeq
-        {head = snd $ V.head tail, tail = V.drop 1 tail}
+        {head = snd $ V.head tail, tail = V.dropHead 1 tail}
 
 dropLast
     :: StateDeltaSeq state delta
@@ -110,7 +111,7 @@ dropLast
 dropLast StateDeltaSeq {head, tail}
     | null tail = Nothing
     | otherwise = Just StateDeltaSeq
-        {head, tail = V.take (length tail - 1) tail}
+        {head, tail = V.dropLast 1 tail}
 
 -- Performs the following transformation:
 --
@@ -125,7 +126,7 @@ mergeHead StateDeltaSeq {head, tail} merge
     | length tail < 2 = Nothing
     | otherwise = Just StateDeltaSeq
         { head
-        , tail = (merge d_0_1 d_1_2, s_2) `V.cons` V.drop 2 tail
+        , tail = (d_0_1 `merge` d_1_2, s_2) `V.cons` V.dropHead 2 tail
         }
   where
     (d_0_1, _s_1) = tail ! 0
@@ -144,7 +145,7 @@ mergeLast StateDeltaSeq {head, tail} merge
     | length tail < 2 = Nothing
     | otherwise = Just StateDeltaSeq
         { head
-        , tail = V.take (length tail - 2) tail `V.snoc` (merge d_2_1 d_1_0, s_0)
+        , tail = V.dropLast 2 tail `V.snoc` (d_2_1 `merge` d_1_0, s_0)
         }
   where
     (d_1_0,  s_0) = tail ! (length tail - 1)

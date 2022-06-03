@@ -23,7 +23,7 @@ module Cardano.Wallet.Primitive.Types.StateDeltaSeq
     ) where
 
 import Prelude hiding
-    ( head, seq, tail )
+    ( head, iterate, seq, tail )
 
 import Control.Monad
     ( foldM )
@@ -85,37 +85,32 @@ appendMany
     -> m (StateDeltaSeq state delta)
 appendMany = foldM . append
 
-prefixes :: StateDeltaSeq state delta -> NonEmpty (StateDeltaSeq state delta)
-prefixes seq0 =
+iterate
+    :: (StateDeltaSeq state delta -> Maybe (StateDeltaSeq state delta))
+    -> StateDeltaSeq state delta
+    -> NonEmpty (StateDeltaSeq state delta)
+iterate transform seq0 =
     loop (seq0 :| []) seq0
   where
-    loop !acc !seq = maybe acc (\p -> loop (p `NE.cons` acc) p) (dropLast seq)
+    loop !acc !seq = maybe acc (\p -> loop (p `NE.cons` acc) p) (transform seq)
+
+prefixes :: StateDeltaSeq state delta -> NonEmpty (StateDeltaSeq state delta)
+prefixes = iterate dropLast
 
 suffixes :: StateDeltaSeq state delta -> NonEmpty (StateDeltaSeq state delta)
-suffixes seq0 =
-    loop (seq0 :| []) seq0
-  where
-    loop !acc !seq = maybe acc (\s -> loop (s `NE.cons` acc) s) (dropHead seq)
+suffixes = iterate dropHead
 
 mergeHeads
     :: StateDeltaSeq state delta
     -> (delta -> delta -> delta)
     -> NonEmpty (StateDeltaSeq state delta)
-mergeHeads seq0 merge =
-    loop (seq0 :| []) seq0
-  where
-    loop !acc !seq =
-        maybe acc (\p -> loop (p `NE.cons` acc) p) (mergeHead seq merge)
+mergeHeads seq0 merge = iterate (`mergeHead` merge) seq0
 
 mergeLasts
     :: StateDeltaSeq state delta
     -> (delta -> delta -> delta)
     -> NonEmpty (StateDeltaSeq state delta)
-mergeLasts seq0 merge =
-    loop (seq0 :| []) seq0
-  where
-    loop !acc !seq =
-        maybe acc (\p -> loop (p `NE.cons` acc) p) (mergeLast seq merge)
+mergeLasts seq0 merge = iterate (`mergeLast` merge) seq0
 
 dropHead
     :: StateDeltaSeq state delta

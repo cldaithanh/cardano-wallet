@@ -108,16 +108,11 @@ dropLast StateDeltaSeq {head, tail}
     | otherwise = Just StateDeltaSeq
         {head, tail = V.dropLast 1 tail}
 
-dropHeads :: StateDeltaSeq s d -> NonEmpty (StateDeltaSeq s d)
-dropHeads = iterate dropHead
-
-dropLasts :: StateDeltaSeq s d -> NonEmpty (StateDeltaSeq s d)
-dropLasts = iterate dropLast
-
 -- Performs the following transformation:
 --
 --    state_0 : delta_0_1 : state_1 : delta_1_2 : state_2 : ...
 --    state_0 : delta_0_1 +           delta_1_2 : state_2 : ...
+--    state_0 : delta_0_2                       : state_2 : ...
 --
 mergeHead :: (d -> d -> d) -> StateDeltaSeq s d -> Maybe (StateDeltaSeq s d)
 mergeHead merge StateDeltaSeq {head, tail}
@@ -133,7 +128,8 @@ mergeHead merge StateDeltaSeq {head, tail}
 -- Performs the following transformation:
 --
 --    ... : state_2 : delta_2_1 : state_1 : delta_1_0 : state_0
---    ... : state_2 : delta_2_1 +         : delta_1_0 : state_0
+--    ... : state_2 : delta_2_1 +           delta_1_0 : state_0
+--    ... : state_2 : delta_2_0                       : state_0
 --
 mergeLast :: (d -> d -> d) -> StateDeltaSeq s d -> Maybe (StateDeltaSeq s d)
 mergeLast merge StateDeltaSeq {head, tail}
@@ -143,8 +139,14 @@ mergeLast merge StateDeltaSeq {head, tail}
         , tail = V.dropLast 2 tail `V.snoc` (d_2_1 `merge` d_1_0, s_0)
         }
   where
-    (d_1_0,  s_0) = tail ! (length tail - 1)
     (d_2_1, _s_1) = tail ! (length tail - 2)
+    (d_1_0,  s_0) = tail ! (length tail - 1)
+
+dropHeads :: StateDeltaSeq s d -> NonEmpty (StateDeltaSeq s d)
+dropHeads = iterate dropHead
+
+dropLasts :: StateDeltaSeq s d -> NonEmpty (StateDeltaSeq s d)
+dropLasts = iterate dropLast
 
 mergeHeads :: (d -> d -> d) -> StateDeltaSeq s d -> NonEmpty (StateDeltaSeq s d)
 mergeHeads = iterate . mergeHead

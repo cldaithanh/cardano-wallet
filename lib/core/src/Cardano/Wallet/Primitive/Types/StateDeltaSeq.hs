@@ -9,6 +9,7 @@ module Cardano.Wallet.Primitive.Types.StateDeltaSeq
     , fromState
     , headState
     , lastState
+    , isEquivalentTo
     , isPrefixOf
     , isSuffixOf
     , isValid
@@ -160,6 +161,9 @@ mergeHeads = iterate . mergeHead
 
 mergeLasts :: (d -> d -> d) -> StateDeltaSeq s d -> NonEmpty (StateDeltaSeq s d)
 mergeLasts = iterate . mergeLast
+
+isEquivalentTo :: Eq s => StateDeltaSeq s d -> StateDeltaSeq s d -> Bool
+isEquivalentTo = (==) `on` ((,) <$> headState <*> lastState)
 
 isPrefixOf :: (Eq s, Eq d) => StateDeltaSeq s d -> StateDeltaSeq s d -> Bool
 isPrefixOf = L.isPrefixOf `on` F.toList . toStateDeltaList

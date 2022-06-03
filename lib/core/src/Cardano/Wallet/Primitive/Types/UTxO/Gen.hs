@@ -1,7 +1,5 @@
 {-# LANGUAGE DuplicateRecordFields #-}
-{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE TupleSections #-}
 
 module Cardano.Wallet.Primitive.Types.UTxO.Gen
     ( genUTxO
@@ -9,10 +7,6 @@ module Cardano.Wallet.Primitive.Types.UTxO.Gen
     , genUTxOLargeN
     , selectUTxOEntries
     , shrinkUTxO
-    -- Generation of transaction sequences from UTxOs
-    , genTxFromUTxO
-    , genTxsFromUTxO
-    , TxSeq (..)
     ) where
 
 import Prelude
@@ -42,8 +36,6 @@ import Control.Monad
     ( foldM, replicateM )
 import Data.Bifunctor
     ( first )
-import Data.List
-    ( inits, tails )
 import Data.Maybe
     ( listToMaybe )
 import Test.QuickCheck
@@ -119,90 +111,3 @@ genEntryLargeRange = (,)
 --
 selectUTxOEntries :: UTxO -> Int -> Gen ([(TxIn, TxOut)], UTxO)
 selectUTxOEntries = (fmap (fmap UTxO) .) . selectMapEntries . unUTxO
-
---------------------------------------------------------------------------------
--- Transaction sequences
---------------------------------------------------------------------------------
-
-genTxFromUTxO :: UTxO -> Gen Address -> Gen Tx
-genTxFromUTxO u genAddr = do
-    (inputs, _) <-
-        selectUTxOEntries u =<< chooseInt (1, 4)
-    (collateralInputs, _) <-
-        selectUTxOEntries u =<< chooseInt (1, 2)
-    let inputValue =
-            F.foldMap (tokens . snd) inputs
-    let collateralInputValue =
-            F.foldMap (tokens . snd) collateralInputs
-    outputBundles <-
-        genTokenBundlePartitionNonNull inputValue =<< chooseInt (1, 4)
-    collateralOutputBundles <-
-        elements [[], [collateralInputValue]]
-    outputAddresses <-
-        vectorOf (length outputBundles) genAddr
-    collateralOutputAddresses <-
-        vectorOf (length collateralOutputBundles) genAddr
-    pure $ txWithoutIdToTx TxWithoutId
-        { fee =
-            Just (Coin 0)
-        , resolvedInputs =
-            fmap (TokenBundle.getCoin . tokens) <$> inputs
-        , resolvedCollateralInputs =
-            fmap (TokenBundle.getCoin . tokens) <$> collateralInputs
-        , outputs =
-            zipWith TxOut outputAddresses outputBundles
-        , collateralOutput = listToMaybe $
-            zipWith TxOut collateralOutputAddresses collateralOutputBundles
-        , metadata =
-            Nothing
-        , withdrawals =
-            mempty
-        , scriptValidity =
-            Nothing
-        }
-
-genTxsFromUTxO :: UTxO -> Gen Address -> Gen ([Tx], UTxO)
-genTxsFromUTxO u0 genAddr = sized $ \txCount ->
-    first reverse <$> foldM (const . genOne) ([], u0) (replicate txCount ())
-  where
-    genOne :: ([Tx], UTxO) -> Gen ([Tx], UTxO)
-    genOne (txs, u) = do
-        tx <- genTxFromUTxO u genAddr
-        pure (tx : txs, applyTxToUTxO tx u)
-
--- move this to separate module.
-
-data TxSeq = TxSeq UTxO [(Tx, UTxO)]
-
-instance ShrinkState TxSeqShrinkState TxSeq where
-    shrinkInit _ = TxSeqShrinkStateUnshrunk
-    shrinkState txSeq = \case
-        TxSeqShrinkStateUnshrunk ->
-            (, TxSeqShrinkStatePrefix) <$> txSeqPrefixes txSeq
-        TxSeqShrinkStatePrefix ->
-            (, TxSeqShrinkStateSuffix) <$> txSeqSuffixes txSeq
-        TxSeqShrinkStateSuffix ->
-            []
-
-tqSeqValid :: TxSeq -> Bool
-tqSeqValid (TxSeq u0 transitions) = undefined
-
-txSeqAppendTx :: TxSeq -> Tx -> Maybe TxSeq
-txSeqAppendTx = undefined
-
-txSeqPrefixes :: TxSeq -> [TxSeq]
-txSeqPrefixes (TxSeq u ps) = TxSeq u <$> inits ps
-
-txSeqSuffixes :: TxSeq -> [TxSeq]
-txSeqSuffixes (TxSeq u ps) = undefined -- TxSeq u <$> tails ps
-
-txSeqUnwrap :: TxSeq -> (UTxO, [(Tx, UTxO)])
-txSeqUnwrap = undefined
-
--- Can try to remove suffix
--- Can try to remove prefix
---
-data TxSeqShrinkState
-    = TxSeqShrinkStateUnshrunk
-    | TxSeqShrinkStatePrefix
-    | TxSeqShrinkStateSuffix

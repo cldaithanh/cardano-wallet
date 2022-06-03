@@ -16,6 +16,8 @@ import Cardano.Wallet.Primitive.Types.TokenBundle.Gen
     ( genTokenBundlePartitionNonNull )
 import Cardano.Wallet.Primitive.Types.Tx
     ( Tx (..), TxOut (..) )
+import Cardano.Wallet.Primitive.Types.TxSeq
+    ( TxSeq )
 import Cardano.Wallet.Primitive.Types.Tx.Gen
     ( TxWithoutId (..)
     , txWithoutIdToTx
@@ -39,11 +41,19 @@ import Test.QuickCheck
     )
 
 import qualified Cardano.Wallet.Primitive.Types.TokenBundle as TokenBundle
+import qualified Cardano.Wallet.Primitive.Types.TxSeq as TxSeq
 import qualified Data.Foldable as F
 
 --------------------------------------------------------------------------------
 -- Transaction sequences
 --------------------------------------------------------------------------------
+
+genTxSeq :: UTxO -> Gen Address -> Gen TxSeq
+genTxSeq u genAddr = do
+    (txs, _) <- genTxsFromUTxO u genAddr
+    case TxSeq.fromUTxO u `TxSeq.appendTxs` txs of
+        Nothing -> error "Unable to construct tx sequence"
+        Just s -> pure s
 
 genTxFromUTxO :: UTxO -> Gen Address -> Gen Tx
 genTxFromUTxO u genAddr = do

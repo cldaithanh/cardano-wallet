@@ -12,6 +12,7 @@ module Cardano.Wallet.Primitive.Types.TxSeq
     , headUTxO
     , lastUTxO
     , size
+    , toTxs
     , isValid
     ) where
 
@@ -38,6 +39,7 @@ import qualified Cardano.Wallet.Primitive.Types.Tx as Tx
 import qualified Cardano.Wallet.Primitive.Types.UTxO as UTxO
 
 newtype TxSeq = TxSeq {unTxSeq :: StateDeltaSeq UTxO Tx}
+    deriving (Eq, Show)
 
 --------------------------------------------------------------------------------
 -- Public interface
@@ -57,6 +59,9 @@ appendTx s = fmap TxSeq . Seq.append (flip safeApplyTxToUTxO) (unTxSeq s)
 
 appendTxs :: (Foldable f, MonadFail m) => TxSeq -> f Tx -> m TxSeq
 appendTxs s = fmap TxSeq . Seq.appendMany (flip safeApplyTxToUTxO) (unTxSeq s)
+
+toTxs :: TxSeq -> [Tx]
+toTxs = Seq.toDeltaList . unTxSeq
 
 size :: TxSeq -> Int
 size = Seq.size . unTxSeq

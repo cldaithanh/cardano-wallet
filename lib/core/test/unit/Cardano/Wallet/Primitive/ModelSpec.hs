@@ -106,7 +106,7 @@ import Cardano.Wallet.Primitive.Types.Tx.Gen
     , shrinkTxOut
     )
 import Cardano.Wallet.Primitive.Types.TxSeq.Gen
-    ( genTxsFromUTxO )
+    ( genTxsFromUTxO, genTxSeq )
 import Cardano.Wallet.Primitive.Types.UTxO
     ( UTxO (..), balance, dom, excluding, filterByAddress, restrictedTo )
 import Cardano.Wallet.Primitive.Types.UTxO.Gen
@@ -194,6 +194,7 @@ import Test.QuickCheck.Extra
 
 import qualified Cardano.Wallet.Primitive.Types.Coin as Coin
 import qualified Cardano.Wallet.Primitive.Types.TokenBundle as TokenBundle
+import qualified Cardano.Wallet.Primitive.Types.TxSeq as TxSeq
 import qualified Cardano.Wallet.Primitive.Types.UTxO as UTxO
 import qualified Data.ByteString as BS
 import qualified Data.Foldable as F
@@ -2285,8 +2286,8 @@ applyTxsToUTxO txs u0 = F.foldl' (flip applyTxToUTxO) u0 txs
 prop_applyTxsToUTxO :: Property
 prop_applyTxsToUTxO =
     forAll (genUTxO) $ \u0 ->
-    forAll (genTxsFromUTxO u0 genAddress) $ \(txs, u1) ->
-    applyTxsToUTxO txs u0 === u1
+    forAll (genTxSeq u0 genAddress) $ \txs ->
+    applyTxsToUTxO (TxSeq.toTxs txs) u0 === TxSeq.lastUTxO txs
 
 _genBlocksFromTxs :: [Tx] -> Gen [Block]
 _genBlocksFromTxs _txs = undefined

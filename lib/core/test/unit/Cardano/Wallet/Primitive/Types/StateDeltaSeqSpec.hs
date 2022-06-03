@@ -75,12 +75,12 @@ spec = do
 --------------------------------------------------------------------------------
 
 prop_fromState_headState
-    :: (Eq state, Show state) => state -> Property
+    :: (Eq s, Show s) => s -> Property
 prop_fromState_headState state =
     Seq.headState (Seq.fromState state) === state
 
 prop_fromState_lastState
-    :: (Eq state, Show state) => state -> Property
+    :: (Eq s, Show s) => s -> Property
 prop_fromState_lastState state =
     Seq.lastState (Seq.fromState state) === state
 
@@ -89,11 +89,7 @@ prop_fromState_lastState state =
 --------------------------------------------------------------------------------
 
 prop_fromState_appendMany_headState
-    :: (Eq state, Show state)
-    => state
-    -> Fun (state, delta) state
-    -> [delta]
-    -> Property
+    :: (Eq s, Show s) => s -> Fun (s, d) s -> [d] -> Property
 prop_fromState_appendMany_headState state nextStateFn deltas =
     Seq.headState result === state
   where
@@ -101,11 +97,7 @@ prop_fromState_appendMany_headState state nextStateFn deltas =
     Just result = Seq.appendMany nextState (Seq.fromState state) deltas
 
 prop_fromState_appendMany_size
-    :: (Eq state, Show state)
-    => state
-    -> Fun (state, delta) state
-    -> [delta]
-    -> Property
+    :: (Eq s, Show s) => s -> Fun (s, d) s -> [d] -> Property
 prop_fromState_appendMany_size state nextStateFn deltas =
     Seq.size result === length deltas
   where
@@ -117,11 +109,7 @@ prop_fromState_appendMany_size state nextStateFn deltas =
 --------------------------------------------------------------------------------
 
 prop_fromState_appendMany_dropLasts_head
-    :: (Eq state, Show state, Eq delta, Show delta)
-    => state
-    -> Fun (state, delta) state
-    -> [delta]
-    -> Property
+    :: (Eq s, Show s, Eq d, Show d) => s -> Fun (s, d) s -> [d] -> Property
 prop_fromState_appendMany_dropLasts_head state nextStateFn deltas =
     NE.head (Seq.dropLasts result) === Seq.fromState state
   where
@@ -129,11 +117,7 @@ prop_fromState_appendMany_dropLasts_head state nextStateFn deltas =
     Just result = Seq.appendMany nextState (Seq.fromState state) deltas
 
 prop_fromState_appendMany_dropLasts_last
-    :: (Eq state, Show state, Eq delta, Show delta)
-    => state
-    -> Fun (state, delta) state
-    -> [delta]
-    -> Property
+    :: (Eq s, Show s, Eq d, Show d) => s -> Fun (s, d) s -> [d] -> Property
 prop_fromState_appendMany_dropLasts_last state nextStateFn deltas =
     NE.last (Seq.dropLasts result) === result
   where
@@ -141,11 +125,7 @@ prop_fromState_appendMany_dropLasts_last state nextStateFn deltas =
     Just result = Seq.appendMany nextState (Seq.fromState state) deltas
 
 prop_fromState_appendMany_dropLasts_length
-    :: (Eq state, Show state, Eq delta, Show delta)
-    => state
-    -> Fun (state, delta) state
-    -> [delta]
-    -> Property
+    :: (Eq s, Show s, Eq d, Show d) => s -> Fun (s, d) s -> [d] -> Property
 prop_fromState_appendMany_dropLasts_length state nextStateFn deltas =
     NE.length (Seq.dropLasts result) === length deltas + 1
   where
@@ -153,11 +133,7 @@ prop_fromState_appendMany_dropLasts_length state nextStateFn deltas =
     Just result = Seq.appendMany nextState (Seq.fromState state) deltas
 
 prop_fromState_appendMany_dropLasts_isPrefixOf
-    :: (Eq state, Show state, Eq delta)
-    => state
-    -> Fun (state, delta) state
-    -> [delta]
-    -> Property
+    :: (Eq s, Show s, Eq d) => s -> Fun (s, d) s -> [d] -> Property
 prop_fromState_appendMany_dropLasts_isPrefixOf state nextStateFn deltas =
     all (uncurry Seq.isPrefixOf) (consecutivePairs (Seq.dropLasts result))
         === True
@@ -170,11 +146,7 @@ prop_fromState_appendMany_dropLasts_isPrefixOf state nextStateFn deltas =
 --------------------------------------------------------------------------------
 
 prop_fromState_appendMany_dropHeads_head
-    :: (Eq state, Show state, Eq delta, Show delta)
-    => state
-    -> Fun (state, delta) state
-    -> [delta]
-    -> Property
+    :: (Eq s, Show s, Eq d, Show d) => s -> Fun (s, d) s -> [d] -> Property
 prop_fromState_appendMany_dropHeads_head state nextStateFn deltas =
     NE.head (Seq.dropHeads result) === Seq.fromState (Seq.lastState result)
   where
@@ -182,11 +154,7 @@ prop_fromState_appendMany_dropHeads_head state nextStateFn deltas =
     Just result = Seq.appendMany nextState (Seq.fromState state) deltas
 
 prop_fromState_appendMany_dropHeads_last
-    :: (Eq state, Show state, Eq delta, Show delta)
-    => state
-    -> Fun (state, delta) state
-    -> [delta]
-    -> Property
+    :: (Eq s, Show s, Eq d, Show d) => s -> Fun (s, d) s -> [d] -> Property
 prop_fromState_appendMany_dropHeads_last state nextStateFn deltas =
     NE.last (Seq.dropHeads result) === result
   where
@@ -194,11 +162,7 @@ prop_fromState_appendMany_dropHeads_last state nextStateFn deltas =
     Just result = Seq.appendMany nextState (Seq.fromState state) deltas
 
 prop_fromState_appendMany_dropHeads_length
-    :: (Eq state, Show state, Eq delta, Show delta)
-    => state
-    -> Fun (state, delta) state
-    -> [delta]
-    -> Property
+    :: (Eq s, Show s, Eq d, Show d) => s -> Fun (s, d) s -> [d] -> Property
 prop_fromState_appendMany_dropHeads_length state nextStateFn deltas =
     NE.length (Seq.dropHeads result) === length deltas + 1
   where
@@ -206,11 +170,7 @@ prop_fromState_appendMany_dropHeads_length state nextStateFn deltas =
     Just result = Seq.appendMany nextState (Seq.fromState state) deltas
 
 prop_fromState_appendMany_dropHeads_isSuffixOf
-    :: (Eq state, Show state, Eq delta)
-    => state
-    -> Fun (state, delta) state
-    -> [delta]
-    -> Property
+    :: (Eq s, Show s, Eq d) => s -> Fun (s, d) s -> [d] -> Property
 prop_fromState_appendMany_dropHeads_isSuffixOf state nextStateFn deltas =
     all (uncurry Seq.isSuffixOf) (consecutivePairs (Seq.dropHeads result))
         === True

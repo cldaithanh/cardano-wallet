@@ -135,29 +135,28 @@ prop_appendMany_size state nextStateFn deltas =
 --------------------------------------------------------------------------------
 
 prop_dropHeads_head
-    :: (Eq s, Eq d, Show s, Show d) => StateDeltaSeqData s d -> Property
-prop_dropHeads_head (stateDeltaSeqData -> (seq, _nextState)) =
+    :: (Eq s, Eq d, Show s, Show d) => GenStateDeltaSeq s d -> Property
+prop_dropHeads_head (genStateDeltaSeq -> (seq, _nextState)) =
     NE.head (Seq.dropHeads seq) === Seq.fromState (Seq.lastState seq)
 
 prop_dropHeads_last
-    :: (Eq s, Show s, Eq d, Show d) => StateDeltaSeqData s d -> Property
-prop_dropHeads_last (stateDeltaSeqData -> (seq, _nextState)) =
+    :: (Eq s, Show s, Eq d, Show d) => GenStateDeltaSeq s d -> Property
+prop_dropHeads_last (genStateDeltaSeq -> (seq, _nextState)) =
     NE.last (Seq.dropHeads seq) === seq
 
 prop_dropHeads_length
-    :: (Eq s, Eq d) => StateDeltaSeqData s d -> Property
-prop_dropHeads_length (stateDeltaSeqData -> (seq, _nextState)) =
+    :: (Eq s, Eq d) => GenStateDeltaSeq s d -> Property
+prop_dropHeads_length (genStateDeltaSeq -> (seq, _nextState)) =
     NE.length (Seq.dropHeads seq) === Seq.size seq + 1
 
 prop_dropHeads_isSuffixOf
-    :: (Eq s, Eq d) => StateDeltaSeqData s d -> Property
-prop_dropHeads_isSuffixOf (stateDeltaSeqData -> (seq, _nextState)) =
-    all (uncurry Seq.isSuffixOf) (consecutivePairs (Seq.dropHeads seq))
-    === True
+    :: (Eq s, Eq d) => GenStateDeltaSeq s d -> Property
+prop_dropHeads_isSuffixOf (genStateDeltaSeq -> (seq, _nextState)) =
+    all (uncurry Seq.isSuffixOf) (consecutivePairs (Seq.dropHeads seq)) === True
 
 prop_dropHeads_isValid
-    :: (Eq s, Eq d) => StateDeltaSeqData s d -> Property
-prop_dropHeads_isValid (stateDeltaSeqData -> (seq, nextState)) =
+    :: (Eq s, Eq d) => GenStateDeltaSeq s d -> Property
+prop_dropHeads_isValid (genStateDeltaSeq -> (seq, nextState)) =
     all (Seq.isValid nextState) (Seq.dropHeads seq) === True
 
 --------------------------------------------------------------------------------
@@ -165,51 +164,50 @@ prop_dropHeads_isValid (stateDeltaSeqData -> (seq, nextState)) =
 --------------------------------------------------------------------------------
 
 prop_dropLasts_head
-    :: (Eq s, Eq d, Show s, Show d) => StateDeltaSeqData s d -> Property
-prop_dropLasts_head (stateDeltaSeqData -> (seq, _nextState)) =
+    :: (Eq s, Eq d, Show s, Show d) => GenStateDeltaSeq s d -> Property
+prop_dropLasts_head (genStateDeltaSeq -> (seq, _nextState)) =
     NE.head (Seq.dropLasts seq) === Seq.fromState (Seq.headState seq)
 
 prop_dropLasts_last
-    :: (Eq s, Show s, Eq d, Show d) => StateDeltaSeqData s d -> Property
-prop_dropLasts_last (stateDeltaSeqData -> (seq, _nextState)) =
+    :: (Eq s, Show s, Eq d, Show d) => GenStateDeltaSeq s d -> Property
+prop_dropLasts_last (genStateDeltaSeq -> (seq, _nextState)) =
     NE.last (Seq.dropLasts seq) === seq
 
 prop_dropLasts_length
-    :: (Eq s, Eq d) => StateDeltaSeqData s d -> Property
-prop_dropLasts_length (stateDeltaSeqData -> (seq, _nextState)) =
+    :: (Eq s, Eq d) => GenStateDeltaSeq s d -> Property
+prop_dropLasts_length (genStateDeltaSeq -> (seq, _nextState)) =
     NE.length (Seq.dropLasts seq) === Seq.size seq + 1
 
 prop_dropLasts_isPrefixOf
-    :: (Eq s, Eq d) => StateDeltaSeqData s d -> Property
-prop_dropLasts_isPrefixOf (stateDeltaSeqData -> (seq, _nextState)) =
-    all (uncurry Seq.isPrefixOf) (consecutivePairs (Seq.dropLasts seq))
-    === True
+    :: (Eq s, Eq d) => GenStateDeltaSeq s d -> Property
+prop_dropLasts_isPrefixOf (genStateDeltaSeq -> (seq, _nextState)) =
+    all (uncurry Seq.isPrefixOf) (consecutivePairs (Seq.dropLasts seq)) === True
 
 prop_dropLasts_isValid
-    :: (Eq s, Eq d) => StateDeltaSeqData s d -> Property
-prop_dropLasts_isValid (stateDeltaSeqData -> (seq, nextState)) =
+    :: (Eq s, Eq d) => GenStateDeltaSeq s d -> Property
+prop_dropLasts_isValid (genStateDeltaSeq -> (seq, nextState)) =
     all (Seq.isValid nextState) (Seq.dropLasts seq) === True
 
 --------------------------------------------------------------------------------
 -- Utility types and functions
 --------------------------------------------------------------------------------
 
-data StateDeltaSeqData s d = StateDeltaSeqData
+data GenStateDeltaSeq s d = GenStateDeltaSeq
     { state :: s
     , deltas :: [d]
     , nextStateFn :: Fun (s, d) s
     }
     deriving (Generic, Show)
 
-stateDeltaSeqData
-    :: StateDeltaSeqData s d -> (StateDeltaSeq s d, (s -> d -> Maybe s))
-stateDeltaSeqData StateDeltaSeqData {state, deltas, nextStateFn} =
+genStateDeltaSeq
+    :: GenStateDeltaSeq s d -> (StateDeltaSeq s d, (s -> d -> Maybe s))
+genStateDeltaSeq GenStateDeltaSeq {state, deltas, nextStateFn} =
     (seq, nextState)
   where
     nextState = fmap (fmap Just) (applyFun2 nextStateFn)
     Just seq = Seq.appendMany nextState (Seq.fromState state) deltas
 
-deriving instance (Eq s, Eq d, Eq (Fun (s, d) s)) => Eq (StateDeltaSeqData s d)
+deriving instance (Eq s, Eq d, Eq (Fun (s, d) s)) => Eq (GenStateDeltaSeq s d)
 
 instance
     ( Arbitrary d
@@ -219,9 +217,9 @@ instance
     , Function d
     , Function s
     ) =>
-    Arbitrary (StateDeltaSeqData s d)
+    Arbitrary (GenStateDeltaSeq s d)
   where
-    arbitrary = applyArbitrary3 StateDeltaSeqData
+    arbitrary = applyArbitrary3 GenStateDeltaSeq
     shrink = genericShrink
 
 consecutivePairs :: Foldable f => f a -> [(a, a)]

@@ -48,9 +48,9 @@ import qualified Data.Foldable as F
 -- Transaction sequences
 --------------------------------------------------------------------------------
 
-genTxSeq :: UTxO -> Gen Address -> Gen TxSeq
-genTxSeq u genAddr = TxSeq <$>
-    genStateDeltaSeq (pure u) (`genTxFromUTxO` genAddr) (flip applyTxToUTxO)
+genTxSeq :: Gen UTxO -> Gen Address -> Gen TxSeq
+genTxSeq genUTxO genAddr = TxSeq <$>
+    genStateDeltaSeq genUTxO (`genTxFromUTxO` genAddr) (flip applyTxToUTxO)
 
 genTxFromUTxO :: UTxO -> Gen Address -> Gen Tx
 genTxFromUTxO u genAddr = do

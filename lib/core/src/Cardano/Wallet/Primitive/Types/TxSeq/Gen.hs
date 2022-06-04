@@ -18,30 +18,20 @@ import Cardano.Wallet.Primitive.Types.TokenBundle.Gen
     ( genTokenBundlePartitionNonNull )
 import Cardano.Wallet.Primitive.Types.Tx
     ( Tx (..), TxOut (..) )
+import Cardano.Wallet.Primitive.Types.Tx.Gen
+    ( TxWithoutId (..), txWithoutIdToTx )
 import Cardano.Wallet.Primitive.Types.TxSeq
     ( TxSeq (..) )
-import Cardano.Wallet.Primitive.Types.Tx.Gen
-    ( TxWithoutId (..)
-    , txWithoutIdToTx
-    )
 import Cardano.Wallet.Primitive.Types.UTxO
     ( UTxO (..) )
 import Cardano.Wallet.Primitive.Types.UTxO.Gen
     ( selectUTxOEntries )
-import Control.Monad
-    ( foldM )
 import Data.Maybe
     ( listToMaybe )
 import Test.QuickCheck
-    ( Gen
-    , chooseInt
-    , elements
-    , sized
-    , vectorOf
-    )
+    ( Gen, chooseInt, elements, vectorOf )
 
 import qualified Cardano.Wallet.Primitive.Types.TokenBundle as TokenBundle
-import qualified Cardano.Wallet.Primitive.Types.TxSeq as TxSeq
 import qualified Data.Foldable as F
 
 --------------------------------------------------------------------------------
@@ -88,8 +78,6 @@ genTxFromUTxO u genAddr = do
         , scriptValidity =
             Nothing
         }
-
-
 
 {-
 -- move this to separate module.

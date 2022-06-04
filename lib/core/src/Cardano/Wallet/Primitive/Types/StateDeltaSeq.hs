@@ -95,7 +95,7 @@ toStateList StateDeltaSeq {head, tail} = head :| (snd <$> F.toList tail)
 
 appendDeltaM
     :: Functor m
-    => (s -> d -> m s)
+    => ApplyDeltaM m s d
     -> StateDeltaSeq s d
     -> d
     -> m (StateDeltaSeq s d)
@@ -105,7 +105,7 @@ appendDeltaM nextState seq@StateDeltaSeq {head, tail} delta =
 
 appendDeltasM
     :: (Foldable f, Monad m)
-    => (s -> d -> m s)
+    => ApplyDeltaM m s d
     -> StateDeltaSeq s d
     -> f d
     -> m (StateDeltaSeq s d)
@@ -138,7 +138,7 @@ dropLast StateDeltaSeq {head, tail}
 --    state_0 : delta_0_1 +           delta_1_2 : state_2 : ...
 --    state_0 : delta_0_2                       : state_2 : ...
 --
-mergeHead :: (d -> d -> d) -> StateDeltaSeq s d -> Maybe (StateDeltaSeq s d)
+mergeHead :: MergeDelta d -> StateDeltaSeq s d -> Maybe (StateDeltaSeq s d)
 mergeHead merge StateDeltaSeq {head, tail}
     | length tail < 2 = Nothing
     | otherwise = Just StateDeltaSeq
@@ -155,7 +155,7 @@ mergeHead merge StateDeltaSeq {head, tail}
 --    ... : state_2 : delta_2_1 +           delta_1_0 : state_0
 --    ... : state_2 : delta_2_0                       : state_0
 --
-mergeLast :: (d -> d -> d) -> StateDeltaSeq s d -> Maybe (StateDeltaSeq s d)
+mergeLast :: MergeDelta d -> StateDeltaSeq s d -> Maybe (StateDeltaSeq s d)
 mergeLast merge StateDeltaSeq {head, tail}
     | length tail < 2 = Nothing
     | otherwise = Just StateDeltaSeq
@@ -172,10 +172,10 @@ dropHeads = iterate dropHead
 dropLasts :: StateDeltaSeq s d -> NonEmpty (StateDeltaSeq s d)
 dropLasts = iterate dropLast
 
-mergeHeads :: (d -> d -> d) -> StateDeltaSeq s d -> NonEmpty (StateDeltaSeq s d)
+mergeHeads :: MergeDelta d -> StateDeltaSeq s d -> NonEmpty (StateDeltaSeq s d)
 mergeHeads = iterate . mergeHead
 
-mergeLasts :: (d -> d -> d) -> StateDeltaSeq s d -> NonEmpty (StateDeltaSeq s d)
+mergeLasts :: MergeDelta d -> StateDeltaSeq s d -> NonEmpty (StateDeltaSeq s d)
 mergeLasts = iterate . mergeLast
 
 isEquivalentTo :: Eq s => StateDeltaSeq s d -> StateDeltaSeq s d -> Bool
@@ -187,7 +187,7 @@ isPrefixOf = L.isPrefixOf `on` F.toList . toStateDeltaList
 isSuffixOf :: (Eq s, Eq d) => StateDeltaSeq s d -> StateDeltaSeq s d -> Bool
 isSuffixOf = L.isSuffixOf `on` F.toList . toStateDeltaList
 
-isValidM :: (Eq s, Eq d) => (s -> d -> Maybe s) -> StateDeltaSeq s d -> Bool
+isValidM :: (Eq s, Eq d) => ApplyDeltaM Maybe s d -> StateDeltaSeq s d -> Bool
 isValidM nextState seq@StateDeltaSeq {head} =
     appendDeltasM nextState (fromState head) (toDeltaList seq)
     ==

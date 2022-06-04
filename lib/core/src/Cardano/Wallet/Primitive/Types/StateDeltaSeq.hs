@@ -31,6 +31,8 @@ import Prelude hiding
 
 import Control.Monad
     ( foldM )
+import Data.Bifunctor
+    ( Bifunctor (..) )
 import Data.Function
     ( on )
 import Data.Functor
@@ -51,6 +53,16 @@ data StateDeltaSeq state delta = StateDeltaSeq
     , tail :: Vector (delta, state)
     }
     deriving (Eq, Show)
+
+instance Bifunctor StateDeltaSeq where
+    first f StateDeltaSeq {head, tail} = StateDeltaSeq
+        { head = f head
+        , tail = second f <$> tail
+        }
+    second f StateDeltaSeq {head, tail} = StateDeltaSeq
+        { head
+        , tail = first f <$> tail
+        }
 
 headState :: StateDeltaSeq s d -> s
 headState StateDeltaSeq {head} = head

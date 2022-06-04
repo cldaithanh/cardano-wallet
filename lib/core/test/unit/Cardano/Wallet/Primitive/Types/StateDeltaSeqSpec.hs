@@ -54,12 +54,12 @@ spec = do
             prop_fromState_lastState
                 @(Sum Int) & property
 
-    describe "applyDeltasM" $ do
-        it "prop_applyDeltasM_headState" $
-            prop_applyDeltasM_headState
+    describe "applyDeltas" $ do
+        it "prop_applyDeltas_headState" $
+            prop_applyDeltas_headState
                 @(Sum Int) @Int & property
-        it "prop_applyDeltasM_size" $
-            prop_applyDeltasM_size
+        it "prop_applyDeltas_size" $
+            prop_applyDeltas_size
                 @(Sum Int) @Int & property
 
     describe "dropHeads" $ do
@@ -75,8 +75,8 @@ spec = do
         it "prop_dropHeads_isSuffixOf" $
             prop_dropHeads_isSuffixOf
                 @(Sum Int) @Int & property
-        it "prop_dropHeads_isValidM" $
-            prop_dropHeads_isValidM
+        it "prop_dropHeads_isValid" $
+            prop_dropHeads_isValid
                 @(Sum Int) @Int & property
 
     describe "dropLasts" $ do
@@ -92,8 +92,8 @@ spec = do
         it "prop_dropLasts_isPrefixOf" $
             prop_dropLasts_isPrefixOf
                 @(Sum Int) @Int & property
-        it "prop_dropLasts_isValidM" $
-            prop_dropLasts_isValidM
+        it "prop_dropLasts_isValid" $
+            prop_dropLasts_isValid
                 @(Sum Int) @Int & property
 
 --------------------------------------------------------------------------------
@@ -114,21 +114,21 @@ prop_fromState_lastState state =
 -- applyDeltasM
 --------------------------------------------------------------------------------
 
-prop_applyDeltasM_headState
+prop_applyDeltas_headState
     :: (Eq s, Show s) => s -> Fun (s, d) s -> [d] -> Property
-prop_applyDeltasM_headState state nextStateFn deltas =
+prop_applyDeltas_headState state nextStateFn deltas =
     Seq.headState result === state
   where
-    nextState = fmap (fmap Just) (applyFun2 nextStateFn)
-    Just result = Seq.applyDeltasM nextState (Seq.fromState state) deltas
+    nextState = applyFun2 nextStateFn
+    result = Seq.applyDeltas nextState (Seq.fromState state) deltas
 
-prop_applyDeltasM_size
+prop_applyDeltas_size
     :: (Eq s, Show s) => s -> Fun (s, d) s -> [d] -> Property
-prop_applyDeltasM_size state nextStateFn deltas =
+prop_applyDeltas_size state nextStateFn deltas =
     Seq.size result === length deltas
   where
-    nextState = fmap (fmap Just) (applyFun2 nextStateFn)
-    Just result = Seq.applyDeltasM nextState (Seq.fromState state) deltas
+    nextState = applyFun2 nextStateFn
+    result = Seq.applyDeltas nextState (Seq.fromState state) deltas
 
 --------------------------------------------------------------------------------
 -- dropHeads
@@ -154,10 +154,10 @@ prop_dropHeads_isSuffixOf
 prop_dropHeads_isSuffixOf (genStateDeltaSeq -> (seq, _nextState)) =
     all (uncurry Seq.isSuffixOf) (consecutivePairs (Seq.dropHeads seq)) === True
 
-prop_dropHeads_isValidM
+prop_dropHeads_isValid
     :: (Eq s, Eq d) => GenStateDeltaSeq s d -> Property
-prop_dropHeads_isValidM (genStateDeltaSeq -> (seq, nextState)) =
-    all (Seq.isValidM nextState) (Seq.dropHeads seq) === True
+prop_dropHeads_isValid (genStateDeltaSeq -> (seq, nextState)) =
+    all (Seq.isValid nextState) (Seq.dropHeads seq) === True
 
 --------------------------------------------------------------------------------
 -- dropLasts
@@ -183,10 +183,10 @@ prop_dropLasts_isPrefixOf
 prop_dropLasts_isPrefixOf (genStateDeltaSeq -> (seq, _nextState)) =
     all (uncurry Seq.isPrefixOf) (consecutivePairs (Seq.dropLasts seq)) === True
 
-prop_dropLasts_isValidM
+prop_dropLasts_isValid
     :: (Eq s, Eq d) => GenStateDeltaSeq s d -> Property
-prop_dropLasts_isValidM (genStateDeltaSeq -> (seq, nextState)) =
-    all (Seq.isValidM nextState) (Seq.dropLasts seq) === True
+prop_dropLasts_isValid (genStateDeltaSeq -> (seq, nextState)) =
+    all (Seq.isValid nextState) (Seq.dropLasts seq) === True
 
 --------------------------------------------------------------------------------
 -- Utility types and functions
@@ -200,12 +200,12 @@ data GenStateDeltaSeq s d = GenStateDeltaSeq
     deriving (Generic, Show)
 
 genStateDeltaSeq
-    :: GenStateDeltaSeq s d -> (StateDeltaSeq s d, (s -> d -> Maybe s))
+    :: GenStateDeltaSeq s d -> (StateDeltaSeq s d, (s -> d -> s))
 genStateDeltaSeq GenStateDeltaSeq {state, deltas, nextStateFn} =
     (seq, nextState)
   where
-    nextState = fmap (fmap Just) (applyFun2 nextStateFn)
-    Just seq = Seq.applyDeltasM nextState (Seq.fromState state) deltas
+    nextState = applyFun2 nextStateFn
+    seq = Seq.applyDeltas nextState (Seq.fromState state) deltas
 
 deriving instance (Eq s, Eq d, Eq (Fun (s, d) s)) => Eq (GenStateDeltaSeq s d)
 

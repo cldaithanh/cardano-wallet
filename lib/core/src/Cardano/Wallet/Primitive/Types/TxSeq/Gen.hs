@@ -12,12 +12,14 @@ import Cardano.Wallet.Primitive.Types.Address
     ( Address )
 import Cardano.Wallet.Primitive.Types.Coin
     ( Coin (..) )
+import Cardano.Wallet.Primitive.Types.StateDeltaSeq.Gen
+    ( genStateDeltaSeq )
 import Cardano.Wallet.Primitive.Types.TokenBundle.Gen
     ( genTokenBundlePartitionNonNull )
 import Cardano.Wallet.Primitive.Types.Tx
     ( Tx (..), TxOut (..) )
 import Cardano.Wallet.Primitive.Types.TxSeq
-    ( TxSeq )
+    ( TxSeq (..) )
 import Cardano.Wallet.Primitive.Types.Tx.Gen
     ( TxWithoutId (..)
     , txWithoutIdToTx
@@ -47,11 +49,8 @@ import qualified Data.Foldable as F
 --------------------------------------------------------------------------------
 
 genTxSeq :: UTxO -> Gen Address -> Gen TxSeq
-genTxSeq u genAddr = sized $ \txCount ->
-    foldM (const . genOne) (TxSeq.fromUTxO u) (replicate txCount ())
-  where
-    genOne :: TxSeq -> Gen TxSeq
-    genOne txs = (txs `TxSeq.appendTx`) <$> genTxFromUTxO u genAddr
+genTxSeq u genAddr = TxSeq <$>
+    genStateDeltaSeq (pure u) (`genTxFromUTxO` genAddr) (flip applyTxToUTxO)
 
 genTxFromUTxO :: UTxO -> Gen Address -> Gen Tx
 genTxFromUTxO u genAddr = do

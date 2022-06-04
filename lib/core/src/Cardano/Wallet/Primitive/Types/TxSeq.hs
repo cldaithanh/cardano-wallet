@@ -1,7 +1,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 
 module Cardano.Wallet.Primitive.Types.TxSeq
-    ( TxSeq
+    ( TxSeq (..)
     , fromUTxO
     , appendTx
     , appendTxM

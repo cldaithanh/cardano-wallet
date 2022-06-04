@@ -106,7 +106,7 @@ import Cardano.Wallet.Primitive.Types.Tx.Gen
     , shrinkTxOut
     )
 import Cardano.Wallet.Primitive.Types.TxSeq.Gen
-    ( genTxsFromUTxO, genTxSeq )
+    ( genTxSeq )
 import Cardano.Wallet.Primitive.Types.UTxO
     ( UTxO (..), balance, dom, excluding, filterByAddress, restrictedTo )
 import Cardano.Wallet.Primitive.Types.UTxO.Gen

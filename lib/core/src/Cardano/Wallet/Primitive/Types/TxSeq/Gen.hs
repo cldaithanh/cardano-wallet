@@ -28,8 +28,6 @@ import Cardano.Wallet.Primitive.Types.UTxO.Gen
     ( selectUTxOEntries )
 import Control.Monad
     ( foldM )
-import Data.Bifunctor
-    ( first )
 import Data.Maybe
     ( listToMaybe )
 import Test.QuickCheck
@@ -49,11 +47,11 @@ import qualified Data.Foldable as F
 --------------------------------------------------------------------------------
 
 genTxSeq :: UTxO -> Gen Address -> Gen TxSeq
-genTxSeq u genAddr = do
-    (txs, _) <- genTxsFromUTxO u genAddr
-    case TxSeq.fromUTxO u `TxSeq.appendTxsM` txs of
-        Nothing -> error "Unable to construct tx sequence"
-        Just s -> pure s
+genTxSeq u genAddr = sized $ \txCount ->
+    foldM (const . genOne) (TxSeq.fromUTxO u) (replicate txCount ())
+  where
+    genOne :: TxSeq -> Gen TxSeq
+    genOne txs = (txs `TxSeq.appendTx`) <$> genTxFromUTxO u genAddr
 
 genTxFromUTxO :: UTxO -> Gen Address -> Gen Tx
 genTxFromUTxO u genAddr = do
@@ -92,14 +90,7 @@ genTxFromUTxO u genAddr = do
             Nothing
         }
 
-genTxsFromUTxO :: UTxO -> Gen Address -> Gen ([Tx], UTxO)
-genTxsFromUTxO u0 genAddr = sized $ \txCount ->
-    first reverse <$> foldM (const . genOne) ([], u0) (replicate txCount ())
-  where
-    genOne :: ([Tx], UTxO) -> Gen ([Tx], UTxO)
-    genOne (txs, u) = do
-        tx <- genTxFromUTxO u genAddr
-        pure (tx : txs, applyTxToUTxO tx u)
+
 
 {-
 -- move this to separate module.

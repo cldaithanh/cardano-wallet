@@ -3,6 +3,7 @@
 module Cardano.Wallet.Primitive.Types.TxSeq
     ( TxSeq
     , fromUTxO
+    , appendTx
     , appendTxM
     , appendTxsM
     , dropHeadTx
@@ -53,6 +54,9 @@ headUTxO = Seq.headState . unTxSeq
 
 lastUTxO :: TxSeq -> UTxO
 lastUTxO = Seq.lastState . unTxSeq
+
+appendTx :: TxSeq -> Tx -> TxSeq
+appendTx = (TxSeq .) . Seq.applyDelta (flip applyTxToUTxO) . unTxSeq
 
 appendTxM :: MonadFail m => TxSeq -> Tx -> m TxSeq
 appendTxM = (fmap TxSeq .) . Seq.applyDeltaM safeAppendTx . unTxSeq

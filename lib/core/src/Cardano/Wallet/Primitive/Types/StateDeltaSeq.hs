@@ -61,7 +61,7 @@ data StateDeltaSeq state delta = StateDeltaSeq
     { head :: state
     , tail :: Vector (delta, state)
     }
-    deriving (Eq, Show)
+    deriving Eq
 
 data StateOrDelta state delta
     = State state
@@ -79,6 +79,9 @@ type MergeDelta delta = delta -> delta -> delta
 instance Bifunctor StateDeltaSeq where
     first = mapStates
     second = mapDeltas
+
+instance (Show state, Show delta) => Show (StateDeltaSeq state delta) where
+    show = show . toStateDeltaList
 
 --------------------------------------------------------------------------------
 -- Operations

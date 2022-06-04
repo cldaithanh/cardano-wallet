@@ -11,48 +11,19 @@ module Cardano.Wallet.Primitive.Types.UTxO.Gen
 
 import Prelude
 
-import Cardano.Wallet.Primitive.Model
-    ( applyTxToUTxO )
-import Cardano.Wallet.Primitive.Types.Address
-    ( Address )
-import Cardano.Wallet.Primitive.Types.Coin
-    ( Coin (..) )
-import Cardano.Wallet.Primitive.Types.TokenBundle.Gen
-    ( genTokenBundlePartitionNonNull )
 import Cardano.Wallet.Primitive.Types.Tx
-    ( Tx (..), TxIn, TxOut (..) )
+    ( TxIn, TxOut (..) )
 import Cardano.Wallet.Primitive.Types.Tx.Gen
-    ( TxWithoutId (..)
-    , genTxIn
-    , genTxInLargeRange
-    , genTxOut
-    , shrinkTxIn
-    , shrinkTxOut
-    , txWithoutIdToTx
-    )
+    ( genTxIn, genTxInLargeRange, genTxOut, shrinkTxIn, shrinkTxOut )
 import Cardano.Wallet.Primitive.Types.UTxO
     ( UTxO (..) )
 import Control.Monad
-    ( foldM, replicateM )
-import Data.Bifunctor
-    ( first )
-import Data.Maybe
-    ( listToMaybe )
+    ( replicateM )
 import Test.QuickCheck
-    ( Gen
-    , ShrinkState (..)
-    , choose
-    , chooseInt
-    , elements
-    , shrinkList
-    , sized
-    , vectorOf
-    )
+    ( Gen, choose, shrinkList, sized )
 import Test.QuickCheck.Extra
     ( selectMapEntries, shrinkInterleaved )
 
-import qualified Cardano.Wallet.Primitive.Types.TokenBundle as TokenBundle
-import qualified Data.Foldable as F
 import qualified Data.Map.Strict as Map
 
 --------------------------------------------------------------------------------

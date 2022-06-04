@@ -70,7 +70,7 @@ import Cardano.Wallet.Primitive.Types
 import Cardano.Wallet.Primitive.Types.Address
     ( Address (..) )
 import Cardano.Wallet.Primitive.Types.Address.Gen
-    ( Parity (..), addressParity, coarbitraryAddress, genAddress )
+    ( Parity (..), addressParity, coarbitraryAddress )
 import Cardano.Wallet.Primitive.Types.Coin
     ( Coin (..) )
 import Cardano.Wallet.Primitive.Types.Coin.Gen
@@ -105,8 +105,6 @@ import Cardano.Wallet.Primitive.Types.Tx.Gen
     , shrinkTxIn
     , shrinkTxOut
     )
-import Cardano.Wallet.Primitive.Types.TxSeq.Gen
-    ( genTxSeq )
 import Cardano.Wallet.Primitive.Types.UTxO
     ( UTxO (..), balance, dom, excluding, filterByAddress, restrictedTo )
 import Cardano.Wallet.Primitive.Types.UTxO.Gen
@@ -170,7 +168,6 @@ import Test.QuickCheck
     , counterexample
     , cover
     , elements
-    , forAll
     , forAllShrink
     , frequency
     , genericShrink
@@ -194,7 +191,6 @@ import Test.QuickCheck.Extra
 
 import qualified Cardano.Wallet.Primitive.Types.Coin as Coin
 import qualified Cardano.Wallet.Primitive.Types.TokenBundle as TokenBundle
-import qualified Cardano.Wallet.Primitive.Types.TxSeq as TxSeq
 import qualified Cardano.Wallet.Primitive.Types.UTxO as UTxO
 import qualified Data.ByteString as BS
 import qualified Data.Foldable as F
@@ -321,10 +317,6 @@ spec = do
     parallel $ describe "Light-mode" $ do
         it "discovery on blocks = discovery on summary" $
             property prop_discoverFromBlockData
-
-    parallel $ describe "Sequences of transactions" $ do
-        it "prop_genTxSeq_isValid" $
-            prop_genTxSeq_isValid & property
 
 {-------------------------------------------------------------------------------
                                 Properties
@@ -2279,10 +2271,6 @@ instance Show (RewardAccount -> Bool) where
 --------------------------------------------------------------------------------
 -- Sequences of transactions
 --------------------------------------------------------------------------------
-
-prop_genTxSeq_isValid :: Property
-prop_genTxSeq_isValid =
-    forAll (genTxSeq genUTxO genAddress) TxSeq.isValid
 
 _genBlocksFromTxs :: [Tx] -> Gen [Block]
 _genBlocksFromTxs _txs = undefined

@@ -226,13 +226,16 @@ isSuffixOf :: (Eq s, Eq d) => StateDeltaSeq s d -> StateDeltaSeq s d -> Bool
 isSuffixOf = L.isSuffixOf `on` F.toList . toStateDeltaList
 
 isValid :: (Eq s, Eq d) => ApplyDelta s d -> StateDeltaSeq s d -> Bool
-isValid = isValidM . (fmap Just <$>)
+isValid = ((Just True ==) .) . isValidM . (fmap Just <$>)
 
-isValidM :: (Eq s, Eq d) => ApplyDeltaM Maybe s d -> StateDeltaSeq s d -> Bool
-isValidM nextState seq@StateDeltaSeq {head} =
-    applyDeltasM nextState (fromState head) (toDeltaList seq)
-    ==
-    Just seq
+isValidM
+    :: forall m s d. (Monad m, Eq s, Eq d)
+    => ApplyDeltaM m s d
+    -> StateDeltaSeq s d
+    -> m Bool
+isValidM nextState seq@StateDeltaSeq {head} = (==)
+    <$> applyDeltasM nextState (fromState head) (toDeltaList seq)
+    <*> pure seq
 
 --------------------------------------------------------------------------------
 -- Utilities

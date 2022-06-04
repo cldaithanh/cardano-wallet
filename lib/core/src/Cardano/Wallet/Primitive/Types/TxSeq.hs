@@ -81,7 +81,7 @@ dropLastTxs :: TxSeq -> NonEmpty TxSeq
 dropLastTxs = fmap TxSeq . Seq.dropLasts . unTxSeq
 
 isValid :: TxSeq -> Bool
-isValid = Seq.isValidM (flip safeApplyTxToUTxO) . unTxSeq
+isValid = (Just True ==) . Seq.isValidM (flip safeApplyTxToUTxO) . unTxSeq
 
 --------------------------------------------------------------------------------
 -- Utility functions

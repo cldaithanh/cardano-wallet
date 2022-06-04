@@ -55,12 +55,10 @@ lastUTxO :: TxSeq -> UTxO
 lastUTxO = Seq.lastState . unTxSeq
 
 appendTxM :: MonadFail m => TxSeq -> Tx -> m TxSeq
-appendTxM s =
-    fmap TxSeq . Seq.applyDeltaM (flip safeApplyTxToUTxO) (unTxSeq s)
+appendTxM = (fmap TxSeq .) . Seq.applyDeltaM safeAppendTx . unTxSeq
 
 appendTxsM :: (Foldable f, MonadFail m) => TxSeq -> f Tx -> m TxSeq
-appendTxsM s =
-    fmap TxSeq . Seq.applyDeltasM (flip safeApplyTxToUTxO) (unTxSeq s)
+appendTxsM = (fmap TxSeq .) . Seq.applyDeltasM safeAppendTx . unTxSeq
 
 toTxs :: TxSeq -> [Tx]
 toTxs = Seq.toDeltaList . unTxSeq
@@ -81,7 +79,7 @@ dropLastTxs :: TxSeq -> NonEmpty TxSeq
 dropLastTxs = fmap TxSeq . Seq.dropLasts . unTxSeq
 
 isValid :: TxSeq -> Bool
-isValid = (Just True ==) . Seq.isValidM (flip safeApplyTxToUTxO) . unTxSeq
+isValid = (Just True ==) . Seq.isValidM safeAppendTx . unTxSeq
 
 --------------------------------------------------------------------------------
 -- Utility functions
@@ -96,6 +94,9 @@ canApplyTxToUTxO tx u =  (&&)
     inputRefIsValid (ti, c) = case UTxO.lookup ti u of
         Nothing -> False
         Just to -> Tx.txOutCoin to == c
+
+safeAppendTx :: MonadFail m => UTxO -> Tx -> m UTxO
+safeAppendTx = flip safeApplyTxToUTxO
 
 safeApplyTxToUTxO :: MonadFail m => Tx -> UTxO -> m UTxO
 safeApplyTxToUTxO tx u

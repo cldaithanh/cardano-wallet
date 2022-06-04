@@ -323,8 +323,8 @@ spec = do
             property prop_discoverFromBlockData
 
     parallel $ describe "Sequences of transactions" $ do
-        it "prop_applyTxsToUTxO" $
-            prop_applyTxsToUTxO & property
+        it "prop_genTxSeq_isValid" $
+            prop_genTxSeq_isValid & property
 
 {-------------------------------------------------------------------------------
                                 Properties
@@ -2280,14 +2280,9 @@ instance Show (RewardAccount -> Bool) where
 -- Sequences of transactions
 --------------------------------------------------------------------------------
 
-applyTxsToUTxO :: [Tx] -> UTxO -> UTxO
-applyTxsToUTxO txs u0 = F.foldl' (flip applyTxToUTxO) u0 txs
-
-prop_applyTxsToUTxO :: Property
-prop_applyTxsToUTxO =
-    forAll (genTxSeq genUTxO genAddress) $ \txs ->
-    applyTxsToUTxO (TxSeq.toTxs txs) (TxSeq.headUTxO txs)
-        === TxSeq.lastUTxO txs
+prop_genTxSeq_isValid :: Property
+prop_genTxSeq_isValid =
+    forAll (genTxSeq genUTxO genAddress) TxSeq.isValid
 
 _genBlocksFromTxs :: [Tx] -> Gen [Block]
 _genBlocksFromTxs _txs = undefined

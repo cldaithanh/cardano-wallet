@@ -14,6 +14,7 @@ module Cardano.Wallet.Primitive.Types.StateDeltaSeq
     , isEquivalentTo
     , isPrefixOf
     , isSuffixOf
+    , isValid
     , isValidM
     , dropHead
     , dropHeads
@@ -219,6 +220,9 @@ isPrefixOf = L.isPrefixOf `on` F.toList . toStateDeltaList
 
 isSuffixOf :: (Eq s, Eq d) => StateDeltaSeq s d -> StateDeltaSeq s d -> Bool
 isSuffixOf = L.isSuffixOf `on` F.toList . toStateDeltaList
+
+isValid :: (Eq s, Eq d) => ApplyDelta s d -> StateDeltaSeq s d -> Bool
+isValid = isValidM . (fmap Just <$>)
 
 isValidM :: (Eq s, Eq d) => ApplyDeltaM Maybe s d -> StateDeltaSeq s d -> Bool
 isValidM nextState seq@StateDeltaSeq {head} =

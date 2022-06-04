@@ -51,7 +51,7 @@ import qualified Data.Foldable as F
 genTxSeq :: UTxO -> Gen Address -> Gen TxSeq
 genTxSeq u genAddr = do
     (txs, _) <- genTxsFromUTxO u genAddr
-    case TxSeq.fromUTxO u `TxSeq.appendTxs` txs of
+    case TxSeq.fromUTxO u `TxSeq.appendTxsM` txs of
         Nothing -> error "Unable to construct tx sequence"
         Just s -> pure s
 

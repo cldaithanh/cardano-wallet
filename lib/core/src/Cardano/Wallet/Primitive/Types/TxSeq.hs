@@ -3,8 +3,8 @@
 module Cardano.Wallet.Primitive.Types.TxSeq
     ( TxSeq
     , fromUTxO
-    , appendTx
-    , appendTxs
+    , appendTxM
+    , appendTxsM
     , dropHeadTx
     , dropHeadTxs
     , dropLastTx
@@ -54,11 +54,13 @@ headUTxO = Seq.headState . unTxSeq
 lastUTxO :: TxSeq -> UTxO
 lastUTxO = Seq.lastState . unTxSeq
 
-appendTx :: MonadFail m => TxSeq -> Tx -> m TxSeq
-appendTx s = fmap TxSeq . Seq.append (flip safeApplyTxToUTxO) (unTxSeq s)
+appendTxM :: MonadFail m => TxSeq -> Tx -> m TxSeq
+appendTxM s =
+    fmap TxSeq . Seq.appendDeltaM (flip safeApplyTxToUTxO) (unTxSeq s)
 
-appendTxs :: (Foldable f, MonadFail m) => TxSeq -> f Tx -> m TxSeq
-appendTxs s = fmap TxSeq . Seq.appendMany (flip safeApplyTxToUTxO) (unTxSeq s)
+appendTxsM :: (Foldable f, MonadFail m) => TxSeq -> f Tx -> m TxSeq
+appendTxsM s =
+    fmap TxSeq . Seq.appendDeltasM (flip safeApplyTxToUTxO) (unTxSeq s)
 
 toTxs :: TxSeq -> [Tx]
 toTxs = Seq.toDeltaList . unTxSeq
@@ -79,7 +81,7 @@ dropLastTxs :: TxSeq -> NonEmpty TxSeq
 dropLastTxs = fmap TxSeq . Seq.dropLasts . unTxSeq
 
 isValid :: TxSeq -> Bool
-isValid = Seq.isValid (flip safeApplyTxToUTxO) . unTxSeq
+isValid = Seq.isValidM (flip safeApplyTxToUTxO) . unTxSeq
 
 --------------------------------------------------------------------------------
 -- Utility functions

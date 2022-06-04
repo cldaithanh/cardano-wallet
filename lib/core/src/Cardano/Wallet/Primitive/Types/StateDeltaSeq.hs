@@ -4,15 +4,15 @@
 
 module Cardano.Wallet.Primitive.Types.StateDeltaSeq
     ( StateDeltaSeq
-    , append
-    , appendMany
+    , appendDeltaM
+    , appendDeltasM
     , fromState
     , headState
     , lastState
     , isEquivalentTo
     , isPrefixOf
     , isSuffixOf
-    , isValid
+    , isValidM
     , dropHead
     , dropHeads
     , dropLast
@@ -54,6 +54,10 @@ data StateDeltaSeq state delta = StateDeltaSeq
     }
     deriving (Eq, Show)
 
+type ApplyDelta state delta = state -> delta -> state
+type ApplyDeltaM m state delta = state -> delta -> m state
+type MergeDelta delta = delta -> delta -> delta
+
 instance Bifunctor StateDeltaSeq where
     first f StateDeltaSeq {head, tail} = StateDeltaSeq
         { head = f head
@@ -89,23 +93,23 @@ toDeltaList = fmap fst . F.toList . tail
 toStateList :: StateDeltaSeq s d -> NonEmpty s
 toStateList StateDeltaSeq {head, tail} = head :| (snd <$> F.toList tail)
 
-append
+appendDeltaM
     :: Functor m
     => (s -> d -> m s)
     -> StateDeltaSeq s d
     -> d
     -> m (StateDeltaSeq s d)
-append nextState seq@StateDeltaSeq {head, tail} delta =
+appendDeltaM nextState seq@StateDeltaSeq {head, tail} delta =
     nextState (lastState seq) delta <&> \state -> StateDeltaSeq
         {head, tail = tail `V.snoc` (delta, state)}
 
-appendMany
+appendDeltasM
     :: (Foldable f, Monad m)
     => (s -> d -> m s)
     -> StateDeltaSeq s d
     -> f d
     -> m (StateDeltaSeq s d)
-appendMany = foldM . append
+appendDeltasM = foldM . appendDeltaM
 
 iterate
     :: (StateDeltaSeq s d -> Maybe (StateDeltaSeq s d))
@@ -183,9 +187,9 @@ isPrefixOf = L.isPrefixOf `on` F.toList . toStateDeltaList
 isSuffixOf :: (Eq s, Eq d) => StateDeltaSeq s d -> StateDeltaSeq s d -> Bool
 isSuffixOf = L.isSuffixOf `on` F.toList . toStateDeltaList
 
-isValid :: (Eq s, Eq d) => (s -> d -> Maybe s) -> StateDeltaSeq s d -> Bool
-isValid nextState seq@StateDeltaSeq {head} =
-    appendMany nextState (fromState head) (toDeltaList seq)
+isValidM :: (Eq s, Eq d) => (s -> d -> Maybe s) -> StateDeltaSeq s d -> Bool
+isValidM nextState seq@StateDeltaSeq {head} =
+    appendDeltasM nextState (fromState head) (toDeltaList seq)
     ==
     Just seq
 

@@ -2,6 +2,11 @@
 {-# LANGUAGE MultiParamTypeClasses #-}
 
 module Cardano.Wallet.Primitive.Types.TxSeq.Gen
+    ( ShrinkableTxSeq
+    , genTxSeq
+    , shrinkTxSeq
+    , unwrapTxSeq
+    )
     where
 
 import Prelude
@@ -13,7 +18,11 @@ import Cardano.Wallet.Primitive.Types.Address
 import Cardano.Wallet.Primitive.Types.Coin
     ( Coin (..) )
 import Cardano.Wallet.Primitive.Types.StateDeltaSeq.Gen
-    ( genStateDeltaSeq )
+    ( ShrinkableStateDeltaSeq
+    , genStateDeltaSeq
+    , shrinkStateDeltaSeq
+    , unwrapStateDeltaSeq
+    )
 import Cardano.Wallet.Primitive.Types.TokenBundle.Gen
     ( genTokenBundlePartitionNonNull )
 import Cardano.Wallet.Primitive.Types.Tx
@@ -38,9 +47,18 @@ import qualified Data.Foldable as F
 -- Transaction sequences
 --------------------------------------------------------------------------------
 
-genTxSeq :: Gen UTxO -> Gen Address -> Gen TxSeq
-genTxSeq genUTxO genAddr = TxSeq <$>
+newtype ShrinkableTxSeq = ShrinkableTxSeq (ShrinkableStateDeltaSeq UTxO Tx)
+    deriving (Eq, Show)
+
+unwrapTxSeq :: ShrinkableTxSeq -> TxSeq
+unwrapTxSeq (ShrinkableTxSeq s) = TxSeq (unwrapStateDeltaSeq s)
+
+genTxSeq :: Gen UTxO -> Gen Address -> Gen ShrinkableTxSeq
+genTxSeq genUTxO genAddr = ShrinkableTxSeq <$>
     genStateDeltaSeq genUTxO (`genTxFromUTxO` genAddr) (flip applyTxToUTxO)
+
+shrinkTxSeq :: ShrinkableTxSeq -> [ShrinkableTxSeq]
+shrinkTxSeq (ShrinkableTxSeq s) = ShrinkableTxSeq <$> shrinkStateDeltaSeq s
 
 genTxFromUTxO :: UTxO -> Gen Address -> Gen Tx
 genTxFromUTxO u genAddr = do
@@ -78,27 +96,3 @@ genTxFromUTxO u genAddr = do
         , scriptValidity =
             Nothing
         }
-
-{-
--- move this to separate module.
-
-data TxSeq = TxSeq UTxO [(Tx, UTxO)]
-
-instance ShrinkState TxSeqShrinkState TxSeq where
-    shrinkInit _ = TxSeqShrinkStateUnshrunk
-    shrinkState txSeq = \case
-        TxSeqShrinkStateUnshrunk ->
-            (, TxSeqShrinkStatePrefix) <$> txSeqPrefixes txSeq
-        TxSeqShrinkStatePrefix ->
-            (, TxSeqShrinkStateSuffix) <$> txSeqSuffixes txSeq
-        TxSeqShrinkStateSuffix ->
-            []
-
--- Can try to remove suffix
--- Can try to remove prefix
---
-data TxSeqShrinkState
-    = TxSeqShrinkStateUnshrunk
-    | TxSeqShrinkStatePrefix
-    | TxSeqShrinkStateSuffix
--}

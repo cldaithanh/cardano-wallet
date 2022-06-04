@@ -81,7 +81,7 @@ instance Bifunctor StateDeltaSeq where
     second = mapDeltas
 
 instance (Show state, Show delta) => Show (StateDeltaSeq state delta) where
-    show = show . toStateDeltaList
+    show = show . NE.toList . toStateDeltaList
 
 --------------------------------------------------------------------------------
 -- Operations

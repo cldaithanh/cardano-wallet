@@ -63,6 +63,11 @@ data StateDeltaSeq state delta = StateDeltaSeq
     }
     deriving (Eq, Show)
 
+data StateOrDelta state delta
+    = State state
+    | Delta delta
+    deriving (Eq, Show)
+
 type ApplyDelta state delta = state -> delta -> state
 type ApplyDeltaM m state delta = state -> delta -> m state
 type MergeDelta delta = delta -> delta -> delta
@@ -81,15 +86,11 @@ instance Bifunctor StateDeltaSeq where
 
 mapDeltas :: (d1 -> d2) -> StateDeltaSeq s d1 -> StateDeltaSeq s d2
 mapDeltas f StateDeltaSeq {head, tail} = StateDeltaSeq
-    { head
-    , tail = first f <$> tail
-    }
+    {head, tail = first f <$> tail}
 
 mapStates :: (s1 -> s2) -> StateDeltaSeq s1 d -> StateDeltaSeq s2 d
 mapStates f StateDeltaSeq {head, tail} = StateDeltaSeq
-    { head = f head
-    , tail = second f <$> tail
-    }
+    {head = f head, tail = second f <$> tail}
 
 headState :: StateDeltaSeq s d -> s
 headState StateDeltaSeq {head} = head
@@ -105,10 +106,10 @@ size = length . tail
 fromState :: s -> StateDeltaSeq s d
 fromState state = StateDeltaSeq state V.empty
 
-toStateDeltaList :: StateDeltaSeq s d -> NonEmpty (Either s d)
+toStateDeltaList :: StateDeltaSeq s d -> NonEmpty (StateOrDelta s d)
 toStateDeltaList s = NE.fromList $ interleave
-    (Left  <$> F.toList (toStateList s))
-    (Right <$> F.toList (toDeltaList s))
+    (State <$> F.toList (toStateList s))
+    (Delta <$> F.toList (toDeltaList s))
 
 toDeltaList :: StateDeltaSeq s d -> [d]
 toDeltaList = fmap fst . F.toList . tail
@@ -229,6 +230,10 @@ isValidM nextState seq@StateDeltaSeq {head} =
     applyDeltasM nextState (fromState head) (toDeltaList seq)
     ==
     Just seq
+
+--------------------------------------------------------------------------------
+-- Utilities
+--------------------------------------------------------------------------------
 
 interleave :: [a] -> [a] -> [a]
 interleave (a1 : a1s) (a2 : a2s) = a1 : a2 : interleave a1s a2s

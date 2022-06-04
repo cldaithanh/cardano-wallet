@@ -56,11 +56,11 @@ lastUTxO = Seq.lastState . unTxSeq
 
 appendTxM :: MonadFail m => TxSeq -> Tx -> m TxSeq
 appendTxM s =
-    fmap TxSeq . Seq.appendDeltaM (flip safeApplyTxToUTxO) (unTxSeq s)
+    fmap TxSeq . Seq.applyDeltaM (flip safeApplyTxToUTxO) (unTxSeq s)
 
 appendTxsM :: (Foldable f, MonadFail m) => TxSeq -> f Tx -> m TxSeq
 appendTxsM s =
-    fmap TxSeq . Seq.appendDeltasM (flip safeApplyTxToUTxO) (unTxSeq s)
+    fmap TxSeq . Seq.applyDeltasM (flip safeApplyTxToUTxO) (unTxSeq s)
 
 toTxs :: TxSeq -> [Tx]
 toTxs = Seq.toDeltaList . unTxSeq

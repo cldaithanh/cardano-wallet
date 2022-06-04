@@ -54,12 +54,12 @@ spec = do
             prop_fromState_lastState
                 @(Sum Int) & property
 
-    describe "appendDeltasM" $ do
-        it "prop_appendDeltasM_headState" $
-            prop_appendDeltasM_headState
+    describe "applyDeltasM" $ do
+        it "prop_applyDeltasM_headState" $
+            prop_applyDeltasM_headState
                 @(Sum Int) @Int & property
-        it "prop_appendDeltasM_size" $
-            prop_appendDeltasM_size
+        it "prop_applyDeltasM_size" $
+            prop_applyDeltasM_size
                 @(Sum Int) @Int & property
 
     describe "dropHeads" $ do
@@ -111,24 +111,24 @@ prop_fromState_lastState state =
     Seq.lastState (Seq.fromState state) === state
 
 --------------------------------------------------------------------------------
--- appendDeltasM
+-- applyDeltasM
 --------------------------------------------------------------------------------
 
-prop_appendDeltasM_headState
+prop_applyDeltasM_headState
     :: (Eq s, Show s) => s -> Fun (s, d) s -> [d] -> Property
-prop_appendDeltasM_headState state nextStateFn deltas =
+prop_applyDeltasM_headState state nextStateFn deltas =
     Seq.headState result === state
   where
     nextState = fmap (fmap Just) (applyFun2 nextStateFn)
-    Just result = Seq.appendDeltasM nextState (Seq.fromState state) deltas
+    Just result = Seq.applyDeltasM nextState (Seq.fromState state) deltas
 
-prop_appendDeltasM_size
+prop_applyDeltasM_size
     :: (Eq s, Show s) => s -> Fun (s, d) s -> [d] -> Property
-prop_appendDeltasM_size state nextStateFn deltas =
+prop_applyDeltasM_size state nextStateFn deltas =
     Seq.size result === length deltas
   where
     nextState = fmap (fmap Just) (applyFun2 nextStateFn)
-    Just result = Seq.appendDeltasM nextState (Seq.fromState state) deltas
+    Just result = Seq.applyDeltasM nextState (Seq.fromState state) deltas
 
 --------------------------------------------------------------------------------
 -- dropHeads
@@ -205,7 +205,7 @@ genStateDeltaSeq GenStateDeltaSeq {state, deltas, nextStateFn} =
     (seq, nextState)
   where
     nextState = fmap (fmap Just) (applyFun2 nextStateFn)
-    Just seq = Seq.appendDeltasM nextState (Seq.fromState state) deltas
+    Just seq = Seq.applyDeltasM nextState (Seq.fromState state) deltas
 
 deriving instance (Eq s, Eq d, Eq (Fun (s, d) s)) => Eq (GenStateDeltaSeq s d)
 

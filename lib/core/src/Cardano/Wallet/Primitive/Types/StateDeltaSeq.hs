@@ -4,8 +4,10 @@
 
 module Cardano.Wallet.Primitive.Types.StateDeltaSeq
     ( StateDeltaSeq
-    , appendDeltaM
-    , appendDeltasM
+    , applyDelta
+    , applyDeltas
+    , applyDeltaM
+    , applyDeltasM
     , fromState
     , headState
     , lastState
@@ -31,6 +33,8 @@ import Prelude hiding
 
 import Control.Monad
     ( foldM )
+import Control.Monad.Identity
+    ( Identity (..) )
 import Data.Bifunctor
     ( Bifunctor (..) )
 import Data.Function
@@ -48,6 +52,10 @@ import qualified Data.List.NonEmpty as NE
 import qualified Data.Vector as V
 import qualified Data.Vector.Extra as V
 
+--------------------------------------------------------------------------------
+-- Types
+--------------------------------------------------------------------------------
+
 data StateDeltaSeq state delta = StateDeltaSeq
     { head :: state
     , tail :: Vector (delta, state)
@@ -58,15 +66,29 @@ type ApplyDelta state delta = state -> delta -> state
 type ApplyDeltaM m state delta = state -> delta -> m state
 type MergeDelta delta = delta -> delta -> delta
 
+--------------------------------------------------------------------------------
+-- Instances
+--------------------------------------------------------------------------------
+
 instance Bifunctor StateDeltaSeq where
-    first f StateDeltaSeq {head, tail} = StateDeltaSeq
-        { head = f head
-        , tail = second f <$> tail
-        }
-    second f StateDeltaSeq {head, tail} = StateDeltaSeq
-        { head
-        , tail = first f <$> tail
-        }
+    first = mapStates
+    second = mapDeltas
+
+--------------------------------------------------------------------------------
+-- Operations
+--------------------------------------------------------------------------------
+
+mapDeltas :: (d1 -> d2) -> StateDeltaSeq s d1 -> StateDeltaSeq s d2
+mapDeltas f StateDeltaSeq {head, tail} = StateDeltaSeq
+    { head
+    , tail = first f <$> tail
+    }
+
+mapStates :: (s1 -> s2) -> StateDeltaSeq s1 d -> StateDeltaSeq s2 d
+mapStates f StateDeltaSeq {head, tail} = StateDeltaSeq
+    { head = f head
+    , tail = second f <$> tail
+    }
 
 headState :: StateDeltaSeq s d -> s
 headState StateDeltaSeq {head} = head
@@ -93,23 +115,34 @@ toDeltaList = fmap fst . F.toList . tail
 toStateList :: StateDeltaSeq s d -> NonEmpty s
 toStateList StateDeltaSeq {head, tail} = head :| (snd <$> F.toList tail)
 
-appendDeltaM
+applyDelta :: ApplyDelta s d -> StateDeltaSeq s d -> d -> StateDeltaSeq s d
+applyDelta = ((runIdentity .) .) . applyDeltaM . (fmap Identity <$>)
+
+applyDeltas
+    :: Foldable f
+    => ApplyDelta s d
+    -> StateDeltaSeq s d
+    -> f d
+    -> StateDeltaSeq s d
+applyDeltas = F.foldl' . applyDelta
+
+applyDeltaM
     :: Functor m
     => ApplyDeltaM m s d
     -> StateDeltaSeq s d
     -> d
     -> m (StateDeltaSeq s d)
-appendDeltaM nextState seq@StateDeltaSeq {head, tail} delta =
+applyDeltaM nextState seq@StateDeltaSeq {head, tail} delta =
     nextState (lastState seq) delta <&> \state -> StateDeltaSeq
         {head, tail = tail `V.snoc` (delta, state)}
 
-appendDeltasM
+applyDeltasM
     :: (Foldable f, Monad m)
     => ApplyDeltaM m s d
     -> StateDeltaSeq s d
     -> f d
     -> m (StateDeltaSeq s d)
-appendDeltasM = foldM . appendDeltaM
+applyDeltasM = foldM . applyDeltaM
 
 iterate
     :: (StateDeltaSeq s d -> Maybe (StateDeltaSeq s d))
@@ -189,7 +222,7 @@ isSuffixOf = L.isSuffixOf `on` F.toList . toStateDeltaList
 
 isValidM :: (Eq s, Eq d) => ApplyDeltaM Maybe s d -> StateDeltaSeq s d -> Bool
 isValidM nextState seq@StateDeltaSeq {head} =
-    appendDeltasM nextState (fromState head) (toDeltaList seq)
+    applyDeltasM nextState (fromState head) (toDeltaList seq)
     ==
     Just seq
 

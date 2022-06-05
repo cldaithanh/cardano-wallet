@@ -81,11 +81,11 @@ shrinkTxSeq ShrinkableTxSeq {availableShrinkActions, txSeq} =
                 applyShrinkAction shrinkAction txSeq
   where
     applyShrinkAction :: TxSeqShrinkAction -> TxSeq -> [TxSeq]
-    applyShrinkAction = \case
+    applyShrinkAction = fmap NE.toList . \case
         DropHeadTxs ->
-            NE.toList . TxSeq.dropHeadTxs
+            TxSeq.dropHeadTxs
         DropLastTxs ->
-            NE.toList . TxSeq.dropLastTxs
+            TxSeq.dropLastTxs
 
 genTxFromUTxO :: Gen Address -> UTxO -> Gen Tx
 genTxFromUTxO genAddr u = do

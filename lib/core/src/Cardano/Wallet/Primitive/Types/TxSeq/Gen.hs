@@ -1,5 +1,7 @@
 {-# LANGUAGE DuplicateRecordFields #-}
+{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE NamedFieldPuns #-}
 
 module Cardano.Wallet.Primitive.Types.TxSeq.Gen
     ( ShrinkableTxSeq
@@ -9,20 +11,13 @@ module Cardano.Wallet.Primitive.Types.TxSeq.Gen
     )
     where
 
-import Prelude
+import Prelude hiding
+    ( sequence )
 
-import Cardano.Wallet.Primitive.Model
-    ( applyTxToUTxO )
 import Cardano.Wallet.Primitive.Types.Address
     ( Address )
 import Cardano.Wallet.Primitive.Types.Coin
     ( Coin (..) )
-import Cardano.Wallet.Primitive.Types.StateDeltaSeq.Gen
-    ( ShrinkableStateDeltaSeq
-    , genStateDeltaSeq
-    , shrinkStateDeltaSeq
-    , unwrapStateDeltaSeq
-    )
 import Cardano.Wallet.Primitive.Types.TokenBundle.Gen
     ( genTokenBundlePartitionNonNull )
 import Cardano.Wallet.Primitive.Types.Tx
@@ -37,28 +32,58 @@ import Cardano.Wallet.Primitive.Types.UTxO.Gen
     ( selectUTxOEntries )
 import Data.Maybe
     ( listToMaybe )
+import Safe
+    ( succSafe )
 import Test.QuickCheck
-    ( Gen, chooseInt, elements, vectorOf )
+    ( Gen, chooseInt, elements, sized, vectorOf )
 
 import qualified Cardano.Wallet.Primitive.Types.TokenBundle as TokenBundle
+import qualified Cardano.Wallet.Primitive.Types.TxSeq as TxSeq
 import qualified Data.Foldable as F
+import qualified Data.List.NonEmpty as NE
 
 --------------------------------------------------------------------------------
 -- Transaction sequences
 --------------------------------------------------------------------------------
 
-newtype ShrinkableTxSeq = ShrinkableTxSeq (ShrinkableStateDeltaSeq UTxO Tx)
+data ShrinkableTxSeq = ShrinkableTxSeq
+    { shrinkAction
+        :: TxSeqShrinkAction
+    , sequence
+        :: TxSeq
+    }
     deriving (Eq, Show)
 
+data TxSeqShrinkAction
+    = DropHeadTxs
+    | DropLastTxs
+    | NoShrink
+    deriving (Bounded, Enum, Eq, Show)
+
+applyTxSeqShrinkAction
+    :: TxSeqShrinkAction -> TxSeq -> [TxSeq]
+applyTxSeqShrinkAction = \case
+    DropHeadTxs ->
+        NE.toList . TxSeq.dropHeadTxs
+    DropLastTxs ->
+        NE.toList . TxSeq.dropLastTxs
+    NoShrink ->
+        const []
+
 unwrapTxSeq :: ShrinkableTxSeq -> TxSeq
-unwrapTxSeq (ShrinkableTxSeq s) = TxSeq (unwrapStateDeltaSeq s)
+unwrapTxSeq = sequence
 
 genTxSeq :: Gen UTxO -> Gen Address -> Gen ShrinkableTxSeq
-genTxSeq genUTxO genAddr = ShrinkableTxSeq <$>
-    genStateDeltaSeq genUTxO (`genTxFromUTxO` genAddr) (flip applyTxToUTxO)
+genTxSeq = (fmap . fmap . fmap $ ShrinkableTxSeq minBound) genTxSeqRaw
+
+genTxSeqRaw :: Gen UTxO -> Gen Address -> Gen TxSeq
+genTxSeqRaw genUTxO genAddr = sized $ \size ->
+    TxSeq.unfoldNM size (`genTxFromUTxO` genAddr) =<< genUTxO
 
 shrinkTxSeq :: ShrinkableTxSeq -> [ShrinkableTxSeq]
-shrinkTxSeq (ShrinkableTxSeq s) = ShrinkableTxSeq <$> shrinkStateDeltaSeq s
+shrinkTxSeq ShrinkableTxSeq {shrinkAction, sequence} =
+    ShrinkableTxSeq (succSafe shrinkAction) <$>
+    applyTxSeqShrinkAction shrinkAction sequence
 
 genTxFromUTxO :: UTxO -> Gen Address -> Gen Tx
 genTxFromUTxO u genAddr = do

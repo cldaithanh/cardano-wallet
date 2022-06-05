@@ -3,6 +3,7 @@
 module Cardano.Wallet.Primitive.Types.TxSeq
     ( TxSeq (..)
     , fromUTxO
+    , unfoldNM
     , appendTx
     , appendTxM
     , appendTxsM
@@ -46,6 +47,11 @@ newtype TxSeq = TxSeq {unTxSeq :: StateDeltaSeq UTxO Tx}
 -- Public interface
 --------------------------------------------------------------------------------
 
+unfoldNM :: Monad m => Int -> (UTxO -> m Tx) -> UTxO -> m TxSeq
+unfoldNM i nextTx
+    = fmap TxSeq
+    . Seq.unfoldNM i nextTx ((fmap . fmap $ pure) (flip applyTxToUTxO))
+
 fromUTxO :: UTxO -> TxSeq
 fromUTxO = TxSeq . Seq.fromState
 
@@ -85,9 +91,24 @@ dropLastTxs = fmap TxSeq . Seq.dropLasts . unTxSeq
 isValid :: TxSeq -> Bool
 isValid = (Just True ==) . Seq.isValidM safeAppendTx . unTxSeq
 
+deleteSingleTxIn :: TxSeq -> TxIn -> TxSeq
+deleteSingleTxIn (TxSeq s) i = undefined
+
+deleteSingleTxIns :: TxSeq -> [TxSeq]
+deleteSingleTxIns = undefined
+
+deleteTxIns :: TxSeq -> [TxSeq]
+deleteTxIns = undefined
+
 --------------------------------------------------------------------------------
 -- Utility functions
 --------------------------------------------------------------------------------
+
+mergeTxs :: UTxO -> Tx -> Tx -> Tx
+mergeTxs u0 t1 t2 = utxosToTx u0 (u0 & applyTxToUTxO t1 & applyTxToUTxO t2)
+
+utxosToTx :: UTxO -> UTxO -> Tx
+utxosToTx = undefined
 
 canApplyTxToUTxO :: Tx -> UTxO -> Bool
 canApplyTxToUTxO tx u =  (&&)

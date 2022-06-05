@@ -99,10 +99,9 @@ unfoldNM i nextDelta nextState startState = loop i (fromState startState)
   where
     loop !j !seq
         | j <= 0 = pure seq
-        | otherwise = do
-            d <- nextDelta (lastState seq)
-            seq' <- applyDeltaM nextState seq d
-            loop (j - 1) seq'
+        | otherwise = loop (j - 1)
+            =<< applyDeltaM nextState seq
+            =<< nextDelta (lastState seq)
 
 mapDeltas :: (d1 -> d2) -> StateDeltaSeq s d1 -> StateDeltaSeq s d2
 mapDeltas f StateDeltaSeq {head, tail} = StateDeltaSeq

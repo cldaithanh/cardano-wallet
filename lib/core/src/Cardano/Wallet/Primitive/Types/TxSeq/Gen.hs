@@ -11,8 +11,7 @@ module Cardano.Wallet.Primitive.Types.TxSeq.Gen
     )
     where
 
-import Prelude hiding
-    ( sequence )
+import Prelude
 
 import Cardano.Wallet.Primitive.Types.Address
     ( Address )
@@ -32,8 +31,6 @@ import Cardano.Wallet.Primitive.Types.UTxO.Gen
     ( selectUTxOEntries )
 import Data.Maybe
     ( listToMaybe )
-import Safe
-    ( succSafe )
 import Test.QuickCheck
     ( Gen, chooseInt, elements, sized, vectorOf )
 
@@ -47,9 +44,9 @@ import qualified Data.List.NonEmpty as NE
 --------------------------------------------------------------------------------
 
 data ShrinkableTxSeq = ShrinkableTxSeq
-    { shrinkAction
-        :: TxSeqShrinkAction
-    , sequence
+    { availableShrinkActions
+        :: [TxSeqShrinkAction]
+    , txSeq
         :: TxSeq
     }
     deriving (Eq, Show)
@@ -57,36 +54,41 @@ data ShrinkableTxSeq = ShrinkableTxSeq
 data TxSeqShrinkAction
     = DropHeadTxs
     | DropLastTxs
-    | NoShrink
-    deriving (Bounded, Enum, Eq, Show)
-
-applyTxSeqShrinkAction
-    :: TxSeqShrinkAction -> TxSeq -> [TxSeq]
-applyTxSeqShrinkAction = \case
-    DropHeadTxs ->
-        NE.toList . TxSeq.dropHeadTxs
-    DropLastTxs ->
-        NE.toList . TxSeq.dropLastTxs
-    NoShrink ->
-        const []
+    deriving (Eq, Show)
 
 unwrapTxSeq :: ShrinkableTxSeq -> TxSeq
-unwrapTxSeq = sequence
+unwrapTxSeq = txSeq
 
 genTxSeq :: Gen UTxO -> Gen Address -> Gen ShrinkableTxSeq
-genTxSeq = (fmap . fmap . fmap $ ShrinkableTxSeq minBound) genTxSeqRaw
-
-genTxSeqRaw :: Gen UTxO -> Gen Address -> Gen TxSeq
-genTxSeqRaw genUTxO genAddr = sized $ \size ->
-    TxSeq.unfoldNM size (`genTxFromUTxO` genAddr) =<< genUTxO
+genTxSeq genUTxO genAddr = fmap makeShrinkable $ sized $ \size ->
+    TxSeq.unfoldNM size (genTxFromUTxO genAddr) =<< genUTxO
+  where
+    makeShrinkable :: TxSeq -> ShrinkableTxSeq
+    makeShrinkable txSeq = ShrinkableTxSeq
+        { availableShrinkActions =
+            [ DropHeadTxs
+            , DropLastTxs
+            ]
+        , txSeq
+        }
 
 shrinkTxSeq :: ShrinkableTxSeq -> [ShrinkableTxSeq]
-shrinkTxSeq ShrinkableTxSeq {shrinkAction, sequence} =
-    ShrinkableTxSeq (succSafe shrinkAction) <$>
-    applyTxSeqShrinkAction shrinkAction sequence
+shrinkTxSeq ShrinkableTxSeq {availableShrinkActions, txSeq} =
+    case availableShrinkActions of
+        [] -> []
+        shrinkAction : remainingShrinkActions ->
+            ShrinkableTxSeq remainingShrinkActions <$>
+                applyShrinkAction shrinkAction txSeq
+  where
+    applyShrinkAction :: TxSeqShrinkAction -> TxSeq -> [TxSeq]
+    applyShrinkAction = \case
+        DropHeadTxs ->
+            NE.toList . TxSeq.dropHeadTxs
+        DropLastTxs ->
+            NE.toList . TxSeq.dropLastTxs
 
-genTxFromUTxO :: UTxO -> Gen Address -> Gen Tx
-genTxFromUTxO u genAddr = do
+genTxFromUTxO :: Gen Address -> UTxO -> Gen Tx
+genTxFromUTxO genAddr u = do
     (inputs, _) <-
         selectUTxOEntries u =<< chooseInt (1, 4)
     (collateralInputs, _) <-

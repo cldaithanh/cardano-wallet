@@ -39,7 +39,7 @@ import Cardano.Wallet.Api.Types
     , EncodeAddress
     , EncodeStakeAddress
     )
-import Cardano.Wallet.DB.Sqlite.CheckpointsOld
+import Cardano.Wallet.DB.Checkpoints.Store
     ( PersistAddressBook )
 import Cardano.Wallet.DB.Sqlite.Migration
     ( DefaultFieldValues (..) )

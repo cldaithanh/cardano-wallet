@@ -38,7 +38,7 @@ import Prelude
 
 import Cardano.Address.Derivation
     ( XPrv )
-import Cardano.Wallet.DB.WalletState
+import Cardano.Wallet.DB.Wallets.State
     ( DeltaMap, DeltaWalletState )
 import Cardano.Wallet.Primitive.AddressDerivation
     ( Depth (..) )

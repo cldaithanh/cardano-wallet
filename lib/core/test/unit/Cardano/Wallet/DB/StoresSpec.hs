@@ -4,7 +4,8 @@
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
-module Cardano.Wallet.DB.Sqlite.StoresSpec
+
+module Cardano.Wallet.DB.StoresSpec
     ( spec
     ) where
 
@@ -14,24 +15,20 @@ import Cardano.DB.Sqlite
     ( SqliteContext (runQuery), newInMemorySqliteContext )
 import Cardano.Wallet.DB.Arbitrary
     ( GenState, InitialCheckpoint (..) )
-import Cardano.Wallet.DB.Checkpoints
-    ( DeltaCheckpoints (..) )
-import Cardano.Wallet.DB.Sqlite.AddressBook
+import Cardano.Wallet.DB.Checkpoints.AddressBook
     ( AddressBookIso (..), Prologue, getPrologue )
+import Cardano.Wallet.DB.Checkpoints.Model
+    ( DeltaCheckpoints (..), fromWallet, getSlot )
 import Cardano.Wallet.DB.Sqlite.Schema
     ( Wallet (..), migrateAll )
 import Cardano.Wallet.DB.Sqlite.Stores
     ( PersistAddressBook (..), mkStoreWallet )
 import Cardano.Wallet.DB.Sqlite.Types
     ( BlockId (..) )
-import Cardano.Wallet.DB.WalletState
-    ( DeltaWalletState
-    , DeltaWalletState1 (..)
-    , fromGenesis
-    , fromWallet
-    , getLatest
-    , getSlot
-    )
+import Cardano.Wallet.DB.Wallets.State
+    ( DeltaWalletState, DeltaWalletState1 (..), fromGenesis, getLatest )
+import Cardano.Wallet.DB.Wallets.Store
+    ( PersistAddressBook (..), mkStoreWallet )
 import Cardano.Wallet.Primitive.AddressDerivation
     ( NetworkDiscriminant (Mainnet) )
 import Cardano.Wallet.Primitive.AddressDerivation.Shared
@@ -168,7 +165,7 @@ prop_StoreWallet db (wid, InitialCheckpoint cp0) =
     toIO = runQuery db
     setup = run . toIO $ initializeWallet wid
     prop = do
-        let Just w0 = fromGenesis cp0
+        let Just w0 = fromGenesis cp0 -- mempty
         prop_StoreUpdates toIO (mkStoreWallet wid) (pure w0) genDeltaWalletState
 
 genDeltaWalletState

@@ -33,6 +33,10 @@ module Test.QuickCheck.Extra
     , (<@>)
     , (<:>)
 
+      -- * Evaluating shrinkers
+    , shrinkWhile
+    , shrinkWhileSteps
+
       -- * Partitioning lists
     , partitionList
 
@@ -199,6 +203,20 @@ shrinkInterleaved (a, shrinkA) (b, shrinkB) = interleave
     interleave (x : xs) (y : ys) = x : y : interleave xs ys
     interleave xs [] = xs
     interleave [] ys = ys
+
+--------------------------------------------------------------------------------
+-- Evaluating shrinkers
+--------------------------------------------------------------------------------
+
+shrinkWhile :: (a -> [a]) -> (a -> Bool) -> a -> a
+shrinkWhile shrinkFn condition =
+    NE.last . shrinkWhileSteps shrinkFn condition
+
+shrinkWhileSteps :: forall a. (a -> [a]) -> (a -> Bool) -> a -> NonEmpty a
+shrinkWhileSteps shrinkFn condition a = a :| steps a
+  where
+    steps :: a -> [a]
+    steps = maybe [] (\y -> y : steps y) . L.find condition . shrinkFn
 
 --------------------------------------------------------------------------------
 -- Generating list partitions

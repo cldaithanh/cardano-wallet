@@ -1,3 +1,4 @@
+{-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE GADTs #-}
@@ -36,6 +37,8 @@ module Test.QuickCheck.Extra
       -- * Evaluating shrinkers
     , shrinkWhile
     , shrinkWhileSteps
+    , shrinkTree
+    , shrinkUniverse
 
       -- * Partitioning lists
     , partitionList
@@ -111,6 +114,7 @@ import Test.Utils.Pretty
 import Text.Pretty.Simple
     ( pShow )
 
+import qualified Data.Foldable as F
 import qualified Data.List as L
 import qualified Data.List.NonEmpty as NE
 import qualified Data.Map.Strict as Map
@@ -217,6 +221,27 @@ shrinkWhileSteps shrinkFn condition a = a :| steps a
   where
     steps :: a -> [a]
     steps = maybe [] (\y -> y : steps y) . L.find condition . shrinkFn
+
+shrinkTree :: forall a. Ord a => (a -> [a]) -> a -> Map a [a]
+shrinkTree shrinkFn a = loop mempty (shrinkFn a)
+  where
+    loop :: Map a [a] -> [a] -> Map a [a]
+    loop !acc !xs
+        | null ys = acc
+        | otherwise = loop (acc <> yMap) (F.fold yMap)
+      where
+        ys :: [a]
+        ys = filter (`Map.notMember` acc) xs
+
+        yMap :: Map a [a]
+        yMap = Map.fromList [(y, shrinkFn y) | y <- ys]
+
+-- Satisfies the following property:
+--
+-- prop> shrinkUniverse s a = toList (keysSet (shrinkTree s a))
+--
+shrinkUniverse :: Ord a => (a -> [a]) -> a -> [a]
+shrinkUniverse shrinkFn = F.toList . Map.keysSet . shrinkTree shrinkFn
 
 --------------------------------------------------------------------------------
 -- Generating list partitions

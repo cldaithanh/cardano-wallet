@@ -14,6 +14,7 @@
 
 module Cardano.Wallet.Primitive.ModelSpec
     ( spec
+    , genBlockListFromTxSeq
     ) where
 
 import Prelude
@@ -37,6 +38,7 @@ import Cardano.Wallet.Primitive.Model
     , Wallet
     , applyBlock
     , applyBlockData
+    , applyBlocks
     , applyOurTxToUTxO
     , applyTxToUTxO
     , availableBalance
@@ -105,6 +107,8 @@ import Cardano.Wallet.Primitive.Types.Tx.Gen
     , shrinkTxIn
     , shrinkTxOut
     )
+import Cardano.Wallet.Primitive.Types.TxSeq
+    ( TxSeq )
 import Cardano.Wallet.Primitive.Types.UTxO
     ( UTxO (..), balance, dom, excluding, filterByAddress, restrictedTo )
 import Cardano.Wallet.Primitive.Types.UTxO.Gen
@@ -113,6 +117,8 @@ import Cardano.Wallet.Util
     ( ShowFmt (..), invariant )
 import Control.DeepSeq
     ( NFData (..) )
+import Control.Applicative
+    ( ZipList (..), liftA3 )
 import Control.Monad
     ( foldM, guard )
 import Control.Monad.Trans.State.Strict
@@ -187,10 +193,11 @@ import Test.QuickCheck
     , (===)
     )
 import Test.QuickCheck.Extra
-    ( chooseNatural, report, verify )
+    ( chooseNatural, partitionList, report, verify )
 
 import qualified Cardano.Wallet.Primitive.Types.Coin as Coin
 import qualified Cardano.Wallet.Primitive.Types.TokenBundle as TokenBundle
+import qualified Cardano.Wallet.Primitive.Types.TxSeq as TxSeq
 import qualified Cardano.Wallet.Primitive.Types.UTxO as UTxO
 import qualified Data.ByteString as BS
 import qualified Data.Foldable as F
@@ -2272,5 +2279,54 @@ instance Show (RewardAccount -> Bool) where
 -- Sequences of transactions
 --------------------------------------------------------------------------------
 
-_genBlocksFromTxs :: [Tx] -> Gen [Block]
-_genBlocksFromTxs _txs = undefined
+genBlockListFromTxSeq :: TxSeq -> Gen [Block]
+genBlockListFromTxSeq txSeq =
+    fmap getZipList $ liftA3 makeBlock
+        <$> (ZipList <$> genBlockHeights)
+        <*> (ZipList <$> genSlotNos)
+        <*> (ZipList <$> genTransactionLists)
+  where
+    genBlockHeights :: Gen [Quantity "block" Word32]
+    genBlockHeights = fmap Quantity . enumFrom <$> choose (0, 100)
+
+    genSlotNos :: Gen [SlotNo]
+    genSlotNos = fmap SlotNo . enumFrom <$> choose (0, 100)
+
+    genTransactionLists :: Gen [[Tx]]
+    genTransactionLists = partitionList (0, 4) (TxSeq.toTxs txSeq)
+
+    makeBlock :: Quantity "block" Word32 -> SlotNo -> [Tx] -> Block
+    makeBlock blockHeight slotNo transactions = Block
+        { header = BlockHeader
+            { blockHeight
+            , slotNo
+            , headerHash = Hash ""
+            , parentHeaderHash = Nothing
+            }
+        , transactions
+        , delegations = []
+        }
+
+prop_applyBlocks_test :: ApplyBlocks -> Property
+prop_applyBlocks_test (ApplyBlocks walletState utxo blocks) =
+    undefined
+  where
+    applyBlocksResult :: Identity
+        ( NonEmpty
+            ( [ FilteredBlock ]
+            , ( DeltaWallet WalletState
+              , Wallet WalletState
+              )
+            )
+        )
+    applyBlocksResult = applyBlocks blockData wallet
+
+    blockData :: BlockData m addr tx WalletState
+    blockData = List blocks
+
+    wallet :: Wallet WalletState
+    wallet = unsafeInitWallet utxo (shouldNotEvaluate "currentTip") walletState
+
+    shouldNotEvaluate :: String -> a
+    shouldNotEvaluate fieldName = error $ unwords
+        [fieldName, "was unexpectedly evaluated"]

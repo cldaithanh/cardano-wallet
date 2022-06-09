@@ -11,6 +11,7 @@ module Cardano.Wallet.Primitive.Types.TxSeq
     , dropHeadTxs
     , dropLastTx
     , dropLastTxs
+    , empty
     , foldUTxO
     , fromUTxO
     , headUTxO
@@ -78,6 +79,9 @@ unfoldNM :: Monad m => Int -> (UTxO -> m Tx) -> UTxO -> m TxSeq
 unfoldNM i nextTx
     = fmap TxSeq
     . Seq.unfoldNM i nextTx ((fmap . fmap $ pure) (flip applyTxToUTxO))
+
+empty :: TxSeq
+empty = fromUTxO mempty
 
 fromUTxO :: UTxO -> TxSeq
 fromUTxO = TxSeq . Seq.fromState

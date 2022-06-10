@@ -26,7 +26,7 @@ import Cardano.Wallet.Primitive.Types.Tx
 import Cardano.Wallet.Primitive.Types.Tx.Gen
     ( TxWithoutId (..), txWithoutIdToTx )
 import Cardano.Wallet.Primitive.Types.TxSeq
-    ( TxSeq (..) )
+    ( TxSeq (..), TxSeqGroupBoundary (..) )
 import Cardano.Wallet.Primitive.Types.UTxO
     ( UTxO (..) )
 import Cardano.Wallet.Primitive.Types.UTxO.Gen
@@ -70,12 +70,12 @@ toTxSeq = txSeq
 
 genTxSeq :: Gen UTxO -> Gen Address -> Gen ShrinkableTxSeq
 genTxSeq genUTxO genAddr = fmap makeShrinkable $ sized $ \size ->
-    TxSeq.unfoldNM size genMaybeTxFromUTxO =<< genUTxO
+    TxSeq.unfoldNM size genDelta =<< genUTxO
   where
-    genMaybeTxFromUTxO :: UTxO -> Gen (Maybe Tx)
-    genMaybeTxFromUTxO u = frequency
-        [ (1, pure Nothing)
-        , (4, Just <$> genTxFromUTxO genAddr u)
+    genDelta :: UTxO -> Gen (Either TxSeqGroupBoundary Tx)
+    genDelta u = frequency
+        [ (1, pure (Left TxSeqGroupBoundary))
+        , (4, Right <$> genTxFromUTxO genAddr u)
         ]
 
     makeShrinkable :: TxSeq -> ShrinkableTxSeq

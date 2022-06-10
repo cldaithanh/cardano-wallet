@@ -3,6 +3,7 @@
 
 module Cardano.Wallet.Primitive.Types.TxSeq
     ( TxSeq (..)
+    , TxSeqGroupBoundary (..)
     , assetIds
     , dropHeadTx
     , dropHeadTxs
@@ -50,12 +51,12 @@ import Data.Bifoldable
     ( Bifoldable (..) )
 import Data.Bifunctor
     ( bimap )
+import Data.Either
+    ( isRight, rights )
 import Data.Function
-    ( (&) )
+    ( on, (&) )
 import Data.Map.Strict
     ( Map )
-import Data.Maybe
-    ( catMaybes )
 import Data.Set
     ( Set )
 
@@ -69,17 +70,26 @@ import qualified Data.Set as Set
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as T
 
-newtype TxSeq = TxSeq {unTxSeq :: StateDeltaSeq UTxO (Maybe Tx)}
+newtype TxSeq = TxSeq
+    {unTxSeq :: StateDeltaSeq UTxO (Either TxSeqGroupBoundary Tx)}
+    deriving (Eq, Show)
+
+data TxSeqGroupBoundary = TxSeqGroupBoundary
     deriving (Eq, Show)
 
 --------------------------------------------------------------------------------
 -- Public interface
 --------------------------------------------------------------------------------
 
-nextUTxO :: UTxO -> Maybe Tx -> UTxO
-nextUTxO u = maybe u (`applyTxToUTxO` u)
+nextUTxO :: UTxO -> Either TxSeqGroupBoundary Tx -> UTxO
+nextUTxO u = either (const u) (`applyTxToUTxO` u)
 
-unfoldNM :: Monad m => Int -> (UTxO -> m (Maybe Tx)) -> UTxO -> m TxSeq
+unfoldNM
+    :: Monad m
+    => Int
+    -> (UTxO -> m (Either TxSeqGroupBoundary Tx))
+    -> UTxO
+    -> m TxSeq
 unfoldNM i nextTxM
     = fmap TxSeq
     . Seq.unfoldNM i nextTxM ((fmap . fmap $ pure) nextUTxO)
@@ -103,11 +113,7 @@ toTxs :: TxSeq -> [Tx]
 toTxs = mconcat . toTxGroups
 
 toTxGroups :: TxSeq -> [[Tx]]
-toTxGroups (TxSeq s) = catMaybes <$> L.groupBy f (F.toList s)
-  where
-    f Nothing _ = False
-    f _ Nothing = False
-    f _ _       = True
+toTxGroups (TxSeq s) = rights <$> L.groupBy ((&&) `on` isRight) (F.toList s)
 
 length :: TxSeq -> Int
 length = F.length . unTxSeq
@@ -128,10 +134,12 @@ isValid :: TxSeq -> Bool
 isValid = (Just True ==) . Seq.isValidM safeAppendTxM . unTxSeq
 
 assetIds :: TxSeq -> Set AssetId
-assetIds = bifoldMap UTxO.assetIds (maybe mempty txAssetIds) . unTxSeq
+assetIds = bifoldMap UTxO.assetIds (either (const mempty) txAssetIds) . unTxSeq
 
 txIds :: TxSeq -> Set (Hash "Tx")
-txIds = bifoldMap UTxO.txIds (maybe mempty (Set.singleton . txId)) . unTxSeq
+txIds
+    = bifoldMap UTxO.txIds (either (const mempty) (Set.singleton . txId))
+    . unTxSeq
 
 mapAssetIds :: (AssetId -> AssetId) -> TxSeq -> TxSeq
 mapAssetIds f =
@@ -196,8 +204,8 @@ canApplyTxToUTxO tx u =  (&&)
 safeAppendTx :: MonadFail m => UTxO -> Tx -> m UTxO
 safeAppendTx = flip safeApplyTxToUTxO
 
-safeAppendTxM :: MonadFail m => UTxO -> Maybe Tx -> m UTxO
-safeAppendTxM u = maybe (pure u) (safeAppendTx u)
+safeAppendTxM :: MonadFail m => UTxO -> Either TxSeqGroupBoundary Tx -> m UTxO
+safeAppendTxM u = either (const (pure u)) (safeAppendTx u)
 
 safeApplyTxToUTxO :: MonadFail m => Tx -> UTxO -> m UTxO
 safeApplyTxToUTxO tx u

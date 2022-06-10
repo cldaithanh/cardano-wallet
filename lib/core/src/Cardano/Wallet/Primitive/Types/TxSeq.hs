@@ -3,9 +3,6 @@
 
 module Cardano.Wallet.Primitive.Types.TxSeq
     ( TxSeq (..)
-    , appendTx
-    , appendTxM
-    , appendTxsM
     , assetIds
     , dropHeadTx
     , dropHeadTxs
@@ -56,6 +53,8 @@ import Data.Function
     ( (&) )
 import Data.Map.Strict
     ( Map )
+import Data.Maybe
+    ( catMaybes )
 import Data.Set
     ( Set )
 
@@ -63,22 +62,26 @@ import qualified Cardano.Wallet.Primitive.Types.StateDeltaSeq as Seq
 import qualified Cardano.Wallet.Primitive.Types.Tx as Tx
 import qualified Cardano.Wallet.Primitive.Types.UTxO as UTxO
 import qualified Data.Foldable as F
+import qualified Data.List as L
 import qualified Data.Map.Strict as Map
 import qualified Data.Set as Set
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as T
 
-newtype TxSeq = TxSeq {unTxSeq :: StateDeltaSeq UTxO Tx}
+newtype TxSeq = TxSeq {unTxSeq :: StateDeltaSeq UTxO (Maybe Tx)}
     deriving (Eq, Show)
 
 --------------------------------------------------------------------------------
 -- Public interface
 --------------------------------------------------------------------------------
 
-unfoldNM :: Monad m => Int -> (UTxO -> m Tx) -> UTxO -> m TxSeq
-unfoldNM i nextTx
+nextUTxO :: UTxO -> Maybe Tx -> UTxO
+nextUTxO u = maybe u (`applyTxToUTxO` u)
+
+unfoldNM :: Monad m => Int -> (UTxO -> m (Maybe Tx)) -> UTxO -> m TxSeq
+unfoldNM i nextTxM
     = fmap TxSeq
-    . Seq.unfoldNM i nextTx ((fmap . fmap $ pure) (flip applyTxToUTxO))
+    . Seq.unfoldNM i nextTxM ((fmap . fmap $ pure) nextUTxO)
 
 empty :: TxSeq
 empty = fromUTxO mempty
@@ -95,17 +98,15 @@ lastUTxO = Seq.lastState . unTxSeq
 foldUTxO :: TxSeq -> UTxO
 foldUTxO = bifoldMap id (const mempty) . unTxSeq
 
-appendTx :: TxSeq -> Tx -> TxSeq
-appendTx = (TxSeq .) . Seq.applyDelta (flip applyTxToUTxO) . unTxSeq
-
-appendTxM :: MonadFail m => TxSeq -> Tx -> m TxSeq
-appendTxM = (fmap TxSeq .) . Seq.applyDeltaM safeAppendTx . unTxSeq
-
-appendTxsM :: (Foldable f, MonadFail m) => TxSeq -> f Tx -> m TxSeq
-appendTxsM = (fmap TxSeq .) . Seq.applyDeltasM safeAppendTx . unTxSeq
-
 toTxs :: TxSeq -> [Tx]
-toTxs = Seq.toDeltaList . unTxSeq
+toTxs = mconcat . toTxGroups
+
+toTxGroups :: TxSeq -> [[Tx]]
+toTxGroups (TxSeq s) = catMaybes <$> L.groupBy f (F.toList s)
+  where
+    f Nothing _ = False
+    f _ Nothing = False
+    f _ _       = True
 
 length :: TxSeq -> Int
 length = F.length . unTxSeq
@@ -123,23 +124,25 @@ dropLastTxs :: TxSeq -> [TxSeq]
 dropLastTxs = fmap TxSeq . Seq.dropLasts . unTxSeq
 
 isValid :: TxSeq -> Bool
-isValid = (Just True ==) . Seq.isValidM safeAppendTx . unTxSeq
+isValid = (Just True ==) . Seq.isValidM safeAppendTxM . unTxSeq
 
 assetIds :: TxSeq -> Set AssetId
-assetIds = bifoldMap UTxO.assetIds txAssetIds . unTxSeq
+assetIds = bifoldMap UTxO.assetIds (maybe mempty txAssetIds) . unTxSeq
 
 txIds :: TxSeq -> Set (Hash "Tx")
-txIds = bifoldMap UTxO.txIds (Set.singleton . txId) . unTxSeq
+txIds = bifoldMap UTxO.txIds (maybe mempty (Set.singleton . txId)) . unTxSeq
 
 mapAssetIds :: (AssetId -> AssetId) -> TxSeq -> TxSeq
-mapAssetIds f = TxSeq . bimap (UTxO.mapAssetIds f) (txMapAssetIds f) . unTxSeq
+mapAssetIds f =
+    TxSeq . bimap (UTxO.mapAssetIds f) (fmap (txMapAssetIds f)) . unTxSeq
 
 mapTxIds :: (Hash "Tx" -> Hash "Tx") -> TxSeq -> TxSeq
-mapTxIds f = TxSeq . bimap (UTxO.mapTxIds f) (txMapTxIds f) . unTxSeq
+mapTxIds f =
+    TxSeq . bimap (UTxO.mapTxIds f) (fmap (txMapTxIds f)) . unTxSeq
 
 removeAssetId :: TxSeq -> AssetId -> TxSeq
 removeAssetId (TxSeq s) a = TxSeq $
-    bimap (`UTxO.removeAssetId` a) (`txRemoveAssetId` a) s
+    bimap (`UTxO.removeAssetId` a) (fmap (`txRemoveAssetId` a)) s
 
 removeAssets :: TxSeq -> TxSeq
 removeAssets s0 = F.foldl' removeAssetId s0 (assetIds s0)
@@ -191,6 +194,9 @@ canApplyTxToUTxO tx u =  (&&)
 
 safeAppendTx :: MonadFail m => UTxO -> Tx -> m UTxO
 safeAppendTx = flip safeApplyTxToUTxO
+
+safeAppendTxM :: MonadFail m => UTxO -> Maybe Tx -> m UTxO
+safeAppendTxM u = maybe (pure u) (safeAppendTx u)
 
 safeApplyTxToUTxO :: MonadFail m => Tx -> UTxO -> m UTxO
 safeApplyTxToUTxO tx u

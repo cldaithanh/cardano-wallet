@@ -36,7 +36,7 @@ import Data.Function
 import Data.Maybe
     ( listToMaybe )
 import Test.QuickCheck
-    ( Gen, chooseInt, elements, sized, vectorOf )
+    ( Gen, chooseInt, elements, frequency, sized, vectorOf )
 
 import qualified Cardano.Wallet.Primitive.Types.TokenBundle as TokenBundle
 import qualified Cardano.Wallet.Primitive.Types.TxSeq as TxSeq
@@ -70,8 +70,14 @@ toTxSeq = txSeq
 
 genTxSeq :: Gen UTxO -> Gen Address -> Gen ShrinkableTxSeq
 genTxSeq genUTxO genAddr = fmap makeShrinkable $ sized $ \size ->
-    TxSeq.unfoldNM size (genTxFromUTxO genAddr) =<< genUTxO
+    TxSeq.unfoldNM size genMaybeTxFromUTxO =<< genUTxO
   where
+    genMaybeTxFromUTxO :: UTxO -> Gen (Maybe Tx)
+    genMaybeTxFromUTxO u = frequency
+        [ (1, pure Nothing)
+        , (4, Just <$> genTxFromUTxO genAddr u)
+        ]
+
     makeShrinkable :: TxSeq -> ShrinkableTxSeq
     makeShrinkable txSeq = ShrinkableTxSeq
         { availableShrinkActions = mconcat

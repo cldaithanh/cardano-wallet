@@ -6,6 +6,7 @@
 {-# LANGUAGE StandaloneDeriving #-}
 {-# LANGUAGE ViewPatterns #-}
 {-# OPTIONS_GHC -fno-warn-orphans #-}
+{- HLINT ignore "Hoist not" -}
 
 module Cardano.Wallet.Primitive.Types.TxSeqSpec
     ( spec
@@ -29,6 +30,8 @@ import Cardano.Wallet.Primitive.Types.UTxO.Gen
     ( genUTxO )
 import Data.Function
     ( (&) )
+import Safe
+    ( headMay, lastMay )
 import Test.Hspec
     ( Spec, describe, it )
 import Test.QuickCheck
@@ -38,7 +41,9 @@ import Test.QuickCheck
     , Function (..)
     , Property
     , applyFun
+    , checkCoverage
     , chooseInt
+    , cover
     , forAll
     , label
     , property
@@ -59,6 +64,10 @@ spec = do
     describe "genTxSeq" $ do
         it "prop_genTxSeq_isValid" $
             prop_genTxSeq_isValid & property
+        it "prop_genTxSeq_toTxGroups_length" $
+            prop_genTxSeq_toTxGroups_length & property
+        it "prop_genTxSeq_toTxGroups_lengths" $
+            prop_genTxSeq_toTxGroups_lengths & property
 
     describe "dropHeadTxs " $ do
         it "prop_dropHeadTxs_isValid" $
@@ -120,6 +129,38 @@ prop_genTxSeq_isValid :: Property
 prop_genTxSeq_isValid =
     forAll (genTxSeq genUTxO genAddress) $ \(toTxSeq -> txs) ->
         TxSeq.isValid txs
+
+prop_genTxSeq_toTxGroups_length :: Property
+prop_genTxSeq_toTxGroups_length =
+    forAll (genTxSeq genUTxO genAddress) $ \(toTxSeq -> txSeq) ->
+        let txGroups = TxSeq.toTxGroups txSeq in
+        checkCoverage
+            $ cover 10 (null txGroups)
+                "number of groups = 0"
+            $ cover 10 (((== 1) . length) txGroups)
+                "number of groups = 1"
+            $ cover 10 (((> 1) . length) txGroups)
+                "number of groups > 1"
+            $ property True
+
+prop_genTxSeq_toTxGroups_lengths :: Property
+prop_genTxSeq_toTxGroups_lengths =
+    forAll (genTxSeq genUTxO genAddress) $ \(toTxSeq -> txSeq) ->
+        let txGroups = TxSeq.toTxGroups txSeq in
+        checkCoverage
+            $ cover 10 (maybe False null (headMay txGroups))
+                "number of elements in head group = 0"
+            $ cover 10 (maybe False ((== 1) . length) (headMay txGroups))
+                "number of elements in head group = 1"
+            $ cover 10 (maybe False ((> 1) . length) (headMay txGroups))
+                "number of elements in head group > 1"
+            $ cover 10 (maybe False null (lastMay txGroups))
+                "number of elements in last group = 0"
+            $ cover 10 (maybe False ((== 1) . length) (lastMay txGroups))
+                "number of elements in last group = 1"
+            $ cover 10 (maybe False ((> 1) . length) (lastMay txGroups))
+                "number of elements in last group > 1"
+            $ property True
 
 --------------------------------------------------------------------------------
 -- dropHeadTxs

@@ -14,11 +14,11 @@
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE UndecidableInstances #-}
+{-# LANGUAGE ViewPatterns #-}
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 
 module Cardano.Wallet.Primitive.ModelSpec
     ( spec
-    , genBlockListFromTxSeq
     ) where
 
 import Prelude
@@ -76,7 +76,7 @@ import Cardano.Wallet.Primitive.Types
 import Cardano.Wallet.Primitive.Types.Address
     ( Address (..) )
 import Cardano.Wallet.Primitive.Types.Address.Gen
-    ( Parity (..), addressParity )
+    ( Parity (..), addressParity, genAddress )
 import Cardano.Wallet.Primitive.Types.Coin
     ( Coin (..) )
 import Cardano.Wallet.Primitive.Types.Coin.Gen
@@ -111,6 +111,8 @@ import Cardano.Wallet.Primitive.Types.Tx.Gen
     )
 import Cardano.Wallet.Primitive.Types.TxSeq
     ( TxSeq )
+import Cardano.Wallet.Primitive.Types.TxSeq.Gen
+    ( ShrinkableTxSeq, genTxSeq, shrinkTxSeq, toTxSeq )
 import Cardano.Wallet.Primitive.Types.UTxO
     ( UTxO (..), balance, dom, excluding, filterByAddress, restrictedTo )
 import Cardano.Wallet.Primitive.Types.UTxO.Gen
@@ -144,7 +146,7 @@ import Data.List
 import Data.List.NonEmpty
     ( NonEmpty (..) )
 import Data.Maybe
-    ( catMaybes, isJust )
+    ( catMaybes, fromMaybe, isJust )
 import Data.Quantity
     ( Quantity (..) )
 import Data.Set
@@ -331,6 +333,10 @@ spec = do
     parallel $ describe "Light-mode" $ do
         it "discovery on blocks = discovery on summary" $
             property prop_discoverFromBlockData
+
+    parallel $ describe "applyBlocks" $ do
+        it "prop_applyBlocks_allOurs_lastUTxO" $
+            prop_applyBlocks_allOurs_lastUTxO & property
 
 {-------------------------------------------------------------------------------
                                 Properties
@@ -2285,40 +2291,22 @@ instance Show (RewardAccount -> Bool) where
 -- Sequences of transactions
 --------------------------------------------------------------------------------
 
-txSeqToBlocks :: Quantity "block" Word32 -> SlotNo -> TxSeq -> [Block]
+instance Arbitrary ShrinkableTxSeq where
+    arbitrary = genTxSeq genUTxO genAddress
+    shrink = shrinkTxSeq
+
+instance Arbitrary SlotNo where
+    arbitrary = toEnum <$> choose (0, 100)
+
+txSeqToBlocks :: Quantity "block" Word32 -> SlotNo -> TxSeq -> NonEmpty Block
 txSeqToBlocks blockHeight0 slotNo0 txSeq =
-    getZipList $ makeBlock
+    NE.fromList $ getZipList $ makeBlock
         <$> ZipList (enumFrom blockHeight0)
         <*> ZipList (enumFrom slotNo0)
-        <*> ZipList (TxSeq.toTxGroups txSeq)
+        <*> ZipList (NE.toList (toTxGroupsNE txSeq))
   where
-    makeBlock :: Quantity "block" Word32 -> SlotNo -> [Tx] -> Block
-    makeBlock blockHeight slotNo transactions = Block
-        { header = BlockHeader
-            { blockHeight
-            , slotNo
-            , headerHash = Hash ""
-            , parentHeaderHash = Nothing
-            }
-        , transactions
-        , delegations = []
-        }
-
-genBlockListFromTxSeq :: TxSeq -> Gen [Block]
-genBlockListFromTxSeq txSeq =
-    fmap getZipList $ liftA3 makeBlock
-        <$> (ZipList <$> genBlockHeights)
-        <*> (ZipList <$> genSlotNos)
-        <*> (ZipList <$> genTransactionLists)
-  where
-    genBlockHeights :: Gen [Quantity "block" Word32]
-    genBlockHeights = fmap Quantity . enumFrom <$> choose (0, 100)
-
-    genSlotNos :: Gen [SlotNo]
-    genSlotNos = fmap SlotNo . enumFrom <$> choose (0, 100)
-
-    genTransactionLists :: Gen [[Tx]]
-    genTransactionLists = partitionList (0, 4) (TxSeq.toTxs txSeq)
+    toTxGroupsNE :: TxSeq -> NonEmpty [Tx]
+    toTxGroupsNE = fromMaybe ([] :| []) . NE.nonEmpty . TxSeq.toTxGroups
 
     makeBlock :: Quantity "block" Word32 -> SlotNo -> [Tx] -> Block
     makeBlock blockHeight slotNo transactions = Block
@@ -2332,26 +2320,30 @@ genBlockListFromTxSeq txSeq =
         , delegations = []
         }
 
-prop_applyBlocks_test :: ApplyBlocks -> Property
-prop_applyBlocks_test (ApplyBlocks walletState utxo blocks) =
-    undefined
+prop_applyBlocks_allOurs_lastUTxO
+    :: Quantity "block" Word32
+    -> SlotNo
+    -> ShrinkableTxSeq
+    -> Property
+prop_applyBlocks_allOurs_lastUTxO blockHeight0 slotNo0 (toTxSeq -> txSeq) =
+    resultLastUTxO === TxSeq.lastUTxO txSeq
   where
-    applyBlocksResult :: Identity
-        ( NonEmpty
-            ( [ FilteredBlock ]
-            , ( DeltaWallet WalletState
-              , Wallet WalletState
-              )
-            )
-        )
-    applyBlocksResult = applyBlocks blockData wallet
+    blockData :: BlockData m addr tx s
+    blockData = List $ txSeqToBlocks blockHeight0 slotNo0 txSeq
 
-    blockData :: BlockData m addr tx WalletState
-    blockData = List blocks
+    currentTip :: BlockHeader
+    currentTip = shouldNotEvaluate "currentTip"
 
-    wallet :: Wallet WalletState
-    wallet = unsafeInitWallet utxo (shouldNotEvaluate "currentTip") walletState
+    result :: NonEmpty ([FilteredBlock], (DeltaWallet AllOurs, Wallet AllOurs))
+    result = runIdentity $ applyBlocks blockData wallet
+
+    resultLastUTxO :: UTxO
+    resultLastUTxO = utxo $ snd $ snd <$> NE.last result
+
+    wallet :: Wallet AllOurs
+    wallet = unsafeInitWallet (TxSeq.headUTxO txSeq) currentTip AllOurs
 
     shouldNotEvaluate :: String -> a
-    shouldNotEvaluate fieldName = error $ unwords
-        [fieldName, "was unexpectedly evaluated"]
+    shouldNotEvaluate name = error $ unwords
+        [name, "was unexpectedly evaluated"]
+

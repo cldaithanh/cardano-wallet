@@ -22,7 +22,7 @@ import Cardano.Wallet.Primitive.Types.TokenBundle.Gen
 import Cardano.Wallet.Primitive.Types.TokenMap
     ( AssetId )
 import Cardano.Wallet.Primitive.Types.Tx
-    ( Tx (..), TxOut (..) )
+    ( Tx (..), TxOut (..), TxScriptValidity (..) )
 import Cardano.Wallet.Primitive.Types.Tx.Gen
     ( TxWithoutId (..), txWithoutIdToTx )
 import Cardano.Wallet.Primitive.Types.TxSeq
@@ -130,6 +130,11 @@ genTxFromUTxO genAddr u = do
         vectorOf (length outputBundles) genAddr
     collateralOutputAddresses <-
         vectorOf (length collateralOutputBundles) genAddr
+    scriptValidity <- elements
+        [ Nothing
+        , Just TxScriptValid
+        , Just TxScriptInvalid
+        ]
     pure $ txWithoutIdToTx TxWithoutId
         { fee =
             Just (Coin 0)
@@ -145,6 +150,5 @@ genTxFromUTxO genAddr u = do
             Nothing
         , withdrawals =
             mempty
-        , scriptValidity =
-            Nothing
+        , scriptValidity
         }

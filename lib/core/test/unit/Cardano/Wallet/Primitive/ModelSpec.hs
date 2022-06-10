@@ -122,7 +122,7 @@ import Cardano.Wallet.Util
 import Control.DeepSeq
     ( NFData (..) )
 import Control.Applicative
-    ( ZipList (..), liftA3 )
+    ( ZipList (..) )
 import Control.Monad
     ( foldM, guard )
 import Control.Monad.Trans.State.Strict
@@ -200,7 +200,7 @@ import Test.QuickCheck
     , (===)
     )
 import Test.QuickCheck.Extra
-    ( chooseNatural, partitionList, report, verify )
+    ( chooseNatural, report, verify )
 import Test.QuickCheck.Instances.ByteString
     ()
 
@@ -335,8 +335,12 @@ spec = do
             property prop_discoverFromBlockData
 
     parallel $ describe "applyBlocks" $ do
-        it "prop_applyBlocks_allOurs_lastUTxO" $
-            prop_applyBlocks_allOurs_lastUTxO & property
+        it "prop_applyBlocks_lastUTxO_allOurs" $
+            prop_applyBlocks_lastUTxO_allOurs & property
+        it "prop_applyBlocks_lastUTxO_noneOurs" $
+            prop_applyBlocks_lastUTxO_noneOurs & property
+        it "prop_applyBlocks_lastUTxO_someOurs" $
+            prop_applyBlocks_lastUTxO_someOurs & property
 
 {-------------------------------------------------------------------------------
                                 Properties
@@ -2320,30 +2324,69 @@ txSeqToBlocks blockHeight0 slotNo0 txSeq =
         , delegations = []
         }
 
-prop_applyBlocks_allOurs_lastUTxO
+prop_applyBlocks_lastUTxO_allOurs
     :: Quantity "block" Word32
+    -- ^ Initial block height
     -> SlotNo
+    -- ^ Initial slot number
     -> ShrinkableTxSeq
+    -- ^ Transaction sequence to apply
     -> Property
-prop_applyBlocks_allOurs_lastUTxO blockHeight0 slotNo0 (toTxSeq -> txSeq) =
-    resultLastUTxO === TxSeq.lastUTxO txSeq
+prop_applyBlocks_lastUTxO_allOurs =
+    prop_applyBlocks_lastUTxO_someOurs $
+        IsOursIf2 (const True) (const True)
+
+prop_applyBlocks_lastUTxO_noneOurs
+    :: Quantity "block" Word32
+    -- ^ Initial block height
+    -> SlotNo
+    -- ^ Initial slot number
+    -> ShrinkableTxSeq
+    -- ^ Transaction sequence to apply
+    -> Property
+prop_applyBlocks_lastUTxO_noneOurs =
+    prop_applyBlocks_lastUTxO_someOurs $
+        IsOursIf2 (const False) (const False)
+
+prop_applyBlocks_lastUTxO_someOurs
+    :: forall state. (state ~ IsOursIf2 Address RewardAccount)
+    => state
+    -> Quantity "block" Word32
+    -- ^ Initial block height
+    -> SlotNo
+    -- ^ Initial slot number
+    -> ShrinkableTxSeq
+    -- ^ Transaction sequence to apply
+    -> Property
+prop_applyBlocks_lastUTxO_someOurs ourState bh0 sn0 (toTxSeq -> txSeq) =
+    resultLastUTxO === ourLastUTxOExpected
   where
-    blockData :: BlockData m addr tx s
-    blockData = List $ txSeqToBlocks blockHeight0 slotNo0 txSeq
+    IsOursIf2 isOurAddress _isOurRewardAccount = ourState
+
+    blockData :: BlockData m addr tx state
+    blockData = List $ txSeqToBlocks bh0 sn0 txSeq
 
     currentTip :: BlockHeader
     currentTip = shouldNotEvaluate "currentTip"
 
-    result :: NonEmpty ([FilteredBlock], (DeltaWallet AllOurs, Wallet AllOurs))
+    ourUTxO :: UTxO -> UTxO
+    ourUTxO = UTxO.filterByAddress isOurAddress
+
+    ourHeadUTxO :: UTxO
+    ourHeadUTxO = ourUTxO $ TxSeq.headUTxO txSeq
+
+    ourLastUTxOExpected :: UTxO
+    ourLastUTxOExpected = ourUTxO $ TxSeq.lastUTxO txSeq
+
+    result :: NonEmpty ([FilteredBlock], (DeltaWallet state, Wallet state))
     result = runIdentity $ applyBlocks blockData wallet
 
     resultLastUTxO :: UTxO
     resultLastUTxO = utxo $ snd $ snd <$> NE.last result
 
-    wallet :: Wallet AllOurs
-    wallet = unsafeInitWallet (TxSeq.headUTxO txSeq) currentTip AllOurs
-
     shouldNotEvaluate :: String -> a
     shouldNotEvaluate name = error $ unwords
         [name, "was unexpectedly evaluated"]
 
+    wallet :: Wallet state
+    wallet = unsafeInitWallet ourHeadUTxO currentTip ourState

@@ -135,9 +135,9 @@ prop_genTxSeq_toTxGroups_length =
     forAll (genTxSeq genUTxO genAddress) $ \(toTxSeq -> txSeq) ->
         let txGroups = TxSeq.toTxGroups txSeq in
         checkCoverage
-            $ cover 10 (null txGroups)
+            $ cover 0.5 (null txGroups)
                 "number of groups = 0"
-            $ cover 10 (((== 1) . length) txGroups)
+            $ cover 1 (((== 1) . length) txGroups)
                 "number of groups = 1"
             $ cover 10 (((> 1) . length) txGroups)
                 "number of groups > 1"

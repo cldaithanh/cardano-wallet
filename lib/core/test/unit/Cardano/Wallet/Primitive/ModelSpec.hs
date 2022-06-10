@@ -2279,6 +2279,25 @@ instance Show (RewardAccount -> Bool) where
 -- Sequences of transactions
 --------------------------------------------------------------------------------
 
+txSeqToBlocks :: Quantity "block" Word32 -> SlotNo -> TxSeq -> [Block]
+txSeqToBlocks blockHeight0 slotNo0 txSeq =
+    getZipList $ makeBlock
+        <$> ZipList (enumFrom blockHeight0)
+        <*> ZipList (enumFrom slotNo0)
+        <*> ZipList (TxSeq.toTxGroups txSeq)
+  where
+    makeBlock :: Quantity "block" Word32 -> SlotNo -> [Tx] -> Block
+    makeBlock blockHeight slotNo transactions = Block
+        { header = BlockHeader
+            { blockHeight
+            , slotNo
+            , headerHash = Hash ""
+            , parentHeaderHash = Nothing
+            }
+        , transactions
+        , delegations = []
+        }
+
 genBlockListFromTxSeq :: TxSeq -> Gen [Block]
 genBlockListFromTxSeq txSeq =
     fmap getZipList $ liftA3 makeBlock

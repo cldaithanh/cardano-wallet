@@ -21,6 +21,7 @@ module Cardano.Wallet.Primitive.Types.TxSeq
     , removeAssets
     , shrinkAssetIds
     , shrinkTxIds
+    , toTxGroups
     , toTxs
     , txIds
     , unfoldNM

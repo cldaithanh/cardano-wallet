@@ -2292,7 +2292,7 @@ instance Show (RewardAccount -> Bool) where
 -- Testing with arbitrary sequences of transactions embedded within blocks
 --------------------------------------------------------------------------------
 
-data ApplyBlocksData = ApplyBlocksData
+data BlockSeq = BlockSeq
     { initialBlockHeight
         :: Quantity "block" Word32
     , initialSlotNo
@@ -2302,12 +2302,12 @@ data ApplyBlocksData = ApplyBlocksData
     }
     deriving (Eq, Generic, Show)
 
-instance Arbitrary ApplyBlocksData where
-    arbitrary = genApplyBlocksData
-    shrink = shrinkApplyBlocksData
+instance Arbitrary BlockSeq where
+    arbitrary = genBlockSeq
+    shrink = shrinkBlockSeq
 
-genApplyBlocksData :: Gen ApplyBlocksData
-genApplyBlocksData = ApplyBlocksData
+genBlockSeq :: Gen BlockSeq
+genBlockSeq = BlockSeq
     <$> genInitialBlockHeight
     <*> genInitialSlotNo
     <*> genTxSeq genUTxO genAddress
@@ -2317,8 +2317,8 @@ genApplyBlocksData = ApplyBlocksData
     genInitialSlotNo =
         toEnum <$> choose (0, 100)
 
-shrinkApplyBlocksData :: ApplyBlocksData -> [ApplyBlocksData]
-shrinkApplyBlocksData = genericRoundRobinShrink
+shrinkBlockSeq :: BlockSeq -> [BlockSeq]
+shrinkBlockSeq = genericRoundRobinShrink
     <@> shrinkInitialBlockHeight
     <:> shrinkInitialSlotNo
     <:> shrinkTxSeq
@@ -2329,17 +2329,17 @@ shrinkApplyBlocksData = genericRoundRobinShrink
     shrinkInitialSlotNo =
         shrinkMap SlotNo unSlotNo
 
-applyBlocksDataBlocks :: ApplyBlocksData -> NonEmpty Block
-applyBlocksDataBlocks applyBlocksData =
+blockSeqToBlocks :: BlockSeq -> NonEmpty Block
+blockSeqToBlocks blockSeq =
     NE.fromList $ getZipList $ makeBlock
         <$> ZipList (enumFrom initialBlockHeight)
         <*> ZipList (enumFrom initialSlotNo)
         <*> ZipList (NE.toList $ toTxGroupsNE txSeq)
   where
-    ApplyBlocksData {initialBlockHeight, initialSlotNo} = applyBlocksData
+    BlockSeq {initialBlockHeight, initialSlotNo} = blockSeq
 
     txSeq :: TxSeq
-    txSeq = applyBlocksDataTxSeq applyBlocksData
+    txSeq = blockSeqToTxSeq blockSeq
 
     toTxGroupsNE :: TxSeq -> NonEmpty [Tx]
     toTxGroupsNE = fromMaybe ([] :| []) . NE.nonEmpty . TxSeq.toTxGroups
@@ -2356,30 +2356,30 @@ applyBlocksDataBlocks applyBlocksData =
         , delegations = []
         }
 
-applyBlocksDataTxSeq :: ApplyBlocksData -> TxSeq
-applyBlocksDataTxSeq ApplyBlocksData {shrinkableTxSeq} = toTxSeq shrinkableTxSeq
+blockSeqToTxSeq :: BlockSeq -> TxSeq
+blockSeqToTxSeq BlockSeq {shrinkableTxSeq} = toTxSeq shrinkableTxSeq
 
-prop_applyBlocks_lastUTxO_allOurs :: ApplyBlocksData -> Property
+prop_applyBlocks_lastUTxO_allOurs :: BlockSeq -> Property
 prop_applyBlocks_lastUTxO_allOurs =
     prop_applyBlocks_lastUTxO_someOurs $ IsOursIf2 (const True) (const True)
 
-prop_applyBlocks_lastUTxO_noneOurs :: ApplyBlocksData -> Property
+prop_applyBlocks_lastUTxO_noneOurs :: BlockSeq -> Property
 prop_applyBlocks_lastUTxO_noneOurs =
     prop_applyBlocks_lastUTxO_someOurs $ IsOursIf2 (const False) (const False)
 
 prop_applyBlocks_lastUTxO_someOurs
     :: forall s. (s ~ IsOursIf2 Address RewardAccount)
     => s
-    -> ApplyBlocksData
+    -> BlockSeq
     -> Property
-prop_applyBlocks_lastUTxO_someOurs ourState applyBlocksData =
+prop_applyBlocks_lastUTxO_someOurs ourState blockSeq =
     applyBlocksResultLastUTxO === ourLastUTxO
   where
     applyBlocksResult :: NonEmpty ([FilteredBlock], (DeltaWallet s, Wallet s))
     applyBlocksResult = runIdentity $ applyBlocks blockData wallet
       where
         blockData :: BlockData m addr tx state
-        blockData = List $ applyBlocksDataBlocks applyBlocksData
+        blockData = List $ blockSeqToBlocks blockSeq
 
         wallet :: Wallet s
         wallet = unsafeInitWallet ourHeadUTxO currentTip ourState
@@ -2400,7 +2400,7 @@ prop_applyBlocks_lastUTxO_someOurs ourState applyBlocksData =
     ourLastUTxO = UTxO.filterByAddress isOurAddress $ TxSeq.lastUTxO txSeq
 
     txSeq :: TxSeq
-    txSeq = applyBlocksDataTxSeq applyBlocksData
+    txSeq = blockSeqToTxSeq blockSeq
 
 --------------------------------------------------------------------------------
 -- Utility functions

@@ -2295,7 +2295,7 @@ instance Show (RewardAccount -> Bool) where
     show = const "(RewardAccount -> Bool)"
 
 --------------------------------------------------------------------------------
--- Testing with arbitrary sequences of transactions embedded within blocks
+-- Arbitrary sequences of blocks and transactions
 --------------------------------------------------------------------------------
 
 data BlockSeq = BlockSeq
@@ -2314,41 +2314,29 @@ instance Arbitrary BlockSeq where
 
 genBlockSeq :: Gen BlockSeq
 genBlockSeq = BlockSeq
-    <$> genInitialBlockHeight
-    <*> genInitialSlotNo
+    <$> fmap toEnum (choose (0, 100))
+    <*> fmap toEnum (choose (0, 100))
     <*> genTxSeq genUTxO genAddress
-  where
-    genInitialBlockHeight =
-        toEnum <$> choose (0, 100)
-    genInitialSlotNo =
-        toEnum <$> choose (0, 100)
 
 shrinkBlockSeq :: BlockSeq -> [BlockSeq]
 shrinkBlockSeq = genericRoundRobinShrink
-    <@> shrinkInitialBlockHeight
-    <:> shrinkInitialSlotNo
+    <@> shrinkMap toEnum fromEnum
+    <:> shrinkMap toEnum fromEnum
     <:> shrinkTxSeq
     <:> Nil
-  where
-    shrinkInitialBlockHeight =
-        shrinkMap Quantity getQuantity
-    shrinkInitialSlotNo =
-        shrinkMap SlotNo unSlotNo
 
-blockSeqToBlocks :: BlockSeq -> NonEmpty Block
-blockSeqToBlocks blockSeq =
+blockSeqToBlockList :: BlockSeq -> NonEmpty Block
+blockSeqToBlockList blockSeq =
     NE.fromList $ getZipList $ makeBlock
-        <$> ZipList (enumFrom initialBlockHeight)
-        <*> ZipList (enumFrom initialSlotNo)
-        <*> ZipList (NE.toList $ toTxGroupsNE txSeq)
+        <$> ZipList (enumFrom $ blockSeq & initialBlockHeight)
+        <*> ZipList (enumFrom $ blockSeq & initialSlotNo)
+        <*> ZipList (NE.toList txGroups)
   where
-    BlockSeq {initialBlockHeight, initialSlotNo} = blockSeq
+    txGroups :: NonEmpty [Tx]
+    txGroups = fromMaybe ([] :| []) $ NE.nonEmpty $ TxSeq.toTxGroups txSeq
 
     txSeq :: TxSeq
     txSeq = blockSeqToTxSeq blockSeq
-
-    toTxGroupsNE :: TxSeq -> NonEmpty [Tx]
-    toTxGroupsNE = fromMaybe ([] :| []) . NE.nonEmpty . TxSeq.toTxGroups
 
     makeBlock :: Quantity "block" Word32 -> SlotNo -> [Tx] -> Block
     makeBlock blockHeight slotNo transactions = Block
@@ -2364,6 +2352,10 @@ blockSeqToBlocks blockSeq =
 
 blockSeqToTxSeq :: BlockSeq -> TxSeq
 blockSeqToTxSeq BlockSeq {shrinkableTxSeq} = toTxSeq shrinkableTxSeq
+
+--------------------------------------------------------------------------------
+-- Testing 'applyBlocks' with arbitrary sequences of blocks and transactions
+--------------------------------------------------------------------------------
 
 prop_applyBlocks_lastUTxO_allOurs :: BlockSeq -> Property
 prop_applyBlocks_lastUTxO_allOurs =
@@ -2385,7 +2377,7 @@ prop_applyBlocks_lastUTxO_someOurs ourState blockSeq =
     applyBlocksResult = runIdentity $ applyBlocks blockData wallet
       where
         blockData :: BlockData m addr tx state
-        blockData = List $ blockSeqToBlocks blockSeq
+        blockData = List $ blockSeqToBlockList blockSeq
 
         wallet :: Wallet s
         wallet = unsafeInitWallet ourHeadUTxO currentTip ourState

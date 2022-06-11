@@ -2349,8 +2349,9 @@ prop_applyBlocks_lastUTxO_noneOurs =
         IsOursIf2 (const False) (const False)
 
 prop_applyBlocks_lastUTxO_someOurs
-    :: forall state. (state ~ IsOursIf2 Address RewardAccount)
-    => state
+    :: forall s. (s ~ IsOursIf2 Address RewardAccount)
+    => s
+    -- ^ The wallet state
     -> Quantity "block" Word32
     -- ^ Initial block height
     -> SlotNo
@@ -2359,34 +2360,36 @@ prop_applyBlocks_lastUTxO_someOurs
     -- ^ Transaction sequence to apply
     -> Property
 prop_applyBlocks_lastUTxO_someOurs ourState bh0 sn0 (toTxSeq -> txSeq) =
-    resultLastUTxO === ourLastUTxOExpected
+    applyBlocksResultLastUTxO === ourLastUTxO
   where
-    IsOursIf2 isOurAddress _isOurRewardAccount = ourState
+    applyBlocksResult :: NonEmpty ([FilteredBlock], (DeltaWallet s, Wallet s))
+    applyBlocksResult = runIdentity $ applyBlocks blockData wallet
+      where
+        blockData :: BlockData m addr tx state
+        blockData = List $ txSeqToBlocks bh0 sn0 txSeq
 
-    blockData :: BlockData m addr tx state
-    blockData = List $ txSeqToBlocks bh0 sn0 txSeq
+        wallet :: Wallet s
+        wallet = unsafeInitWallet ourHeadUTxO currentTip ourState
+          where
+            currentTip :: BlockHeader
+            currentTip = shouldNotEvaluate "currentTip"
 
-    currentTip :: BlockHeader
-    currentTip = shouldNotEvaluate "currentTip"
+    applyBlocksResultLastUTxO :: UTxO
+    applyBlocksResultLastUTxO = utxo $ snd $ snd <$> NE.last applyBlocksResult
 
-    ourUTxO :: UTxO -> UTxO
-    ourUTxO = UTxO.filterByAddress isOurAddress
+    isOurAddress :: Address -> Bool
+    isOurAddress = conditionA ourState
 
     ourHeadUTxO :: UTxO
-    ourHeadUTxO = ourUTxO $ TxSeq.headUTxO txSeq
+    ourHeadUTxO = UTxO.filterByAddress isOurAddress $ TxSeq.headUTxO txSeq
 
-    ourLastUTxOExpected :: UTxO
-    ourLastUTxOExpected = ourUTxO $ TxSeq.lastUTxO txSeq
+    ourLastUTxO :: UTxO
+    ourLastUTxO = UTxO.filterByAddress isOurAddress $ TxSeq.lastUTxO txSeq
 
-    result :: NonEmpty ([FilteredBlock], (DeltaWallet state, Wallet state))
-    result = runIdentity $ applyBlocks blockData wallet
+--------------------------------------------------------------------------------
+-- Utility functions
+--------------------------------------------------------------------------------
 
-    resultLastUTxO :: UTxO
-    resultLastUTxO = utxo $ snd $ snd <$> NE.last result
-
-    shouldNotEvaluate :: String -> a
-    shouldNotEvaluate name = error $ unwords
-        [name, "was unexpectedly evaluated"]
-
-    wallet :: Wallet state
-    wallet = unsafeInitWallet ourHeadUTxO currentTip ourState
+shouldNotEvaluate :: String -> a
+shouldNotEvaluate name = error $ unwords
+    [name, "was unexpectedly evaluated"]

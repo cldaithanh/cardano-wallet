@@ -2359,11 +2359,15 @@ blockSeqToTxSeq BlockSeq {shrinkableTxSeq} = toTxSeq shrinkableTxSeq
 
 prop_applyBlocks_lastUTxO_allOurs :: BlockSeq -> Property
 prop_applyBlocks_lastUTxO_allOurs =
-    prop_applyBlocks_lastUTxO_someOurs $ IsOursIf2 (const True) (const True)
+    prop_applyBlocks_lastUTxO_someOurs $ IsOursIf2
+        (const True)
+        (const True)
 
 prop_applyBlocks_lastUTxO_noneOurs :: BlockSeq -> Property
 prop_applyBlocks_lastUTxO_noneOurs =
-    prop_applyBlocks_lastUTxO_someOurs $ IsOursIf2 (const False) (const False)
+    prop_applyBlocks_lastUTxO_someOurs $ IsOursIf2
+        (const False)
+        (const False)
 
 prop_applyBlocks_lastUTxO_someOurs
     :: forall s. (s ~ IsOursIf2 Address RewardAccount)

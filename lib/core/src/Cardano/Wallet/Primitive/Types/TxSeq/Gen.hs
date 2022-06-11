@@ -17,6 +17,10 @@ import Cardano.Wallet.Primitive.Types.Address
     ( Address )
 import Cardano.Wallet.Primitive.Types.Coin
     ( Coin (..) )
+import Cardano.Wallet.Primitive.Types.Coin.Gen
+    ( genCoinPositive )
+import Cardano.Wallet.Primitive.Types.RewardAccount.Gen
+    ( genRewardAccount )
 import Cardano.Wallet.Primitive.Types.TokenBundle.Gen
     ( genTokenBundlePartitionNonNull )
 import Cardano.Wallet.Primitive.Types.TokenMap
@@ -37,6 +41,8 @@ import Data.Maybe
     ( listToMaybe )
 import Test.QuickCheck
     ( Gen, chooseInt, elements, frequency, sized, vectorOf )
+import Test.QuickCheck.Extra
+    ( genMapWith )
 
 import qualified Cardano.Wallet.Primitive.Types.TokenBundle as TokenBundle
 import qualified Cardano.Wallet.Primitive.Types.TxSeq as TxSeq
@@ -118,8 +124,12 @@ genTxFromUTxO genAddr u = do
         selectUTxOEntries u =<< chooseInt (1, 2)
     (collateralInputs, _) <-
         selectUTxOEntries u =<< chooseInt (1, 2)
-    let inputValue =
-            F.foldMap (tokens . snd) inputs
+    withdrawals <-
+        genMapWith genRewardAccount genCoinPositive
+    let inputValue = mconcat
+            [ F.foldMap (tokens . snd) inputs
+            , F.foldMap TokenBundle.fromCoin withdrawals
+            ]
     let collateralInputValue =
             F.foldMap (tokens . snd) collateralInputs
     outputBundles <-
@@ -148,7 +158,6 @@ genTxFromUTxO genAddr u = do
             zipWith TxOut collateralOutputAddresses collateralOutputBundles
         , metadata =
             Nothing
-        , withdrawals =
-            mempty
+        , withdrawals
         , scriptValidity
         }

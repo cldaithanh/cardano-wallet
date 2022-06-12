@@ -2394,8 +2394,8 @@ applyBlockSeqLastUTxO
     -> BlockSeq
     -> UTxO
     -> UTxO
-applyBlockSeqLastUTxO s blockSeq utxo =
-    view #utxo $ snd $ snd $ NE.last $ applyBlockSeq s blockSeq utxo
+applyBlockSeqLastUTxO s blockSeq =
+    utxo . snd . snd . NE.last . applyBlockSeq s blockSeq
 
 --------------------------------------------------------------------------------
 -- Testing 'applyBlocks' with arbitrary sequences of blocks and transactions

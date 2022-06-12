@@ -2415,14 +2415,14 @@ prop_applyBlocks_lastUTxO_noneOurs blockSeq =
 
 prop_applyBlocks_lastUTxO_someOurs
     :: forall s. (s ~ IsOursIf2 Address RewardAccount)
-    => s
-    -> BlockSeq
+    => BlockSeq
+    -> s
     -> Property
-prop_applyBlocks_lastUTxO_someOurs ourState blockSeq =
-    applyBlockSeqLastUTxO ourState blockSeq
+prop_applyBlocks_lastUTxO_someOurs blockSeq someOurs =
+    applyBlockSeqLastUTxO someOurs blockSeq
         (UTxO.filterByAddress isOurAddress $ blockSeqToHeadUTxO blockSeq)
     ===
         (UTxO.filterByAddress isOurAddress $ blockSeqToLastUTxO blockSeq)
   where
     isOurAddress :: Address -> Bool
-    isOurAddress = conditionA ourState
+    isOurAddress = conditionA someOurs

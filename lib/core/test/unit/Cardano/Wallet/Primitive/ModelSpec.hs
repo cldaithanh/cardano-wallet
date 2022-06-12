@@ -12,6 +12,7 @@
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE ViewPatterns #-}
 {-# OPTIONS_GHC -fno-warn-orphans #-}
+{- HLINT ignore "Move brackets to avoid $" -}
 
 module Cardano.Wallet.Primitive.ModelSpec
     ( spec
@@ -665,6 +666,13 @@ instance IsOurs AllOurs a where
     isOurs _ = (Just shouldNotEvaluate,)
       where
         shouldNotEvaluate = error "AllOurs: unexpected evaluation"
+
+-- | A simplified wallet state that marks no entities as "ours".
+--
+data NoneOurs = NoneOurs
+
+instance IsOurs NoneOurs a where
+    isOurs _ = (Nothing,)
 
 -- | Encapsulates a filter condition for matching entities with 'IsOurs'.
 --
@@ -2319,11 +2327,11 @@ shrinkBlockSeq = genericRoundRobinShrink
     <:> shrinkTxSeq
     <:> Nil
 
-blockSeqHeadUTxO :: BlockSeq -> UTxO
-blockSeqHeadUTxO = TxSeq.headUTxO . blockSeqToTxSeq
+blockSeqToHeadUTxO :: BlockSeq -> UTxO
+blockSeqToHeadUTxO = TxSeq.headUTxO . blockSeqToTxSeq
 
-blockSeqLastUTxO :: BlockSeq -> UTxO
-blockSeqLastUTxO = TxSeq.lastUTxO . blockSeqToTxSeq
+blockSeqToLastUTxO :: BlockSeq -> UTxO
+blockSeqToLastUTxO = TxSeq.lastUTxO . blockSeqToTxSeq
 
 blockSeqToBlockData :: BlockSeq -> BlockData m addr tx state
 blockSeqToBlockData = List . blockSeqToBlockList
@@ -2356,12 +2364,16 @@ blockSeqToBlockList blockSeq =
 blockSeqToTxSeq :: BlockSeq -> TxSeq
 blockSeqToTxSeq BlockSeq {shrinkableTxSeq} = toTxSeq shrinkableTxSeq
 
-utxoToWallet
+applyBlockSeq
     :: (IsOurs s Address, IsOurs s RewardAccount)
     => s
+    -> BlockSeq
     -> UTxO
-    -> Wallet s
-utxoToWallet s u = unsafeInitWallet u currentTip s
+    -> NonEmpty ([FilteredBlock], (DeltaWallet s, Wallet s))
+applyBlockSeq s blockSeq utxo = runIdentity $
+    applyBlocks
+        (blockSeqToBlockData blockSeq)
+        (unsafeInitWallet utxo currentTip s)
   where
     currentTip :: BlockHeader
     currentTip = shouldNotEvaluate "currentTip"
@@ -2370,21 +2382,30 @@ utxoToWallet s u = unsafeInitWallet u currentTip s
     shouldNotEvaluate name = error $ unwords
         [name, "was unexpectedly evaluated"]
 
+applyBlockSeqLastUTxO
+    :: forall s. (IsOurs s Address, IsOurs s RewardAccount)
+    => s
+    -> BlockSeq
+    -> UTxO
+    -> UTxO
+applyBlockSeqLastUTxO s blockSeq utxo =
+    view #utxo $ snd $ snd $ NE.last $ applyBlockSeq s blockSeq utxo
+
 --------------------------------------------------------------------------------
 -- Testing 'applyBlocks' with arbitrary sequences of blocks and transactions
 --------------------------------------------------------------------------------
 
 prop_applyBlocks_lastUTxO_allOurs :: BlockSeq -> Property
-prop_applyBlocks_lastUTxO_allOurs =
-    prop_applyBlocks_lastUTxO_someOurs $ IsOursIf2
-        (const True)
-        (const True)
+prop_applyBlocks_lastUTxO_allOurs blockSeq =
+    applyBlockSeqLastUTxO AllOurs blockSeq
+        (blockSeqToHeadUTxO blockSeq)
+    ===
+        (blockSeqToLastUTxO blockSeq)
 
 prop_applyBlocks_lastUTxO_noneOurs :: BlockSeq -> Property
-prop_applyBlocks_lastUTxO_noneOurs =
-    prop_applyBlocks_lastUTxO_someOurs $ IsOursIf2
-        (const False)
-        (const False)
+prop_applyBlocks_lastUTxO_noneOurs blockSeq =
+    applyBlockSeqLastUTxO NoneOurs blockSeq UTxO.empty
+        === UTxO.empty
 
 prop_applyBlocks_lastUTxO_someOurs
     :: forall s. (s ~ IsOursIf2 Address RewardAccount)
@@ -2392,25 +2413,10 @@ prop_applyBlocks_lastUTxO_someOurs
     -> BlockSeq
     -> Property
 prop_applyBlocks_lastUTxO_someOurs ourState blockSeq =
-    applyBlocksResultLastUTxO === ourLastUTxO
+    applyBlockSeqLastUTxO ourState blockSeq
+        (UTxO.filterByAddress isOurAddress $ blockSeqToHeadUTxO blockSeq)
+    ===
+        (UTxO.filterByAddress isOurAddress $ blockSeqToLastUTxO blockSeq)
   where
-    applyBlocksResult :: NonEmpty ([FilteredBlock], (DeltaWallet s, Wallet s))
-    applyBlocksResult = runIdentity $ applyBlocks blockData wallet
-      where
-        blockData :: BlockData m addr tx state
-        blockData = blockSeqToBlockData blockSeq
-
-        wallet :: Wallet s
-        wallet = utxoToWallet ourState ourHeadUTxO
-
-    applyBlocksResultLastUTxO :: UTxO
-    applyBlocksResultLastUTxO = utxo $ snd $ snd <$> NE.last applyBlocksResult
-
     isOurAddress :: Address -> Bool
     isOurAddress = conditionA ourState
-
-    ourHeadUTxO :: UTxO
-    ourHeadUTxO = UTxO.filterByAddress isOurAddress $ blockSeqHeadUTxO blockSeq
-
-    ourLastUTxO :: UTxO
-    ourLastUTxO = UTxO.filterByAddress isOurAddress $ blockSeqLastUTxO blockSeq

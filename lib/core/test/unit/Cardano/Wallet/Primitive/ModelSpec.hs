@@ -2333,11 +2333,11 @@ shrinkBlockSeq = genericRoundRobinShrink
     <:> shrinkTxSeq
     <:> Nil
 
-blockSeqToHeadUTxO :: BlockSeq -> UTxO
-blockSeqToHeadUTxO = TxSeq.headUTxO . blockSeqToTxSeq
+blockSeqHeadUTxO :: BlockSeq -> UTxO
+blockSeqHeadUTxO = TxSeq.headUTxO . blockSeqToTxSeq
 
-blockSeqToLastUTxO :: BlockSeq -> UTxO
-blockSeqToLastUTxO = TxSeq.lastUTxO . blockSeqToTxSeq
+blockSeqLastUTxO :: BlockSeq -> UTxO
+blockSeqLastUTxO = TxSeq.lastUTxO . blockSeqToTxSeq
 
 blockSeqToBlockData :: BlockSeq -> BlockData m addr tx state
 blockSeqToBlockData = List . blockSeqToBlockList
@@ -2404,8 +2404,8 @@ applyBlockSeqLastUTxO s blockSeq =
 prop_applyBlocks_lastUTxO_allOurs :: BlockSeq -> Property
 prop_applyBlocks_lastUTxO_allOurs blockSeq =
     applyBlockSeqLastUTxO AllOurs blockSeq
-        (blockSeqToHeadUTxO blockSeq)
-    === (blockSeqToLastUTxO blockSeq)
+        (blockSeqHeadUTxO blockSeq)
+    === (blockSeqLastUTxO blockSeq)
 
 prop_applyBlocks_lastUTxO_noneOurs :: BlockSeq -> Property
 prop_applyBlocks_lastUTxO_noneOurs blockSeq =
@@ -2420,8 +2420,8 @@ prop_applyBlocks_lastUTxO_someOurs
     -> Property
 prop_applyBlocks_lastUTxO_someOurs blockSeq someOurs =
     applyBlockSeqLastUTxO someOurs blockSeq
-        (UTxO.filterByAddress isOurAddress $ blockSeqToHeadUTxO blockSeq)
-    === (UTxO.filterByAddress isOurAddress $ blockSeqToLastUTxO blockSeq)
+        (UTxO.filterByAddress isOurAddress $ blockSeqHeadUTxO blockSeq)
+    === (UTxO.filterByAddress isOurAddress $ blockSeqLastUTxO blockSeq)
   where
     isOurAddress :: Address -> Bool
     isOurAddress = conditionA someOurs

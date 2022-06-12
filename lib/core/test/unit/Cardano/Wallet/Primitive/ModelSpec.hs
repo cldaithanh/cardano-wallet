@@ -16,6 +16,11 @@
 
 module Cardano.Wallet.Primitive.ModelSpec
     ( spec
+    , genBlockSeq
+    , AllOurs (..)
+    , applyBlockSeqFilteredBlockTxs
+    , blockSeqHeadUTxO
+    , blockSeqToTxSeq
     ) where
 
 import Prelude
@@ -200,6 +205,8 @@ import Test.QuickCheck
     )
 import Test.QuickCheck.Extra
     ( chooseNatural, genericRoundRobinShrink, report, verify, (<:>), (<@>) )
+import Test.Utils.Pretty
+    ( (====) )
 
 import qualified Cardano.Wallet.Primitive.Types.Coin as Coin
 import qualified Cardano.Wallet.Primitive.Types.TokenBundle as TokenBundle
@@ -332,6 +339,8 @@ spec = do
             property prop_discoverFromBlockData
 
     parallel $ describe "applyBlocks" $ do
+        it "prop_applyBlocks_filteredBlockTxs_allOurs" $
+            prop_applyBlocks_filteredBlockTxs_allOurs & property
         it "prop_applyBlocks_lastUTxO_allOurs" $
             prop_applyBlocks_lastUTxO_allOurs & property
         it "prop_applyBlocks_lastUTxO_noneOurs" $
@@ -2391,21 +2400,45 @@ applyBlockSeqLastUTxO
 applyBlockSeqLastUTxO s blockSeq =
     utxo . snd . snd . NE.last . applyBlockSeq s blockSeq
 
+applyBlockSeqFilteredBlockTxs
+    :: forall s. (IsOurs s Address, IsOurs s RewardAccount)
+    => s
+    -> BlockSeq
+    -> UTxO
+    -> [Tx]
+applyBlockSeqFilteredBlockTxs s blockSeq
+    = mconcat
+    . mconcat
+    . NE.toList
+    . fmap (fmap (reverse . fmap fst . view #transactions) . fst)
+    . applyBlockSeq s blockSeq
+
 --------------------------------------------------------------------------------
 -- Testing 'applyBlocks' with arbitrary sequences of blocks and transactions
 --------------------------------------------------------------------------------
+
+prop_applyBlocks_filteredBlockTxs_allOurs :: BlockSeq -> Property
+prop_applyBlocks_filteredBlockTxs_allOurs blockSeq =
+    fmap (view #txId) (applyBlockSeqFilteredBlockTxs AllOurs blockSeq
+        (blockSeqHeadUTxO blockSeq))
+    ====
+        fmap (view #txId) (TxSeq.toTxs (blockSeqToTxSeq blockSeq))
+  where
+    ourTxs = undefined
 
 prop_applyBlocks_lastUTxO_allOurs :: BlockSeq -> Property
 prop_applyBlocks_lastUTxO_allOurs blockSeq =
     applyBlockSeqLastUTxO AllOurs blockSeq
         (blockSeqHeadUTxO blockSeq)
-    === (blockSeqLastUTxO blockSeq)
+    ====
+        (blockSeqLastUTxO blockSeq)
 
 prop_applyBlocks_lastUTxO_noneOurs :: BlockSeq -> Property
 prop_applyBlocks_lastUTxO_noneOurs blockSeq =
     applyBlockSeqLastUTxO NoneOurs blockSeq
         UTxO.empty
-    === UTxO.empty
+    ====
+        UTxO.empty
 
 prop_applyBlocks_lastUTxO_someOurs
     :: forall s. (s ~ IsOursIf2 Address RewardAccount)
@@ -2415,7 +2448,8 @@ prop_applyBlocks_lastUTxO_someOurs
 prop_applyBlocks_lastUTxO_someOurs blockSeq someOurs =
     applyBlockSeqLastUTxO someOurs blockSeq
         (UTxO.filterByAddress isOurAddress $ blockSeqHeadUTxO blockSeq)
-    === (UTxO.filterByAddress isOurAddress $ blockSeqLastUTxO blockSeq)
+    ====
+        (UTxO.filterByAddress isOurAddress $ blockSeqLastUTxO blockSeq)
   where
     isOurAddress :: Address -> Bool
     isOurAddress = conditionA someOurs

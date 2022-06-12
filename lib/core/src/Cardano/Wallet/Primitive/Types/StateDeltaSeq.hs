@@ -5,6 +5,7 @@
 module Cardano.Wallet.Primitive.Types.StateDeltaSeq
     ( StateDeltaSeq
     , unfoldNM
+    , transitions
     , applyDelta
     , applyDeltas
     , applyDeltaM
@@ -91,6 +92,17 @@ instance (Show state, Show delta) => Show (StateDeltaSeq state delta) where
 --------------------------------------------------------------------------------
 -- Operations
 --------------------------------------------------------------------------------
+
+transitions :: forall s d. StateDeltaSeq s d -> [(s, d, s)]
+transitions StateDeltaSeq {head, tail}
+    | V.length tail == 0 =
+        []
+    | otherwise =
+        (head, fst (V.head tail), snd (V.head tail)) : rest
+  where
+    rest :: [(s, d, s)]
+    rest = zip (F.toList tail) (drop 1 $ F.toList tail)
+        <&> \((_d0, s0), (d1, s1)) -> (s0, d1, s1)
 
 unfoldNM
     :: Monad m

@@ -2405,13 +2405,13 @@ prop_applyBlocks_lastUTxO_allOurs :: BlockSeq -> Property
 prop_applyBlocks_lastUTxO_allOurs blockSeq =
     applyBlockSeqLastUTxO AllOurs blockSeq
         (blockSeqToHeadUTxO blockSeq)
-    ===
-        (blockSeqToLastUTxO blockSeq)
+    === (blockSeqToLastUTxO blockSeq)
 
 prop_applyBlocks_lastUTxO_noneOurs :: BlockSeq -> Property
 prop_applyBlocks_lastUTxO_noneOurs blockSeq =
-    applyBlockSeqLastUTxO NoneOurs blockSeq UTxO.empty
-        === UTxO.empty
+    applyBlockSeqLastUTxO NoneOurs blockSeq
+        UTxO.empty
+    === UTxO.empty
 
 prop_applyBlocks_lastUTxO_someOurs
     :: forall s. (s ~ IsOursIf2 Address RewardAccount)
@@ -2421,8 +2421,7 @@ prop_applyBlocks_lastUTxO_someOurs
 prop_applyBlocks_lastUTxO_someOurs blockSeq someOurs =
     applyBlockSeqLastUTxO someOurs blockSeq
         (UTxO.filterByAddress isOurAddress $ blockSeqToHeadUTxO blockSeq)
-    ===
-        (UTxO.filterByAddress isOurAddress $ blockSeqToLastUTxO blockSeq)
+    === (UTxO.filterByAddress isOurAddress $ blockSeqToLastUTxO blockSeq)
   where
     isOurAddress :: Address -> Bool
     isOurAddress = conditionA someOurs

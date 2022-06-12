@@ -5,6 +5,7 @@
 {-# LANGUAGE DerivingStrategies #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE OverloadedLabels #-}
@@ -144,7 +145,7 @@ import Data.Functor
 import Data.Functor.Identity
     ( Identity (..) )
 import Data.Generics.Internal.VL.Lens
-    ( over, view, (^.) )
+    ( over, set, view, (^.) )
 import Data.Generics.Labels
     ()
 import Data.List
@@ -346,14 +347,22 @@ spec = do
             property prop_discoverFromBlockData
 
     parallel $ describe "applyBlocks" $ do
-        it "prop_applyBlocks_filteredBlockTxs_allOurs" $
-            prop_applyBlocks_filteredBlockTxs_allOurs & property
-        it "prop_applyBlocks_lastUTxO_allOurs" $
-            prop_applyBlocks_lastUTxO_allOurs & property
-        it "prop_applyBlocks_lastUTxO_noneOurs" $
-            prop_applyBlocks_lastUTxO_noneOurs & property
-        it "prop_applyBlocks_lastUTxO_someOurs" $
-            prop_applyBlocks_lastUTxO_someOurs & property
+
+        describe "filteredBlockTxs" $ do
+            it "prop_applyBlocks_filteredBlockTxs_allOurs" $
+                prop_applyBlocks_filteredBlockTxs_allOurs & property
+            it "prop_applyBlocks_filteredBlockTxs_noneOurs" $
+                prop_applyBlocks_filteredBlockTxs_noneOurs & property
+            it "prop_applyBlocks_filteredBlockTxs_someOurs" $
+                prop_applyBlocks_filteredBlockTxs_someOurs & property
+
+        describe "lastUTxO" $ do
+            it "prop_applyBlocks_lastUTxO_allOurs" $
+                prop_applyBlocks_lastUTxO_allOurs & property
+            it "prop_applyBlocks_lastUTxO_noneOurs" $
+                prop_applyBlocks_lastUTxO_noneOurs & property
+            it "prop_applyBlocks_lastUTxO_someOurs" $
+                prop_applyBlocks_lastUTxO_someOurs & property
 
 {-------------------------------------------------------------------------------
                                 Properties
@@ -2348,6 +2357,13 @@ blockSeqHeadUTxO = TxSeq.headUTxO . blockSeqToTxSeq
 blockSeqLastUTxO :: BlockSeq -> UTxO
 blockSeqLastUTxO = TxSeq.lastUTxO . blockSeqToTxSeq
 
+blockSeqOurTxs
+    :: (IsOurs s Address, IsOurs s RewardAccount) => s -> BlockSeq -> [Tx]
+blockSeqOurTxs s blockSeq
+    = fmap (\(_, tx, _) -> tx)
+    $ filter (\(u0, tx, _u1) -> evalState (isOurTx tx u0) s)
+    $ TxSeq.transitions (blockSeqToTxSeq blockSeq)
+
 blockSeqToBlockData :: BlockSeq -> BlockData m addr tx state
 blockSeqToBlockData = List . blockSeqToBlockList
 
@@ -2413,11 +2429,16 @@ applyBlockSeqFilteredBlockTxs
     -> UTxO
     -> [Tx]
 applyBlockSeqFilteredBlockTxs s blockSeq
-    = mconcat
+    = fmap nullifyFee
+    . mconcat
     . mconcat
     . NE.toList
     . fmap (fmap (reverse . fmap fst . view #transactions) . fst)
     . applyBlockSeq s blockSeq
+  where
+    -- TODO: remove this
+    nullifyFee :: Tx -> Tx
+    nullifyFee = set #fee Nothing
 
 --------------------------------------------------------------------------------
 -- Testing 'applyBlocks' with arbitrary sequences of blocks and transactions
@@ -2425,12 +2446,28 @@ applyBlockSeqFilteredBlockTxs s blockSeq
 
 prop_applyBlocks_filteredBlockTxs_allOurs :: BlockSeq -> Property
 prop_applyBlocks_filteredBlockTxs_allOurs blockSeq =
-    fmap (view #txId) (applyBlockSeqFilteredBlockTxs AllOurs blockSeq
-        (blockSeqHeadUTxO blockSeq))
+    applyBlockSeqFilteredBlockTxs AllOurs blockSeq
+        (blockSeqHeadUTxO blockSeq)
     ====
-        fmap (view #txId) (TxSeq.toTxs (blockSeqToTxSeq blockSeq))
-  where
-    ourTxs = undefined
+        blockSeqOurTxs AllOurs blockSeq
+
+prop_applyBlocks_filteredBlockTxs_noneOurs :: BlockSeq -> Property
+prop_applyBlocks_filteredBlockTxs_noneOurs blockSeq =
+    applyBlockSeqFilteredBlockTxs NoneOurs blockSeq
+        (blockSeqHeadUTxO blockSeq)
+    ====
+        blockSeqOurTxs NoneOurs blockSeq
+
+prop_applyBlocks_filteredBlockTxs_someOurs
+    :: forall s. (s ~ IsOursIf2 Address RewardAccount)
+    => BlockSeq
+    -> s
+    -> Property
+prop_applyBlocks_filteredBlockTxs_someOurs blockSeq someOurs =
+    applyBlockSeqFilteredBlockTxs someOurs blockSeq
+        (blockSeqHeadUTxO blockSeq)
+    ====
+        blockSeqOurTxs someOurs blockSeq
 
 prop_applyBlocks_lastUTxO_allOurs :: BlockSeq -> Property
 prop_applyBlocks_lastUTxO_allOurs blockSeq =

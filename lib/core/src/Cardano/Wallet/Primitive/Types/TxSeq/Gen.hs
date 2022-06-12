@@ -147,7 +147,8 @@ genTxFromUTxO genAddr u = do
         ]
     pure $ txWithoutIdToTx TxWithoutId
         { fee =
-            Just (Coin 0)
+            -- TODO: generate a fee
+            Nothing
         , resolvedInputs =
             fmap (TokenBundle.getCoin . tokens) <$> inputs
         , resolvedCollateralInputs =

@@ -96,6 +96,20 @@ spec = do
             prop_dropLasts_isValid
                 @(Sum Int) @Int & property
 
+    describe "transitions" $ do
+        it "prop_transitions_length" $
+            prop_transitions_length
+                @(Sum Int) @Int & property
+        it "prop_transitions_toDeltaList" $
+            prop_transitions_toDeltaList
+                @(Sum Int) @Int & property
+        it "prop_transitions_toStateList_initials" $
+            prop_transitions_toStateList_initials
+                @(Sum Int) @Int & property
+        it "prop_transitions_toStateList_finals" $
+            prop_transitions_toStateList_finals
+                @(Sum Int) @Int & property
+
 --------------------------------------------------------------------------------
 -- fromState
 --------------------------------------------------------------------------------
@@ -211,6 +225,32 @@ prop_dropLasts_isValid
     :: (Eq s, Eq d) => GenStateDeltaSeq s d -> Property
 prop_dropLasts_isValid (genStateDeltaSeq -> (seq, nextState)) =
     all (Seq.isValid nextState) (Seq.dropLasts seq) === True
+
+--------------------------------------------------------------------------------
+-- transitions
+--------------------------------------------------------------------------------
+
+prop_transitions_length
+    :: (Eq s, Eq d) => GenStateDeltaSeq s d -> Property
+prop_transitions_length (genStateDeltaSeq -> (seq, _nextState)) =
+    length (Seq.transitions seq) === length seq
+
+prop_transitions_toDeltaList
+    :: (Eq s, Eq d, Show s, Show d) => GenStateDeltaSeq s d -> Property
+prop_transitions_toDeltaList (genStateDeltaSeq -> (seq, _nextState)) =
+    fmap (\(_, d, _) -> d) (Seq.transitions seq) === Seq.toDeltaList seq
+
+prop_transitions_toStateList_initials
+    :: (Eq s, Eq d, Show s, Show d) => GenStateDeltaSeq s d -> Property
+prop_transitions_toStateList_initials (genStateDeltaSeq -> (seq, _nextState)) =
+    fmap (\(si, _, _) -> si) (Seq.transitions seq)
+        === NE.take (length seq) (Seq.toStateList seq)
+
+prop_transitions_toStateList_finals
+    :: (Eq s, Eq d, Show s, Show d) => GenStateDeltaSeq s d -> Property
+prop_transitions_toStateList_finals (genStateDeltaSeq -> (seq, _nextState)) =
+    fmap (\(_, _, sf) -> sf) (Seq.transitions seq)
+        === NE.drop 1 (Seq.toStateList seq)
 
 --------------------------------------------------------------------------------
 -- Utility types and functions

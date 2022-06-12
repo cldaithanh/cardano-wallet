@@ -1,5 +1,6 @@
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TupleSections #-}
 
 module Cardano.Wallet.Primitive.Types.TxSeq
     ( TxSeq (..)
@@ -24,6 +25,7 @@ module Cardano.Wallet.Primitive.Types.TxSeq
     , shrinkTxIds
     , toTxGroups
     , toTxs
+    , transitions
     , txIds
     , unfoldNM
     ) where
@@ -55,6 +57,8 @@ import Data.Either
     ( isRight, rights )
 import Data.Function
     ( on, (&) )
+import Data.Maybe
+    ( mapMaybe )
 import Data.Map.Strict
     ( Map )
 import Data.Set
@@ -108,6 +112,11 @@ lastUTxO = Seq.lastState . unTxSeq
 
 foldUTxO :: TxSeq -> UTxO
 foldUTxO = bifoldMap id (const mempty) . unTxSeq
+
+transitions :: TxSeq -> [(UTxO, Tx, UTxO)]
+transitions (TxSeq s) = mapMaybe
+    (\(u0, e, u1) -> either (const Nothing) (Just . (u0, ,u1)) e)
+    (Seq.transitions s)
 
 toTxs :: TxSeq -> [Tx]
 toTxs = mconcat . toTxGroups

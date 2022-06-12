@@ -2319,6 +2319,15 @@ shrinkBlockSeq = genericRoundRobinShrink
     <:> shrinkTxSeq
     <:> Nil
 
+blockSeqHeadUTxO :: BlockSeq -> UTxO
+blockSeqHeadUTxO = TxSeq.headUTxO . blockSeqToTxSeq
+
+blockSeqLastUTxO :: BlockSeq -> UTxO
+blockSeqLastUTxO = TxSeq.lastUTxO . blockSeqToTxSeq
+
+blockSeqToBlockData :: BlockSeq -> BlockData m addr tx state
+blockSeqToBlockData = List . blockSeqToBlockList
+
 blockSeqToBlockList :: BlockSeq -> NonEmpty Block
 blockSeqToBlockList blockSeq =
     NE.fromList $ getZipList $ makeBlock
@@ -2346,6 +2355,20 @@ blockSeqToBlockList blockSeq =
 
 blockSeqToTxSeq :: BlockSeq -> TxSeq
 blockSeqToTxSeq BlockSeq {shrinkableTxSeq} = toTxSeq shrinkableTxSeq
+
+utxoToWallet
+    :: (IsOurs s Address, IsOurs s RewardAccount)
+    => s
+    -> UTxO
+    -> Wallet s
+utxoToWallet s u = unsafeInitWallet u currentTip s
+  where
+    currentTip :: BlockHeader
+    currentTip = shouldNotEvaluate "currentTip"
+
+    shouldNotEvaluate :: String -> a
+    shouldNotEvaluate name = error $ unwords
+        [name, "was unexpectedly evaluated"]
 
 --------------------------------------------------------------------------------
 -- Testing 'applyBlocks' with arbitrary sequences of blocks and transactions
@@ -2375,13 +2398,10 @@ prop_applyBlocks_lastUTxO_someOurs ourState blockSeq =
     applyBlocksResult = runIdentity $ applyBlocks blockData wallet
       where
         blockData :: BlockData m addr tx state
-        blockData = List $ blockSeqToBlockList blockSeq
+        blockData = blockSeqToBlockData blockSeq
 
         wallet :: Wallet s
-        wallet = unsafeInitWallet ourHeadUTxO currentTip ourState
-          where
-            currentTip :: BlockHeader
-            currentTip = shouldNotEvaluate "currentTip"
+        wallet = utxoToWallet ourState ourHeadUTxO
 
     applyBlocksResultLastUTxO :: UTxO
     applyBlocksResultLastUTxO = utxo $ snd $ snd <$> NE.last applyBlocksResult
@@ -2390,18 +2410,7 @@ prop_applyBlocks_lastUTxO_someOurs ourState blockSeq =
     isOurAddress = conditionA ourState
 
     ourHeadUTxO :: UTxO
-    ourHeadUTxO = UTxO.filterByAddress isOurAddress $ TxSeq.headUTxO txSeq
+    ourHeadUTxO = UTxO.filterByAddress isOurAddress $ blockSeqHeadUTxO blockSeq
 
     ourLastUTxO :: UTxO
-    ourLastUTxO = UTxO.filterByAddress isOurAddress $ TxSeq.lastUTxO txSeq
-
-    txSeq :: TxSeq
-    txSeq = blockSeqToTxSeq blockSeq
-
---------------------------------------------------------------------------------
--- Utility functions
---------------------------------------------------------------------------------
-
-shouldNotEvaluate :: String -> a
-shouldNotEvaluate name = error $ unwords
-    [name, "was unexpectedly evaluated"]
+    ourLastUTxO = UTxO.filterByAddress isOurAddress $ blockSeqLastUTxO blockSeq

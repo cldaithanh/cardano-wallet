@@ -72,6 +72,8 @@ module Cardano.Wallet.Primitive.Model
 
 import Prelude
 
+import Cardano.Wallet.Primitive.AddressDerivation
+    ( DerivationIndex )
 import Cardano.Wallet.Primitive.AddressDiscovery
     ( IsOurs (..) )
 import Cardano.Wallet.Primitive.BlockSummary
@@ -115,14 +117,18 @@ import Cardano.Wallet.Primitive.Types.UTxO
     ( DeltaUTxO, UTxO (..), balance, excluding, excludingD, receiveD )
 import Control.DeepSeq
     ( NFData (..), deepseq )
+import Control.Monad.State.Class
+    ( MonadState (..) )
 import Control.Monad.Trans.State.Strict
-    ( State, evalState, state )
+    ( State, evalState, evalStateT, runState, state )
 import Data.Bifunctor
     ( first )
 import Data.Delta
     ( Delta (..) )
 import Data.Foldable
     ( Foldable (toList) )
+import Data.Functor
+    ( void )
 import Data.Generics.Internal.VL.Lens
     ( (^.) )
 import Data.List.NonEmpty
@@ -180,29 +186,29 @@ import qualified Data.Set as Set
 -- Wallet (RndState k n)
 -- Wallet (SeqState n ShelleyKey)
 -- @
-data Wallet s = Wallet
+data Wallet = Wallet
     { -- | Unspent tx outputs belonging to this wallet
       utxo :: UTxO
 
       -- | Header of the latest applied block (current tip)
     , currentTip :: BlockHeader
 
-      -- | Address discovery state
-    , getState :: s
+    --   -- | Address discovery state
+    -- , getState :: s
     } deriving (Generic, Eq, Show)
 
-instance NFData s => NFData (Wallet s) where
-    rnf (Wallet u sl s) =
+instance NFData Wallet where
+    rnf (Wallet u sl) =
         deepseq (rnf u) $
         deepseq (rnf sl) $
-        deepseq (rnf s)
+        -- deepseq (rnf s)
         ()
 
-instance Buildable s => Buildable (Wallet s) where
-    build (Wallet u tip s) = "Wallet s\n"
+instance Buildable Wallet where
+    build (Wallet u tip) = "Wallet s\n"
         <> indentF 4 ("Tip: " <> build tip)
         <> indentF 4 ("UTxO:\n" <> indentF 4 (build u))
-        <> indentF 4 (build s)
+        -- <> indentF 4 (build s)
 
 -- | Delta encoding for 'Wallet'.
 data DeltaWallet s = DeltaWallet
@@ -214,11 +220,11 @@ data DeltaWallet s = DeltaWallet
 type DeltaAddressBook s = Delta.Replace s
 
 instance Delta (DeltaWallet s) where
-    type Base (DeltaWallet s) = Wallet s
+    type Base (DeltaWallet s) = Wallet
     dw `apply` w = w
         { utxo = deltaUTxO dw `apply` utxo w
         , currentTip = deltaCurrentTip dw `apply` currentTip w
-        , getState = deltaAddressBook dw `apply` getState w
+        -- , getState = deltaAddressBook dw `apply` getState w
         }
 
 {-------------------------------------------------------------------------------
@@ -229,16 +235,25 @@ instance Delta (DeltaWallet s) where
 --
 -- The wallet tip will be the genesis block header.
 initWallet
-    :: (IsOurs s Address, IsOurs s RewardAccount, Monad m)
-    => Block
+    :: Block
         -- ^ The genesis block
-    -> s
-        -- ^ Initial address discovery state
-    -> m ([(Tx, TxMeta)], Wallet s)
-initWallet block0 s = do
-    let w0 = Wallet mempty undefined s
-    (FilteredBlock{transactions}, (_, w1)) <-
-        applyBlock block0 (discoverFromBlockList $ block0 :| []) w0
+    -> (Address -> State s (Maybe (NonEmpty DerivationIndex)))
+    -- ^ Address discovery fn
+    -> (RewardAccount -> State s (Maybe (NonEmpty DerivationIndex)))
+    -- ^ RewardAccount discovery fn
+    -> State s ([(Tx, TxMeta)], Wallet)
+initWallet block0 addressFn rewardFn = do
+    let w0 = Wallet mempty undefined
+        getChainEvents = discoverFromBlockList (void . addressFn) (void . rewardFn) $ block0 :| []
+    s <- get
+    (FilteredBlock{transactions}, (_, w1)) <- do
+        chainEvents <- getChainEvents
+        applyBlock
+          (flip evalState s . addressFn :: Address -> Maybe (NonEmpty DerivationIndex))
+          (flip evalState s . rewardFn :: RewardAccount -> Maybe (NonEmpty DerivationIndex))
+          chainEvents
+          block0
+          w0
     pure (transactions, w1)
 
 -- | Construct a wallet from the exact given state.
@@ -247,22 +262,20 @@ initWallet block0 s = do
 -- wallet invariants to be broken. Therefore it should only be used in the
 -- special case of loading wallet checkpoints from the database (where it is
 -- assumed a valid wallet was stored into the database).
-unsafeInitWallet
-    :: UTxO
-       -- ^ Unspent tx outputs belonging to this wallet
-    -> BlockHeader
-    -- ^ Header of the latest applied block (current tip)
-    -> s
-    -- ^ Address discovery state
-    -> Wallet s
-unsafeInitWallet = Wallet
+-- unsafeInitWallet
+--     :: MonadState s m
+--     => UTxO
+--        -- ^ Unspent tx outputs belonging to this wallet
+--     -> BlockHeader
+--     -- ^ Header of the latest applied block (current tip)
+--     -> m Wallet
+-- unsafeInitWallet = Wallet
 
 -- | Update the address discovery state of a wallet.
-updateState
-    :: s
-    -> Wallet s
-    -> Wallet s
-updateState s (Wallet u tip _) = Wallet u tip s
+-- updateState
+--     :: (s -> s) -
+--     -> Wallet s
+-- updateState s (Wallet u tip _) = Wallet u tip s
 
 {-------------------------------------------------------------------------------
                     Applying Blocks to the wallet state
@@ -290,14 +303,18 @@ data FilteredBlock = FilteredBlock
 -- Returns an updated wallet, as well as the address data relevant to the wallet
 -- that were discovered while applying the block.
 applyBlock
-    :: (IsOurs s Address, IsOurs s RewardAccount, Monad m)
-    => Block
-    -> (s -> m (ChainEvents, s))
-    -> Wallet s
-    -> m (FilteredBlock, (DeltaWallet s, Wallet s))
-applyBlock block getChainEvents =
+    :: MonadState s m
+    => (Address -> Maybe (NonEmpty DerivationIndex))
+    -- ^ Address discovery fn
+    -> (RewardAccount -> Maybe (NonEmpty DerivationIndex))
+    -- ^ RewardAccount discovery fn
+    -> ChainEvents
+    -> Block
+    -> Wallet
+    -> m (FilteredBlock, (DeltaWallet s, Wallet))
+applyBlock addressFn rewardFn chainEvents block = do
     fmap (first fromFiltered)
-    . applyBlockData (List blocks) getChainEvents
+    . applyBlockData addressFn rewardFn chainEvents (List blocks)
   where
     blocks = block :| []
     fromFiltered [] = FilteredBlock
@@ -339,36 +356,57 @@ applyBlock block getChainEvents =
 --   to obtain @wj@ from @wi@.
 --
 applyBlocks
-    :: (IsOurs s Address, IsOurs s RewardAccount, Monad m)
-    => BlockData
-    -> (s -> m (ChainEvents, s))
-    -> Wallet s
-    -> m (NonEmpty ([FilteredBlock], (DeltaWallet s, Wallet s)))
-applyBlocks (List (block0 :| blocks)) getChainEvents w0 = do
-    let firstApply = first (:[]) <$> applyBlock block0 getChainEvents w0
+    :: (Address -> Maybe (NonEmpty DerivationIndex))
+    -- ^ Address discovery fn
+    -> (RewardAccount -> Maybe (NonEmpty DerivationIndex))
+    -- ^ RewardAccount discovery fn
+    -> m ChainEvents
+    -> BlockData
+    -> Wallet
+    -> (NonEmpty ([FilteredBlock], (DeltaWallet s, Wallet)))
+applyBlocks addressFn rewardFn getChainEvents (List (block0 :| blocks)) w0 = do
+    let
+        firstApply = do
+            DO we need chain events for each block?
+            chainEvents <- getChainEvents
+            first (:[]) <$> applyBlock addressFn rewardFn chainEvents block0 w0
     sequence $ NE.scanl (\mPrev block -> do
                              prev <- mPrev
                              applyBlock' prev block
                         ) firstApply blocks
   where
-    applyBlock' (_,(_,w)) block = first (:[]) <$> applyBlock block getChainEvents w
-applyBlocks summary@(Summary _) getChainEvents w =
-    (NE.:| []) <$> applyBlockData summary getChainEvents w
+    applyBlock' (_,(_,w)) block = do
+        chainEvents <- getChainEvents
+        first (:[]) <$> applyBlock addressFn rewardFn chainEvents block w
+applyBlocks addressFn rewardFn getChainEvents summary@(Summary _) w = do
+    chainEvents <- getChainEvents
+    (NE.:| []) <$> applyBlockData addressFn rewardFn chainEvents summary w
 
 -- | Apply multiple blocks in sequence to an existing wallet
 -- and return the final wallet state as well as the transactions
 -- that were applied.
 applyBlockData
-    :: (IsOurs s Address, IsOurs s RewardAccount, Monad m)
-    => BlockData
-    -> (s -> m (ChainEvents, s))
-    -> Wallet s
-    -> m ([FilteredBlock], (DeltaWallet s, Wallet s))
-applyBlockData blocks getChainEvents (Wallet !u0 _ s0) = do
-    (chainEvents, s1) <- getChainEvents s0
+    :: MonadState s m
+    => (Address -> Maybe (NonEmpty DerivationIndex))
+    -- ^ Address discovery fn
+    -> (RewardAccount -> Maybe (NonEmpty DerivationIndex))
+    -- ^ RewardAccount discovery fn
+    -> ChainEvents
+    -> BlockData
+    -> Wallet
+    -> m ([FilteredBlock], (DeltaWallet s, Wallet))
+applyBlockData addressFn rewardFn chainEvents blocks (Wallet !u0 _) = do
+    s1 <- get
     let
+        applies :: UTxO -> BlockEvents -> ((FilteredBlock, DeltaUTxO), UTxO)
+        applies u blockEvent =
+            applyBlockEventsToUTxO
+              addressFn
+              rewardFn
+              blockEvent
+              u
+
         blockEvents = toAscBlockEvents chainEvents
-        applies u blockEvent = applyBlockEventsToUTxO blockEvent s1 u
         (processedBlocks, u1) = mapAccumL' applies u0 blockEvents
         filteredBlocks = map fst processedBlocks
         tip1 = lastHeader blocks
@@ -377,7 +415,7 @@ applyBlockData blocks getChainEvents (Wallet !u0 _ s0) = do
         du = mconcat (reverse $ map snd processedBlocks)
         dw = DeltaWallet
             { deltaUTxO = du , deltaAddressBook = ds, deltaCurrentTip = dtip }
-    pure (filteredBlocks, (dw, Wallet u1 tip1 s1))
+    pure (filteredBlocks, (dw, Wallet u1 tip1))
 
 -- | Strict variant of 'mapAccumL'.
 mapAccumL' :: (s -> a -> (o,s)) -> s -> [a] -> ([o],s)
@@ -409,33 +447,34 @@ lastHeader (Summary BlockSummary{to}) = to
 -------------------------------------------------------------------------------}
 
 -- | Available balance = 'balance' . 'availableUTxO'
-availableBalance :: Set Tx -> Wallet s -> TokenBundle
+availableBalance :: Set Tx -> UTxO -> TokenBundle
 availableBalance pending =
     balance . availableUTxO pending
 
 -- | Total balance = 'balance' . 'totalUTxO' +? rewards
 totalBalance
-    :: (IsOurs s Address, IsOurs s RewardAccount)
-    => Set Tx
+    :: (Address -> Maybe (NonEmpty DerivationIndex))
+    -> (RewardAccount -> Maybe (NonEmpty DerivationIndex))
+    -> Set Tx
     -> Coin
-    -> Wallet s
+    -> UTxO
     -> TokenBundle
-totalBalance pending rewards wallet@(Wallet _ _ s) =
-    balance (totalUTxO pending wallet) `TB.add` rewardsBalance
+totalBalance addrFn rewardFn pending rewards utxo =
+    balance (totalUTxO addrFn pending utxo) `TB.add` rewardsBalance
   where
     rewardsBalance
         | hasPendingWithdrawals = mempty
         | otherwise = TB.fromCoin rewards
 
     hasPendingWithdrawals =
-        any (any (ours s) . Map.keys . withdrawals) pending
+        any (any (isJust . rewardFn) . Map.keys . withdrawals) pending
 
 -- | Available UTxO = @pending ⋪ utxo@
 availableUTxO
     :: Set Tx
-    -> Wallet s
     -> UTxO
-availableUTxO pending (Wallet u _ _) = u `excluding` used
+    -> UTxO
+availableUTxO pending u = u `excluding` used
   where
     used :: Set TxIn
     used = F.foldMap' getUsedTxIn pending
@@ -459,12 +498,12 @@ availableUTxO pending (Wallet u _ _) = u `excluding` used
 -- >>>     ∪ change pendingTxs
 --
 totalUTxO
-    :: IsOurs s Address
-    => Set Tx
-    -> Wallet s
+    :: (Address -> Maybe (NonEmpty DerivationIndex))
+    -> Set Tx
     -> UTxO
-totalUTxO pending (Wallet u _ s) =
-    (u `excluding` spent) <> changeUTxO pending s
+    -> UTxO
+totalUTxO addrFn pending u =
+    (u `excluding` spent) <> changeUTxO addrFn pending
   where
     spent :: Set TxIn
     spent = F.foldMap' getSpentTxIn pending
@@ -493,13 +532,13 @@ totalUTxO pending (Wallet u _ s) =
 --   very effective.
 --   TODO: Add slot to 'Tx' and sort the pending set by slot.
 changeUTxO
-    :: IsOurs s Address
-    => Set Tx
-    -> s
+    :: (Address -> Maybe (NonEmpty DerivationIndex))
+    -- ^ Pure address discovery function
+    -> Set Tx
     -> UTxO
-changeUTxO pending = evalState $
-    mconcat <$> mapM
-        (UTxO.filterByAddressM isOursState . utxoFromTx)
+changeUTxO addrFn pending =
+    mconcat $ fmap
+        (UTxO.filterByAddress (isJust . addrFn) . utxoFromTx)
         (Set.toList pending)
 
 {-------------------------------------------------------------------------------
@@ -616,37 +655,43 @@ utxoFromTxCollateralOutputs Tx {txId, outputs, collateralOutput} =
 -- | Perform address discovery on a 'Block' by going through all transactions
 -- and delegation certificates in the block.
 discoverAddressesBlock
-    :: (IsOurs s Address, IsOurs s RewardAccount)
-    => Block -> s -> (DeltaAddressBook s, s)
-discoverAddressesBlock block s0 = (Delta.Replace s2, s2)
-  where
+    :: MonadState s m
+    => (Address -> m ())
+    -- ^ Address state update fn
+    -> (RewardAccount -> m ())
+    -- ^ RewardAccount state update fn
+    -> Block
+    -> m ()
+discoverAddressesBlock addrFn rewardFn block = do
     -- NOTE: Order in which we perform discovery is important.
-    s1 = L.foldl' discoverCert s0 (block ^. #delegations)
-    s2 = L.foldl' discoverTx   s1 (block ^. #transactions)
-
-    discoverCert s cert = updateOurs s (dlgCertAccount cert)
+    mapM_ discoverCert $ block ^. #delegations
+    mapM_ discoverTx $ block ^. #transactions
+  where
+    discoverCert cert = void $ rewardFn (dlgCertAccount cert)
 
     -- NOTE: Only outputs and withdrawals can potentially
     -- result in the extension of the address pool and
     -- the learning of new addresses.
     --
     -- Inputs and collateral are forced to use existing addresses.
-    discoverTx s tx = discoverWithdrawals (discoverOutputs s tx) tx
-    discoverOutputs s tx =
-        L.foldl' (\s_ out -> updateOurs s_ (out ^. #address)) s (tx ^. #outputs)
-    discoverWithdrawals s tx =
-        L.foldl' updateOurs s $ Map.keys (tx ^. #withdrawals)
+    discoverTx tx = discoverOutputs tx >> discoverWithdrawals tx
+    discoverOutputs tx =
+        mapM_ (\out -> addrFn $ out ^. #address) $ tx ^. #outputs
+    discoverWithdrawals tx =
+        mapM_ rewardFn $ Map.keys (tx ^. #withdrawals)
 
 -- | Perform address and transaction discovery on 'BlockData',
 discoverFromBlockList
-    :: (IsOurs s Address, IsOurs s RewardAccount, Monad m)
-    => NonEmpty Block
-    -> s
-    -> m (ChainEvents, s)
-discoverFromBlockList blocks !s0 =
-    pure (fromBlockEvents . map fromEntireBlock $ NE.toList blocks , s1)
-  where
-    s1 = L.foldl' (\s bl -> snd $ discoverAddressesBlock bl s) s0 $ NE.toList blocks
+    :: MonadState s m
+    => (Address -> m ())
+    -- ^ Address state update fn
+    -> (RewardAccount -> m ())
+    -- ^ RewardAccount state update fn
+    -> NonEmpty Block
+    -> m ChainEvents
+discoverFromBlockList addrFn rewardFn blocks = do
+    mapM_ (discoverAddressesBlock addrFn rewardFn) $ NE.toList blocks
+    pure (fromBlockEvents . map fromEntireBlock $ NE.toList blocks)
 
 -- | Indicates whether an address is known to be ours, without updating the
 -- address discovery state.
@@ -654,13 +699,22 @@ ours :: IsOurs s addr => s -> addr -> Bool
 ours s x = isJust . fst $ isOurs x s
 
 -- | Add an address to the address discovery state, iff it belongs to us.
-updateOurs :: IsOurs s addr => s -> addr -> s
-updateOurs s x = snd $ isOurs x s
+updateOurs
+    :: MonadState s m
+    => (addr -> m (Maybe (NonEmpty DerivationIndex)))
+    -- ^ Address discovery fn
+    -> addr
+    -> m ()
+updateOurs fn = void . fn
 
 -- | Perform stateful address discovery, and return whether the given address
 -- belongs to us.
-isOursState :: IsOurs s addr => addr -> State s Bool
-isOursState x = isJust <$> state (isOurs x)
+isOursState
+    :: MonadState s m
+    => (addr -> m (Maybe DerivationIndex))
+    -> addr
+    -> m Bool
+isOursState addrFn addr = isJust <$> addrFn addr
 
 {-------------------------------------------------------------------------------
                               Modification of UTxO
@@ -693,12 +747,12 @@ isOursState x = isJust <$> state (isOurs x)
 -- discover the outputs that belong to us and be able to infer that the
 -- corresponding inputs belong to us as well.
 applyBlockEventsToUTxO
-    :: (IsOurs s Address, IsOurs s RewardAccount)
-    => BlockEvents
-    -> s
+    :: (Address -> Maybe (NonEmpty DerivationIndex))
+    -> (RewardAccount -> Maybe (NonEmpty DerivationIndex))
+    -> BlockEvents
     -> UTxO
     -> ((FilteredBlock, DeltaUTxO), UTxO)
-applyBlockEventsToUTxO BlockEvents{slot,blockHeight,transactions,delegations} s u0 =
+applyBlockEventsToUTxO addrFn rewardFn BlockEvents{slot,blockHeight,transactions,delegations} u0 =
     ((fblock, du1), u1)
   where
     fblock = FilteredBlock
@@ -727,14 +781,14 @@ applyBlockEventsToUTxO BlockEvents{slot,blockHeight,transactions,delegations} s 
 -- > isJust (applyOurTxToUTxO slot bh state1 tx u) = b
 -- >   where (b, state1) = runState (isOurTx tx u) state0
 applyOurTxToUTxO
-    :: (IsOurs s Address, IsOurs s RewardAccount)
-    => Slot
+    :: (Address -> Maybe DerivationIndex)
+    -> (RewardAccount -> Maybe DerivationIndex)
+    -> Slot
     -> Quantity "block" Word32
-    -> s
     -> Tx
     -> UTxO
     -> Maybe ((Tx, TxMeta), DeltaUTxO, UTxO)
-applyOurTxToUTxO !slot !blockHeight !s !tx !u0 =
+applyOurTxToUTxO addrFn rewardFn !slot !blockHeight !tx !u0 =
     if hasKnownWithdrawal || not isUnchangedUTxO
         then Just ((tx {fee = actualFee dir}, txmeta), du, u)
         else Nothing
@@ -750,7 +804,7 @@ applyOurTxToUTxO !slot !blockHeight !s !tx !u0 =
     -- and the delta du21 maps the value u1 to the value u2.
     -- In general, the naming convention is  ui = duij `apply` uj
     (du10, u1)   = spendTxD tx u0
-    receivedUTxO = UTxO.filterByAddress (ours s) (utxoFromTx tx)
+    receivedUTxO = UTxO.filterByAddress (isJust . addrFn) (utxoFromTx tx)
     (du21, u2)   = receiveD u1 receivedUTxO
 
     -- NOTE: Performance.
@@ -763,7 +817,7 @@ applyOurTxToUTxO !slot !blockHeight !s !tx !u0 =
     -- allocates slightly fewer new Set/Map than the definition
     --   isUnchangedUTxO =  mempty == du
 
-    ourWithdrawalSum = ourWithdrawalSumFromTx s tx
+    ourWithdrawalSum = ourWithdrawalSumFromTx rewardFn tx
 
     -- Balance of the UTxO that we received and that we spent
     received = balance receivedUTxO
@@ -811,9 +865,10 @@ applyOurTxToUTxO !slot !blockHeight !s !tx !u0 =
             Nothing
 
 ourWithdrawalSumFromTx
-    :: IsOurs s RewardAccount
-    => s -> Tx -> Coin
-ourWithdrawalSumFromTx s tx
+    :: (RewardAccount -> Maybe (NonEmpty DerivationIndex))
+    -> Tx
+    -> Coin
+ourWithdrawalSumFromTx rewardFn tx
     -- If a transaction has failed script validation, then the ledger rules
     -- require that applying the transaction shall have no effect other than
     -- to fully spend the collateral inputs included within that transaction.
@@ -825,5 +880,5 @@ ourWithdrawalSumFromTx s tx
     | otherwise = Map.foldlWithKey' add (Coin 0) (tx ^. #withdrawals)
   where
     add total account coin
-        | ours s account = total <> coin
-        | otherwise      = total
+        | rewardFn account = total <> coin
+        | otherwise        = total

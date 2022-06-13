@@ -19,6 +19,8 @@ module Cardano.Wallet.Primitive.Types.TxSeq
     , length
     , mapAssetIds
     , mapTxIds
+    , mapTxs
+    , mapUTxOs
     , removeAssetId
     , removeAssets
     , shrinkAssetIds
@@ -52,9 +54,11 @@ import Cardano.Wallet.Primitive.Types.UTxO
 import Data.Bifoldable
     ( Bifoldable (..) )
 import Data.Bifunctor
-    ( bimap )
+    ( bimap, first, second )
 import Data.Either
     ( isRight, rights )
+import Data.Either.Extra
+    ( mapRight )
 import Data.Function
     ( on, (&) )
 import Data.Maybe
@@ -157,6 +161,12 @@ mapAssetIds f =
 mapTxIds :: (Hash "Tx" -> Hash "Tx") -> TxSeq -> TxSeq
 mapTxIds f =
     TxSeq . bimap (UTxO.mapTxIds f) (fmap (txMapTxIds f)) . unTxSeq
+
+mapUTxOs :: (UTxO -> UTxO) -> TxSeq -> TxSeq
+mapUTxOs f = TxSeq . first f . unTxSeq
+
+mapTxs :: (Tx -> Tx) -> TxSeq -> TxSeq
+mapTxs f = TxSeq . second (mapRight f) . unTxSeq
 
 removeAssetId :: TxSeq -> AssetId -> TxSeq
 removeAssetId (TxSeq s) a = TxSeq $

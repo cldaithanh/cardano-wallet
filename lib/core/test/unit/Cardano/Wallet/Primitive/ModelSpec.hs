@@ -355,6 +355,8 @@ spec = do
                 prop_applyBlocks_filteredBlockTxs_noneOurs & property
             it "prop_applyBlocks_filteredBlockTxs_someOurs" $
                 prop_applyBlocks_filteredBlockTxs_someOurs & property
+            it "prop_applyBlocks_filteredBlockTxs_sanity_someOurs" $
+                prop_applyBlocks_filteredBlockTxs_sanity_someOurs & property
 
         describe "lastUTxO" $ do
             it "prop_applyBlocks_lastUTxO_allOurs" $
@@ -2364,6 +2366,19 @@ blockSeqOurTxs s blockSeq
     $ filter (\(u0, tx, _u1) -> evalState (isOurTx tx u0) s)
     $ TxSeq.transitions (blockSeqToTxSeq blockSeq)
 
+blockSeqOurTxs'
+    :: (Address -> Bool) -> BlockSeq -> [Tx]
+blockSeqOurTxs' isOurAddress blockSeq = wibble
+  where
+    wibble :: [Tx]
+    wibble
+        = fmap (\(_, tx, _) -> tx)
+        $ filter (\(u0, _, u1) -> u0 /= u1)
+        $ TxSeq.transitions
+        $ TxSeq.mapUTxOs
+            (UTxO.filterByAddress isOurAddress)
+            (blockSeqToTxSeq blockSeq)
+
 blockSeqToBlockData :: BlockSeq -> BlockData m addr tx state
 blockSeqToBlockData = List . blockSeqToBlockList
 
@@ -2429,16 +2444,17 @@ applyBlockSeqFilteredBlockTxs
     -> UTxO
     -> [Tx]
 applyBlockSeqFilteredBlockTxs s blockSeq
-    = fmap nullifyFee
-    . mconcat
+    -- = fmap nullifyFee
+    = mconcat
     . mconcat
     . NE.toList
     . fmap (fmap (reverse . fmap fst . view #transactions) . fst)
     . applyBlockSeq s blockSeq
-  where
+  --where
     -- TODO: remove this
-    nullifyFee :: Tx -> Tx
-    nullifyFee = set #fee Nothing
+    --
+nullifyFee :: Tx -> Tx
+nullifyFee = set #fee Nothing
 
 --------------------------------------------------------------------------------
 -- Testing 'applyBlocks' with arbitrary sequences of blocks and transactions
@@ -2446,17 +2462,21 @@ applyBlockSeqFilteredBlockTxs s blockSeq
 
 prop_applyBlocks_filteredBlockTxs_allOurs :: BlockSeq -> Property
 prop_applyBlocks_filteredBlockTxs_allOurs blockSeq =
-    applyBlockSeqFilteredBlockTxs AllOurs blockSeq
-        (blockSeqHeadUTxO blockSeq)
+    (nullifyFee <$>
+        applyBlockSeqFilteredBlockTxs AllOurs blockSeq
+            (blockSeqHeadUTxO blockSeq)
+    )
     ====
-        blockSeqOurTxs AllOurs blockSeq
+    (nullifyFee <$> blockSeqOurTxs AllOurs blockSeq)
 
 prop_applyBlocks_filteredBlockTxs_noneOurs :: BlockSeq -> Property
 prop_applyBlocks_filteredBlockTxs_noneOurs blockSeq =
-    applyBlockSeqFilteredBlockTxs NoneOurs blockSeq
-        (blockSeqHeadUTxO blockSeq)
+    (nullifyFee <$>
+        applyBlockSeqFilteredBlockTxs NoneOurs blockSeq
+            (blockSeqHeadUTxO blockSeq)
+    )
     ====
-        blockSeqOurTxs NoneOurs blockSeq
+    (nullifyFee <$> blockSeqOurTxs NoneOurs blockSeq)
 
 prop_applyBlocks_filteredBlockTxs_someOurs
     :: forall s. (s ~ IsOursIf2 Address RewardAccount)
@@ -2464,20 +2484,32 @@ prop_applyBlocks_filteredBlockTxs_someOurs
     -> s
     -> Property
 prop_applyBlocks_filteredBlockTxs_someOurs blockSeq someOurs =
-    applyBlockSeqFilteredBlockTxs someOurs blockSeq
-        (blockSeqHeadUTxO blockSeq)
+    (nullifyFee <$>
+        applyBlockSeqFilteredBlockTxs someOurs blockSeq
+            (blockSeqHeadUTxO blockSeq)
+    )
     ====
-        blockSeqOurTxs someOurs blockSeq
+    (nullifyFee <$> blockSeqOurTxs someOurs blockSeq)
 
-prop_applyBlocks_lastUTxO_allOurs :: BlockSeq -> Property
-prop_applyBlocks_lastUTxO_allOurs blockSeq =
+prop_applyBlocks_filteredBlockTxs_sanity_someOurs
+    :: forall s. (s ~ IsOursIf2 Address RewardAccount)
+    => s
+    -> Pretty BlockSeq
+    -> Property
+prop_applyBlocks_filteredBlockTxs_sanity_someOurs someOurs (Pretty blockSeq) =
+    (nullifyFee <$> blockSeqOurTxs someOurs blockSeq)
+    ====
+    (nullifyFee <$> blockSeqOurTxs' (applyFun $ conditionA someOurs) blockSeq)
+
+prop_applyBlocks_lastUTxO_allOurs :: Pretty BlockSeq -> Property
+prop_applyBlocks_lastUTxO_allOurs (Pretty blockSeq) =
     applyBlockSeqLastUTxO AllOurs blockSeq
         (blockSeqHeadUTxO blockSeq)
     ====
         (blockSeqLastUTxO blockSeq)
 
-prop_applyBlocks_lastUTxO_noneOurs :: BlockSeq -> Property
-prop_applyBlocks_lastUTxO_noneOurs blockSeq =
+prop_applyBlocks_lastUTxO_noneOurs :: Pretty BlockSeq -> Property
+prop_applyBlocks_lastUTxO_noneOurs (Pretty blockSeq) =
     applyBlockSeqLastUTxO NoneOurs blockSeq
         UTxO.empty
     ====
@@ -2485,14 +2517,14 @@ prop_applyBlocks_lastUTxO_noneOurs blockSeq =
 
 prop_applyBlocks_lastUTxO_someOurs
     :: forall s. (s ~ IsOursIf2 Address RewardAccount)
-    => BlockSeq
+    => Pretty BlockSeq
     -> s
     -> Property
-prop_applyBlocks_lastUTxO_someOurs blockSeq someOurs =
+prop_applyBlocks_lastUTxO_someOurs (Pretty blockSeq) someOurs =
     applyBlockSeqLastUTxO someOurs blockSeq
         (UTxO.filterByAddress isOurAddress $ blockSeqHeadUTxO blockSeq)
     ====
         (UTxO.filterByAddress isOurAddress $ blockSeqLastUTxO blockSeq)
   where
     isOurAddress :: Address -> Bool
-    isOurAddress = conditionA someOurs
+    isOurAddress = applyFun $ conditionA someOurs

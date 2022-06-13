@@ -1,6 +1,8 @@
 {-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE DataKinds #-}
+{-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE DerivingStrategies #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE LambdaCase #-}
@@ -8,9 +10,11 @@
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE OverloadedLabels #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE StandaloneDeriving #-}
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE UndecidableInstances #-}
 {-# LANGUAGE ViewPatterns #-}
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 {- HLINT ignore "Move brackets to avoid $" -}
@@ -173,10 +177,13 @@ import Test.Hspec.Extra
 import Test.QuickCheck
     ( Arbitrary (..)
     , CoArbitrary (..)
+    , Fun (..)
+    , Function (..)
     , Gen
     , Positive (..)
     , Property
     , Testable
+    , applyFun
     , arbitrarySizedBoundedIntegral
     , checkCoverage
     , choose
@@ -190,6 +197,7 @@ import Test.QuickCheck
     , genericShrink
     , label
     , liftArbitrary
+    , liftShrink2
     , listOf
     , oneof
     , property
@@ -205,7 +213,9 @@ import Test.QuickCheck
     , (===)
     )
 import Test.QuickCheck.Extra
-    ( chooseNatural, genericRoundRobinShrink, report, verify, (<:>), (<@>) )
+    ( Pretty (..), chooseNatural, genericRoundRobinShrink, report, verify, (<:>), (<@>) )
+import Test.QuickCheck.Instances.ByteString
+    ()
 import Test.Utils.Pretty
     ( (====) )
 
@@ -706,23 +716,20 @@ instance IsOurs (IsOursIf a) a where
 -- entity.
 --
 data IsOursIf2 a b = IsOursIf2
-    { conditionA :: a -> Bool
-    , conditionB :: b -> Bool
+    { conditionA :: Fun a Bool
+    , conditionB :: Fun b Bool
     }
 
-instance Eq (IsOursIf2 a b) where
-    _ == _ = False
-
-instance Show (IsOursIf2 a b) where
-    show _ = "IsOursIf2"
+deriving instance (Eq (Fun a Bool), Eq (Fun b Bool)) => Eq (IsOursIf2 a b)
+deriving instance (Show (Fun a Bool), Show (Fun b Bool)) => Show (IsOursIf2 a b)
 
 instance IsOurs (IsOursIf2 a b) a where
     isOurs entity s@(IsOursIf2 {conditionA}) =
-        isOursIf conditionA entity s
+        isOursIf (applyFun conditionA) entity s
 
 instance IsOurs (IsOursIf2 a b) b where
     isOurs entity s@(IsOursIf2 {conditionB}) =
-        isOursIf conditionB entity s
+        isOursIf (applyFun conditionB) entity s
 
 isOursIf :: (a -> Bool) -> a -> s -> (Maybe (NonEmpty DerivationIndex), s)
 isOursIf condition a s
@@ -1118,10 +1125,13 @@ instance MaybeLight WalletState where
                     then go as s
                     else go as (updateOurs s a)
 
-instance (CoArbitrary a, CoArbitrary b) => Arbitrary (IsOursIf2 a b) where
+instance (CoArbitrary a, CoArbitrary b, Function a, Function b) =>
+    Arbitrary (IsOursIf2 a b)
+  where
     arbitrary = IsOursIf2
         <$> arbitrary
         <*> arbitrary
+    shrink (IsOursIf2 a b) = uncurry IsOursIf2 <$> shrink (a, b)
 
 instance Arbitrary Coin where
     shrink = shrinkCoin
@@ -2302,11 +2312,10 @@ prop_spendTx_filterByAddress f tx u =
         "spendTx tx u /= mempty && filterByAddress f u /= mempty" $
     filterByAddress f (spendTx tx u) === spendTx tx (filterByAddress f u)
 
-instance CoArbitrary Address where
-    coarbitrary = coarbitraryAddress
-
-instance CoArbitrary RewardAccount where
-    coarbitrary = coarbitraryRewardAccount
+deriving anyclass instance CoArbitrary Address
+deriving anyclass instance CoArbitrary RewardAccount
+deriving anyclass instance Function Address
+deriving anyclass instance Function RewardAccount
 
 instance Show (Address -> Bool) where
     show = const "(Address -> Bool)"

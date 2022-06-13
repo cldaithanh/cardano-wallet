@@ -18,7 +18,7 @@ import Cardano.Wallet.Primitive.Types.Address
 import Cardano.Wallet.Primitive.Types.Coin
     ( Coin (..) )
 import Cardano.Wallet.Primitive.Types.Coin.Gen
-    ( genCoinPositive )
+    ( chooseCoin, genCoinPositive )
 import Cardano.Wallet.Primitive.Types.RewardAccount.Gen
     ( genRewardAccount )
 import Cardano.Wallet.Primitive.Types.TokenBundle.Gen
@@ -132,8 +132,12 @@ genTxFromUTxO genAddr u = do
             ]
     let collateralInputValue =
             F.foldMap (tokens . snd) collateralInputs
+    feeCoin <-
+        min (TokenBundle.coin inputValue) <$> chooseCoin (Coin 1, Coin 4)
+    let inputValueMinusFee =
+            inputValue `TokenBundle.difference` TokenBundle.fromCoin feeCoin
     outputBundles <-
-        genTokenBundlePartitionNonNull inputValue =<< chooseInt (1, 3)
+        genTokenBundlePartitionNonNull inputValueMinusFee =<< chooseInt (1, 3)
     collateralOutputBundles <-
         elements [[], [collateralInputValue]]
     outputAddresses <-
@@ -147,8 +151,7 @@ genTxFromUTxO genAddr u = do
         ]
     pure $ txWithoutIdToTx TxWithoutId
         { fee =
-            -- TODO: generate a fee
-            Nothing
+            Just feeCoin
         , resolvedInputs =
             fmap (TokenBundle.getCoin . tokens) <$> inputs
         , resolvedCollateralInputs =
@@ -159,6 +162,6 @@ genTxFromUTxO genAddr u = do
             zipWith TxOut collateralOutputAddresses collateralOutputBundles
         , metadata =
             Nothing
-        , withdrawals
+        , withdrawals = mempty
         , scriptValidity
         }

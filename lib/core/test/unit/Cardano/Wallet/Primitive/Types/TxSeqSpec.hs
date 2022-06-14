@@ -115,6 +115,8 @@ spec = do
             prop_shrinkTxSeq_length & property
         it "prop_shrinkTxSeq_genShrinkSequence_isValid" $
             prop_shrinkTxSeq_genShrinkSequence_isValid & property
+        it "prop_shrinkTxSeq_minimum_length" $
+            prop_shrinkTxSeq_minimum_length & property
 
     describe "shrinkAssetIds " $ do
         it "prop_shrinkAssetIds_idempotent" $
@@ -287,6 +289,15 @@ prop_shrinkTxSeq_genShrinkSequence_isValid =
         \txSeqs ->
             label ("shrink sequence length: " <> show (length txSeqs)) $
             all TxSeq.isValid (toTxSeq <$> txSeqs)
+
+prop_shrinkTxSeq_minimum_length :: Property
+prop_shrinkTxSeq_minimum_length =
+    forAll (genTxSeq genUTxO genAddress) $ \txSeq ->
+        (TxSeq.length . toTxSeq <$> shrinkSpaceMinimum shrinkTxSeq txSeq)
+        === Just 0
+  where
+    shrinkSpaceMinimum :: (a -> [a]) -> a -> Maybe a
+    shrinkSpaceMinimum = shrinkWhile (const True)
 
 --------------------------------------------------------------------------------
 -- shrinkAssetIds

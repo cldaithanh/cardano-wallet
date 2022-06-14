@@ -95,6 +95,7 @@ genTxSeq genUTxO genAddr = fmap makeShrinkable $ sized $ \size ->
               replicate (TxSeq.groupBoundaryCount txSeq) DropGroupBoundaries
             , [ ShrinkTxIds
               ]
+              -- TODO: Some of these asset removals will be unnecessary.
             , [ RemoveAssetId a | a <- F.toList (TxSeq.assetIds txSeq) ]
             , [ ShrinkAssetIds ]
             ]

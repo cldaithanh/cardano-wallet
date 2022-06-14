@@ -6,6 +6,7 @@ module Cardano.Wallet.Primitive.Types.TxSeq
     ( TxSeq (..)
     , TxSeqGroupBoundary (..)
     , assetIds
+    , dropGroupBoundaries
     , dropHeadTx
     , dropHeadTxs
     , dropLastTx
@@ -13,6 +14,7 @@ module Cardano.Wallet.Primitive.Types.TxSeq
     , empty
     , foldUTxO
     , fromUTxO
+    , groupBoundaryCount
     , headUTxO
     , isValid
     , lastUTxO
@@ -28,6 +30,7 @@ module Cardano.Wallet.Primitive.Types.TxSeq
     , toTxGroups
     , toTxs
     , transitions
+    , txCount
     , txIds
     , unfoldNM
     ) where
@@ -56,7 +59,7 @@ import Data.Bifoldable
 import Data.Bifunctor
     ( bimap, first, second )
 import Data.Either
-    ( isRight, rights )
+    ( isLeft, isRight, lefts, rights )
 import Data.Either.Extra
     ( mapRight )
 import Data.Function
@@ -128,8 +131,30 @@ toTxs = mconcat . toTxGroups
 toTxGroups :: TxSeq -> [[Tx]]
 toTxGroups (TxSeq s) = rights <$> L.groupBy ((&&) `on` isRight) (F.toList s)
 
+txCount :: TxSeq -> Int
+txCount = F.length . rights . Seq.toDeltaList . unTxSeq
+
 length :: TxSeq -> Int
 length = F.length . unTxSeq
+
+groupBoundaryCount :: TxSeq -> Int
+groupBoundaryCount = F.length . lefts . Seq.toDeltaList . unTxSeq
+
+dropGroupBoundaries :: TxSeq -> [TxSeq]
+dropGroupBoundaries (TxSeq s) = dropBoundaryAtIndex <$> groupBoundaryIndices
+  where
+    allDeltas :: [Either TxSeqGroupBoundary Tx]
+    allDeltas = Seq.toDeltaList s
+
+    groupBoundaryIndices :: [Int]
+    groupBoundaryIndices =
+        fmap fst $ filter (isLeft . snd) $ zip [0 ..] allDeltas
+
+    dropBoundaryAtIndex :: Int -> TxSeq
+    dropBoundaryAtIndex i = TxSeq $
+        Seq.applyDeltas nextUTxO
+            (Seq.fromState (Seq.headState s))
+            (take i allDeltas <> drop (i + 1) allDeltas)
 
 dropHeadTx :: TxSeq -> Maybe TxSeq
 dropHeadTx = fmap TxSeq . Seq.dropHead . unTxSeq

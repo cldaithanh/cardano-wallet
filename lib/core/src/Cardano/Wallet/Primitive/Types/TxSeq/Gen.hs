@@ -63,6 +63,7 @@ data ShrinkableTxSeq = ShrinkableTxSeq
 data TxSeqShrinkAction
     = DropHeadTxs
     | DropLastTxs
+    | DropGroupBoundaries
     | RemoveAssetId AssetId
     | ShrinkAssetIds
     | ShrinkTxIds
@@ -89,7 +90,10 @@ genTxSeq genUTxO genAddr = fmap makeShrinkable $ sized $ \size ->
         { availableShrinkActions = mconcat
             [ [ DropHeadTxs
               , DropLastTxs
-              , ShrinkTxIds
+              ]
+            , -- TODO: Find a way to reduce the number of shrinks.
+              replicate (TxSeq.groupBoundaryCount txSeq) DropGroupBoundaries
+            , [ ShrinkTxIds
               ]
             , [ RemoveAssetId a | a <- F.toList (TxSeq.assetIds txSeq) ]
             , [ ShrinkAssetIds ]
@@ -111,6 +115,8 @@ shrinkTxSeq ShrinkableTxSeq {availableShrinkActions, txSeq} =
             TxSeq.dropHeadTxs
         DropLastTxs ->
             TxSeq.dropLastTxs
+        DropGroupBoundaries ->
+            TxSeq.dropGroupBoundaries
         RemoveAssetId asset ->
             pure . (`TxSeq.removeAssetId` asset)
         ShrinkAssetIds ->

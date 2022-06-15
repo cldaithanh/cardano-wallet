@@ -15,6 +15,7 @@ module Cardano.Wallet.Primitive.Types.TxSeq.Gen
     , ShrinkState (..)
     , ShrinkPhase (..)
     , ShrinkAction (..)
+    , getShrinkPhase
     , getShrinkState
     )
     where
@@ -162,6 +163,11 @@ applyShrinkStateAction txSeq = \case
 
 getTxSeq :: ShrinkableTxSeq -> TxSeq
 getTxSeq = txSeq
+
+getShrinkPhase :: ShrinkableTxSeq -> Maybe ShrinkPhase
+getShrinkPhase txSeq = case shrinkState txSeq of
+    ShrinkState phase _ -> Just phase
+    ShrinkStateFinished -> Nothing
 
 getShrinkState :: ShrinkableTxSeq -> ShrinkState
 getShrinkState = shrinkState

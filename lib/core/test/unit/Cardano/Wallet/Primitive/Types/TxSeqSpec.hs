@@ -25,13 +25,13 @@ import Cardano.Wallet.Primitive.Types.TokenMap.Gen
 import Cardano.Wallet.Primitive.Types.TokenPolicy
     ( TokenName (..), TokenPolicyId (..) )
 import Cardano.Wallet.Primitive.Types.TxSeq.Gen
-    ( ShrinkableTxSeq, genTxSeq, shrinkTxSeq, getTxSeq )
+    ( ShrinkableTxSeq, getShrinkPhase, genTxSeq, shrinkTxSeq, getTxSeq )
 import Cardano.Wallet.Primitive.Types.UTxO.Gen
     ( genUTxO )
 import Data.Function
     ( (&) )
 import Data.Maybe
-    ( fromMaybe )
+    ( fromMaybe, mapMaybe )
 import Safe
     ( headMay, lastMay )
 import Test.Hspec
@@ -58,6 +58,7 @@ import Test.QuickCheck.Instances.ByteString
     ()
 
 import qualified Cardano.Wallet.Primitive.Types.TxSeq as TxSeq
+import qualified Data.Set as Set
 
 spec :: Spec
 spec = do
@@ -129,6 +130,10 @@ spec = do
             prop_shrinkTxSeq_length & property
         it "prop_shrinkTxSeq_genShrinkSequence_isValid" $
             prop_shrinkTxSeq_genShrinkSequence_isValid & property
+        it "prop_shrinkTxSeq_genShrinkSequence_length" $
+            prop_shrinkTxSeq_genShrinkSequence_length & property
+        it "prop_shrinkTxSeq_genShrinkSequence_shrinkPhases" $
+            prop_shrinkTxSeq_genShrinkSequence_shrinkPhases & property
         it "prop_shrinkTxSeq_minimum_length" $
             prop_shrinkTxSeq_minimum_length & property
 
@@ -325,8 +330,35 @@ prop_shrinkTxSeq_genShrinkSequence_isValid :: Property
 prop_shrinkTxSeq_genShrinkSequence_isValid =
     forAll (genShrinkSequence shrinkTxSeq =<< genTxSeq genUTxO genAddress) $
         \txSeqs ->
-            label ("shrink sequence length: " <> show (length txSeqs)) $
             all TxSeq.isValid (getTxSeq <$> txSeqs)
+
+prop_shrinkTxSeq_genShrinkSequence_length :: Property
+prop_shrinkTxSeq_genShrinkSequence_length =
+    forAll (genShrinkSequence shrinkTxSeq =<< genTxSeq genUTxO genAddress) $
+        \txSeqs ->
+            label (
+                "sequence length: " <>
+                showSizeRange (sizeRange (length txSeqs))
+                )
+            True
+  where
+    showSizeRange (sizeRangeMin, sizeRangeMax) = unwords
+        [ show sizeRangeMin
+        , "-"
+        , show sizeRangeMax
+        ]
+
+    sizeRange i = (sizeRangeMin, sizeRangeMax)
+      where
+        sizeRangeMin = (i `div` 10) * 10
+        sizeRangeMax = sizeRangeMin + 9
+
+prop_shrinkTxSeq_genShrinkSequence_shrinkPhases :: Property
+prop_shrinkTxSeq_genShrinkSequence_shrinkPhases =
+    forAll (genShrinkSequence shrinkTxSeq =<< genTxSeq genUTxO genAddress) $
+        \txSeqs ->
+            Set.fromList (mapMaybe getShrinkPhase txSeqs) ===
+            Set.fromList [minBound .. maxBound]
 
 prop_shrinkTxSeq_minimum_length :: Property
 prop_shrinkTxSeq_minimum_length =

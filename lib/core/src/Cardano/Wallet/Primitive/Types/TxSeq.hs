@@ -6,7 +6,7 @@ module Cardano.Wallet.Primitive.Types.TxSeq
     ( TxSeq (..)
     , TxSeqGroupBoundary (..)
     , assetIds
-    , dropGroupBoundaries
+    , removeGroupBoundary
     , dropHeadTx
     , dropHeadTxs
     , dropLastTx
@@ -140,8 +140,8 @@ length = F.length . unTxSeq
 groupBoundaryCount :: TxSeq -> Int
 groupBoundaryCount = F.length . lefts . Seq.toDeltaList . unTxSeq
 
-dropGroupBoundaries :: TxSeq -> [TxSeq]
-dropGroupBoundaries (TxSeq s) = dropBoundaryAtIndex <$> groupBoundaryIndices
+removeGroupBoundary :: TxSeq -> [TxSeq]
+removeGroupBoundary (TxSeq s) = dropBoundaryAtIndex <$> groupBoundaryIndices
   where
     allDeltas :: [Either TxSeqGroupBoundary Tx]
     allDeltas = Seq.toDeltaList s

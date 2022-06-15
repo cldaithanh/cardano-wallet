@@ -72,16 +72,6 @@ spec = do
         it "prop_genTxSeq_toTxGroups_lengths" $
             prop_genTxSeq_toTxGroups_lengths & property
 
-    describe "dropGroupBoundaries" $ do
-        it "prop_dropGroupBoundaries_groupBoundaryCount_length" $
-            prop_dropGroupBoundaries_groupBoundaryCount_length & property
-        it "prop_dropGroupBoundaries_groupBoundaryCount_pred" $
-            prop_dropGroupBoundaries_groupBoundaryCount_pred & property
-        it "prop_dropGroupBoundaries_isValid" $
-            prop_dropGroupBoundaries_isValid & property
-        it "prop_dropGroupBoundaries_toTxs" $
-            prop_dropGroupBoundaries_toTxs & property
-
     describe "dropHeadTxs " $ do
         it "prop_dropHeadTxs_isValid" $
             prop_dropHeadTxs_isValid
@@ -110,6 +100,16 @@ spec = do
                 & withMaxSuccess 20
                 & property
 
+    describe "removeGroupBoundary" $ do
+        it "prop_removeGroupBoundary_groupBoundaryCount_length" $
+            prop_removeGroupBoundary_groupBoundaryCount_length & property
+        it "prop_removeGroupBoundary_groupBoundaryCount_pred" $
+            prop_removeGroupBoundary_groupBoundaryCount_pred & property
+        it "prop_removeGroupBoundary_isValid" $
+            prop_removeGroupBoundary_isValid & property
+        it "prop_removeGroupBoundary_toTxs" $
+            prop_removeGroupBoundary_toTxs & property
+
     describe "shrinkTxSeq" $ do
         it "prop_shrinkTxSeq_length" $
             prop_shrinkTxSeq_length & property
@@ -137,36 +137,6 @@ spec = do
     describe "toTxs " $ do
         it "prop_toTxs_length_txCount" $
             prop_toTxs_length_txCount & property
-
---------------------------------------------------------------------------------
--- dropGroupBoundaries
---------------------------------------------------------------------------------
-
-prop_dropGroupBoundaries_groupBoundaryCount_length
-    :: ShrinkableTxSeq -> Property
-prop_dropGroupBoundaries_groupBoundaryCount_length (toTxSeq -> txSeq) =
-    length (TxSeq.dropGroupBoundaries txSeq) === TxSeq.groupBoundaryCount txSeq
-
-prop_dropGroupBoundaries_groupBoundaryCount_pred
-    :: ShrinkableTxSeq -> Property
-prop_dropGroupBoundaries_groupBoundaryCount_pred (toTxSeq -> txSeq)
-    | groupBoundaryCount == 0 =
-        TxSeq.dropGroupBoundaries txSeq === []
-    | otherwise =
-        all (== pred groupBoundaryCount)
-            (TxSeq.groupBoundaryCount <$> TxSeq.dropGroupBoundaries txSeq)
-        === True
-  where
-    groupBoundaryCount = TxSeq.groupBoundaryCount txSeq
-
-prop_dropGroupBoundaries_isValid :: ShrinkableTxSeq -> Property
-prop_dropGroupBoundaries_isValid (toTxSeq -> txSeq) =
-    all TxSeq.isValid (TxSeq.dropGroupBoundaries txSeq) === True
-
-prop_dropGroupBoundaries_toTxs :: ShrinkableTxSeq -> Property
-prop_dropGroupBoundaries_toTxs (toTxSeq -> txSeq) =
-    all (== TxSeq.toTxs txSeq) (TxSeq.toTxs <$> TxSeq.dropGroupBoundaries txSeq)
-    === True
 
 --------------------------------------------------------------------------------
 -- dropHeadTxs
@@ -262,6 +232,36 @@ prop_mapTxIds_composition
         TxSeq.mapTxIds (f . g) txs
 
 --------------------------------------------------------------------------------
+-- removeGroupBoundary
+--------------------------------------------------------------------------------
+
+prop_removeGroupBoundary_groupBoundaryCount_length
+    :: ShrinkableTxSeq -> Property
+prop_removeGroupBoundary_groupBoundaryCount_length (toTxSeq -> txSeq) =
+    length (TxSeq.removeGroupBoundary txSeq) === TxSeq.groupBoundaryCount txSeq
+
+prop_removeGroupBoundary_groupBoundaryCount_pred
+    :: ShrinkableTxSeq -> Property
+prop_removeGroupBoundary_groupBoundaryCount_pred (toTxSeq -> txSeq)
+    | groupBoundaryCount == 0 =
+        TxSeq.removeGroupBoundary txSeq === []
+    | otherwise =
+        all (== pred groupBoundaryCount)
+            (TxSeq.groupBoundaryCount <$> TxSeq.removeGroupBoundary txSeq)
+        === True
+  where
+    groupBoundaryCount = TxSeq.groupBoundaryCount txSeq
+
+prop_removeGroupBoundary_isValid :: ShrinkableTxSeq -> Property
+prop_removeGroupBoundary_isValid (toTxSeq -> txSeq) =
+    all TxSeq.isValid (TxSeq.removeGroupBoundary txSeq) === True
+
+prop_removeGroupBoundary_toTxs :: ShrinkableTxSeq -> Property
+prop_removeGroupBoundary_toTxs (toTxSeq -> txSeq) =
+    all (== TxSeq.toTxs txSeq) (TxSeq.toTxs <$> TxSeq.removeGroupBoundary txSeq)
+    === True
+
+--------------------------------------------------------------------------------
 -- shrinkTxSeq
 --------------------------------------------------------------------------------
 
@@ -292,9 +292,10 @@ prop_shrinkTxSeq_genShrinkSequence_isValid =
 
 prop_shrinkTxSeq_minimum_length :: Property
 prop_shrinkTxSeq_minimum_length =
-    forAll (genTxSeq genUTxO genAddress) $ \txSeq ->
-        (TxSeq.length . toTxSeq <$> shrinkSpaceMinimum shrinkTxSeq txSeq)
-        === Just 0
+    forAll (genTxSeq genUTxO genAddress) $ \s0 ->
+        case shrinkSpaceMinimum shrinkTxSeq s0 of
+            Nothing -> TxSeq.length (toTxSeq s0) === 0
+            Just s1 -> TxSeq.length (toTxSeq s1) === 0
   where
     shrinkSpaceMinimum :: (a -> [a]) -> a -> Maybe a
     shrinkSpaceMinimum = shrinkWhile (const True)

@@ -37,8 +37,12 @@ import Cardano.Wallet.Primitive.Types.UTxO.Gen
     ( selectUTxOEntries )
 import Data.Function
     ( on )
+import Data.List.NonEmpty
+    ( NonEmpty (..) )
 import Data.Maybe
-    ( listToMaybe )
+    ( catMaybes, listToMaybe )
+import Safe
+    ( tailMay )
 import Test.QuickCheck
     ( Gen, chooseInt, elements, frequency, sized, vectorOf )
 import Test.QuickCheck.Extra
@@ -47,36 +51,120 @@ import Test.QuickCheck.Extra
 import qualified Cardano.Wallet.Primitive.Types.TokenBundle as TokenBundle
 import qualified Cardano.Wallet.Primitive.Types.TxSeq as TxSeq
 import qualified Data.Foldable as F
+import qualified Data.List.NonEmpty as NE
 
 --------------------------------------------------------------------------------
 -- Transaction sequences
 --------------------------------------------------------------------------------
 
 data ShrinkableTxSeq = ShrinkableTxSeq
-    { availableShrinkActions
-        :: [TxSeqShrinkAction]
+    { shrinkState
+        :: ShrinkState
     , txSeq
         :: TxSeq
     }
     deriving (Eq, Show)
 
-data TxSeqShrinkAction
-    = DropHeadTxs
-    | DropLastTxs
-    | DropGroupBoundaries
-    | RemoveAssetId AssetId
-    | ShrinkAssetIds
-    | ShrinkTxIds
-    deriving (Eq, Show)
-
 instance Ord ShrinkableTxSeq where
     compare = compare `on` show
+
+data ShrinkState
+    = ShrinkState ShrinkPhase [ShrinkAction]
+    | ShrinkStateFinished
+    deriving (Eq, Show)
+
+data ShrinkPhase
+    = ShrinkPhaseDropHeadTxs
+    | ShrinkPhaseDropLastTxs
+    | ShrinkPhaseRemoveGroupBoundaries
+    | ShrinkPhaseRemoveAssetIds
+    | ShrinkPhaseShrinkAssetIds
+    | ShrinkPhaseShrinkTxIds
+    deriving (Bounded, Enum, Eq, Ord, Show)
+
+data ShrinkAction
+    = ShrinkActionDropHeadTxs
+    | ShrinkActionDropLastTxs
+    | ShrinkActionRemoveGroupBoundary Int
+    | ShrinkActionRemoveAssetId AssetId
+    | ShrinkActionShrinkAssetIds
+    | ShrinkActionShrinkTxIds
+    deriving (Eq, Show)
+
+shrinkPhaseActions :: TxSeq -> ShrinkPhase -> [ShrinkAction]
+shrinkPhaseActions txSeq = \case
+    ShrinkPhaseDropHeadTxs ->
+        [ShrinkActionDropHeadTxs]
+    ShrinkPhaseDropLastTxs ->
+        [ShrinkActionDropLastTxs]
+    ShrinkPhaseRemoveGroupBoundaries ->
+        [ShrinkActionRemoveGroupBoundary i | i <- [1 .. groupBoundaryCount]]
+    ShrinkPhaseRemoveAssetIds ->
+        [ShrinkActionRemoveAssetId a | a <- assetIds]
+    ShrinkPhaseShrinkAssetIds ->
+        [ShrinkActionShrinkAssetIds]
+    ShrinkPhaseShrinkTxIds ->
+        [ShrinkActionShrinkTxIds]
+  where
+    assetIds = F.toList $ TxSeq.assetIds txSeq
+    groupBoundaryCount = TxSeq.groupBoundaryCount txSeq
+
+applyShrinkAction :: ShrinkAction -> TxSeq -> [TxSeq]
+applyShrinkAction action txSeq = case action of
+    ShrinkActionDropHeadTxs ->
+        TxSeq.dropHeadTxs txSeq
+    ShrinkActionDropLastTxs ->
+        TxSeq.dropLastTxs txSeq
+    ShrinkActionRemoveGroupBoundary _ ->
+        TxSeq.removeGroupBoundary txSeq
+    ShrinkActionRemoveAssetId assetId ->
+        [TxSeq.removeAssetId txSeq assetId]
+    ShrinkActionShrinkAssetIds ->
+        [TxSeq.shrinkAssetIds txSeq]
+    ShrinkActionShrinkTxIds ->
+        [TxSeq.shrinkTxIds txSeq]
+
+shrinkPhaseToState :: ShrinkPhase -> TxSeq -> ShrinkState
+shrinkPhaseToState phase txSeq =
+    ShrinkState phase (shrinkPhaseActions txSeq phase)
+
+nextShrinkPhase :: ShrinkPhase -> Maybe ShrinkPhase
+nextShrinkPhase = boundedEnumSucc
+
+initialShrinkState :: TxSeq -> ShrinkState
+initialShrinkState = shrinkPhaseToState minBound
+
+nextShrinkState :: TxSeq -> ShrinkState -> Maybe ShrinkState
+nextShrinkState txSeq = \case
+    ShrinkStateFinished ->
+        Nothing
+    ShrinkState phase actions ->
+        case tailMay actions of
+            Just actionsRemaining ->
+                Just (ShrinkState phase actionsRemaining)
+            Nothing ->
+                case nextShrinkPhase phase of
+                    Just phaseNext ->
+                        Just (shrinkPhaseToState phaseNext txSeq)
+                    Nothing ->
+                        Just ShrinkStateFinished
+
+applyShrinkStateAction :: ShrinkState -> TxSeq -> [TxSeq]
+applyShrinkStateAction state txSeq = case state of
+    ShrinkStateFinished -> []
+    ShrinkState _ actions ->
+        case actions of
+            [] -> [txSeq]
+            (action : _) -> applyShrinkAction action txSeq
 
 toTxSeq :: ShrinkableTxSeq -> TxSeq
 toTxSeq = txSeq
 
+toShrinkableTxSeq :: TxSeq -> ShrinkableTxSeq
+toShrinkableTxSeq txSeq = ShrinkableTxSeq (initialShrinkState txSeq) txSeq
+
 genTxSeq :: Gen UTxO -> Gen Address -> Gen ShrinkableTxSeq
-genTxSeq genUTxO genAddr = fmap makeShrinkable $ sized $ \size ->
+genTxSeq genUTxO genAddr = fmap toShrinkableTxSeq $ sized $ \size ->
     TxSeq.unfoldNM size genDelta =<< genUTxO
   where
     genDelta :: UTxO -> Gen (Either TxSeqGroupBoundary Tx)
@@ -85,45 +173,12 @@ genTxSeq genUTxO genAddr = fmap makeShrinkable $ sized $ \size ->
         , (4, Right <$> genTxFromUTxO genAddr u)
         ]
 
-    makeShrinkable :: TxSeq -> ShrinkableTxSeq
-    makeShrinkable txSeq = ShrinkableTxSeq
-        { availableShrinkActions = mconcat
-            [ [ DropHeadTxs
-              , DropLastTxs
-              ]
-            , -- TODO: Find a way to reduce the number of shrinks.
-              replicate (TxSeq.groupBoundaryCount txSeq) DropGroupBoundaries
-            , [ ShrinkTxIds
-              ]
-              -- TODO: Some of these asset removals will be unnecessary.
-            , [ RemoveAssetId a | a <- F.toList (TxSeq.assetIds txSeq) ]
-            , [ ShrinkAssetIds ]
-            ]
-        , txSeq
-        }
-
 shrinkTxSeq :: ShrinkableTxSeq -> [ShrinkableTxSeq]
-shrinkTxSeq ShrinkableTxSeq {availableShrinkActions, txSeq} =
-    case availableShrinkActions of
-        [] -> []
-        shrinkAction : remainingShrinkActions ->
-            ShrinkableTxSeq remainingShrinkActions <$>
-                (applyShrinkAction shrinkAction txSeq <> [txSeq])
+shrinkTxSeq ShrinkableTxSeq {shrinkState, txSeq} =
+    catMaybes $ makeShrinkable <$> applyShrinkStateAction shrinkState txSeq
   where
-    applyShrinkAction :: TxSeqShrinkAction -> TxSeq -> [TxSeq]
-    applyShrinkAction = \case
-        DropHeadTxs ->
-            TxSeq.dropHeadTxs
-        DropLastTxs ->
-            TxSeq.dropLastTxs
-        DropGroupBoundaries ->
-            TxSeq.dropGroupBoundaries
-        RemoveAssetId asset ->
-            pure . (`TxSeq.removeAssetId` asset)
-        ShrinkAssetIds ->
-            pure . TxSeq.shrinkAssetIds
-        ShrinkTxIds ->
-            pure . TxSeq.shrinkTxIds
+    makeShrinkable :: TxSeq -> Maybe ShrinkableTxSeq
+    makeShrinkable s = flip ShrinkableTxSeq s <$> nextShrinkState s shrinkState
 
 genTxFromUTxO :: Gen Address -> UTxO -> Gen Tx
 genTxFromUTxO genAddr u = do
@@ -172,3 +227,12 @@ genTxFromUTxO genAddr u = do
         , withdrawals
         , scriptValidity
         }
+
+--------------------------------------------------------------------------------
+-- Utilities
+--------------------------------------------------------------------------------
+
+boundedEnumSucc :: (Bounded a, Enum a, Ord a) => a -> Maybe a
+boundedEnumSucc a
+    | a >= maxBound = Nothing
+    | otherwise = Just (succ a)

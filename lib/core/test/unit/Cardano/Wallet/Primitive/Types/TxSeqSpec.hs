@@ -108,14 +108,6 @@ spec = do
         it "prop_removeGroupBoundary_toTxs" $
             prop_removeGroupBoundary_toTxs & property
 
-    describe "shrinkTxSeq" $ do
-        it "prop_shrinkTxSeq_length" $
-            prop_shrinkTxSeq_length & property
-        it "prop_shrinkTxSeq_genShrinkSequence_isValid" $
-            prop_shrinkTxSeq_genShrinkSequence_isValid & property
-        it "prop_shrinkTxSeq_minimum_length" $
-            prop_shrinkTxSeq_minimum_length & property
-
     describe "shrinkAssetIds " $ do
         it "prop_shrinkAssetIds_idempotent" $
             prop_shrinkAssetIds_idempotent & property
@@ -131,6 +123,14 @@ spec = do
             prop_shrinkTxIds_length & property
         it "prop_shrinkTxIds_isValid" $
             prop_shrinkTxIds_isValid & property
+
+    describe "shrinkTxSeq" $ do
+        it "prop_shrinkTxSeq_length" $
+            prop_shrinkTxSeq_length & property
+        it "prop_shrinkTxSeq_genShrinkSequence_isValid" $
+            prop_shrinkTxSeq_genShrinkSequence_isValid & property
+        it "prop_shrinkTxSeq_minimum_length" $
+            prop_shrinkTxSeq_minimum_length & property
 
     describe "toTxs " $ do
         it "prop_toTxs_length_txCount" $
@@ -260,45 +260,6 @@ prop_removeGroupBoundary_toTxs (getTxSeq -> txSeq) =
     === True
 
 --------------------------------------------------------------------------------
--- shrinkTxSeq
---------------------------------------------------------------------------------
-
-prop_shrinkTxSeq_length :: Property
-prop_shrinkTxSeq_length =
-    forAll (genTxSeq genUTxO genAddress) $ \txs ->
-    forAll (chooseInt (0, TxSeq.length (getTxSeq txs))) $ \targetLength ->
-    prop_inner txs targetLength
-  where
-    prop_inner :: ShrinkableTxSeq -> Int -> Property
-    prop_inner txs targetLength =
-        TxSeq.length (getTxSeq $ shrinkTxSeqToLength targetLength txs)
-            === targetLength
-
-    shrinkTxSeqToLength :: Int -> ShrinkableTxSeq -> ShrinkableTxSeq
-    shrinkTxSeqToLength targetLength txs = fromMaybe txs $
-        shrinkWhile
-        ((>= targetLength) . TxSeq.length . getTxSeq)
-        shrinkTxSeq
-        txs
-
-prop_shrinkTxSeq_genShrinkSequence_isValid :: Property
-prop_shrinkTxSeq_genShrinkSequence_isValid =
-    forAll (genShrinkSequence shrinkTxSeq =<< genTxSeq genUTxO genAddress) $
-        \txSeqs ->
-            label ("shrink sequence length: " <> show (length txSeqs)) $
-            all TxSeq.isValid (getTxSeq <$> txSeqs)
-
-prop_shrinkTxSeq_minimum_length :: Property
-prop_shrinkTxSeq_minimum_length =
-    forAll (genTxSeq genUTxO genAddress) $ \s0 ->
-        case shrinkSpaceMinimum shrinkTxSeq s0 of
-            Nothing -> TxSeq.length (getTxSeq s0) === 0
-            Just s1 -> TxSeq.length (getTxSeq s1) === 0
-  where
-    shrinkSpaceMinimum :: (a -> [a]) -> a -> Maybe a
-    shrinkSpaceMinimum = shrinkWhile (const True)
-
---------------------------------------------------------------------------------
 -- shrinkAssetIds
 --------------------------------------------------------------------------------
 
@@ -337,6 +298,45 @@ prop_shrinkTxIds_length (getTxSeq -> txs) =
 prop_shrinkTxIds_isValid :: ShrinkableTxSeq -> Property
 prop_shrinkTxIds_isValid (getTxSeq -> txs) =
     TxSeq.isValid (TxSeq.shrinkTxIds txs) === True
+
+--------------------------------------------------------------------------------
+-- shrinkTxSeq
+--------------------------------------------------------------------------------
+
+prop_shrinkTxSeq_length :: Property
+prop_shrinkTxSeq_length =
+    forAll (genTxSeq genUTxO genAddress) $ \txs ->
+    forAll (chooseInt (0, TxSeq.length (getTxSeq txs))) $ \targetLength ->
+    prop_inner txs targetLength
+  where
+    prop_inner :: ShrinkableTxSeq -> Int -> Property
+    prop_inner txs targetLength =
+        TxSeq.length (getTxSeq $ shrinkTxSeqToLength targetLength txs)
+            === targetLength
+
+    shrinkTxSeqToLength :: Int -> ShrinkableTxSeq -> ShrinkableTxSeq
+    shrinkTxSeqToLength targetLength txs = fromMaybe txs $
+        shrinkWhile
+        ((>= targetLength) . TxSeq.length . getTxSeq)
+        shrinkTxSeq
+        txs
+
+prop_shrinkTxSeq_genShrinkSequence_isValid :: Property
+prop_shrinkTxSeq_genShrinkSequence_isValid =
+    forAll (genShrinkSequence shrinkTxSeq =<< genTxSeq genUTxO genAddress) $
+        \txSeqs ->
+            label ("shrink sequence length: " <> show (length txSeqs)) $
+            all TxSeq.isValid (getTxSeq <$> txSeqs)
+
+prop_shrinkTxSeq_minimum_length :: Property
+prop_shrinkTxSeq_minimum_length =
+    forAll (genTxSeq genUTxO genAddress) $ \s0 ->
+        case shrinkSpaceMinimum shrinkTxSeq s0 of
+            Nothing -> TxSeq.length (getTxSeq s0) === 0
+            Just s1 -> TxSeq.length (getTxSeq s1) === 0
+  where
+    shrinkSpaceMinimum :: (a -> [a]) -> a -> Maybe a
+    shrinkSpaceMinimum = shrinkWhile (const True)
 
 --------------------------------------------------------------------------------
 -- toTxs

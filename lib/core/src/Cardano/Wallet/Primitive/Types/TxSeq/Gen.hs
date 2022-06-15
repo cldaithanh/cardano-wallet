@@ -4,10 +4,18 @@
 {-# LANGUAGE NamedFieldPuns #-}
 
 module Cardano.Wallet.Primitive.Types.TxSeq.Gen
-    ( ShrinkableTxSeq
+    (
+    -- * Public interface
+      ShrinkableTxSeq
     , genTxSeq
+    , getTxSeq
     , shrinkTxSeq
-    , toTxSeq
+
+    -- * Internal types and functions (exported for testing)
+    , ShrinkState (..)
+    , ShrinkPhase (..)
+    , ShrinkAction (..)
+    , getShrinkState
     )
     where
 
@@ -37,12 +45,8 @@ import Cardano.Wallet.Primitive.Types.UTxO.Gen
     ( selectUTxOEntries )
 import Data.Function
     ( on )
-import Data.List.NonEmpty
-    ( NonEmpty (..) )
 import Data.Maybe
     ( catMaybes, listToMaybe )
-import Safe
-    ( tailMay )
 import Test.QuickCheck
     ( Gen, chooseInt, elements, frequency, sized, vectorOf )
 import Test.QuickCheck.Extra
@@ -51,7 +55,6 @@ import Test.QuickCheck.Extra
 import qualified Cardano.Wallet.Primitive.Types.TokenBundle as TokenBundle
 import qualified Cardano.Wallet.Primitive.Types.TxSeq as TxSeq
 import qualified Data.Foldable as F
-import qualified Data.List.NonEmpty as NE
 
 --------------------------------------------------------------------------------
 -- Transaction sequences
@@ -98,7 +101,7 @@ shrinkPhaseActions txSeq = \case
     ShrinkPhaseDropLastTxs ->
         [ShrinkActionDropLastTxs]
     ShrinkPhaseRemoveGroupBoundaries ->
-        [ShrinkActionRemoveGroupBoundary i | i <- [1 .. groupBoundaryCount]]
+        [ShrinkActionRemoveGroupBoundary i | i <- [1..groupBoundaryCount]]
     ShrinkPhaseRemoveAssetIds ->
         [ShrinkActionRemoveAssetId a | a <- assetIds]
     ShrinkPhaseShrinkAssetIds ->
@@ -131,40 +134,40 @@ shrinkPhaseToState phase txSeq =
 nextShrinkPhase :: ShrinkPhase -> Maybe ShrinkPhase
 nextShrinkPhase = boundedEnumSucc
 
+initialShrinkPhase :: ShrinkPhase
+initialShrinkPhase = minBound
+
 initialShrinkState :: TxSeq -> ShrinkState
-initialShrinkState = shrinkPhaseToState minBound
+initialShrinkState = shrinkPhaseToState initialShrinkPhase
 
 nextShrinkState :: TxSeq -> ShrinkState -> Maybe ShrinkState
 nextShrinkState txSeq = \case
+    ShrinkState phase (_ : actions) ->
+        Just $ ShrinkState phase actions
+    ShrinkState phase [] ->
+        Just $ case nextShrinkPhase phase of
+            Nothing -> ShrinkStateFinished
+            Just sp -> shrinkPhaseToState sp txSeq
     ShrinkStateFinished ->
         Nothing
-    ShrinkState phase actions ->
-        case tailMay actions of
-            Just actionsRemaining ->
-                Just (ShrinkState phase actionsRemaining)
-            Nothing ->
-                case nextShrinkPhase phase of
-                    Just phaseNext ->
-                        Just (shrinkPhaseToState phaseNext txSeq)
-                    Nothing ->
-                        Just ShrinkStateFinished
 
-applyShrinkStateAction :: ShrinkState -> TxSeq -> [TxSeq]
-applyShrinkStateAction state txSeq = case state of
-    ShrinkStateFinished -> []
-    ShrinkState _ actions ->
-        case actions of
-            [] -> [txSeq]
-            (action : _) -> applyShrinkAction action txSeq
+applyShrinkStateAction :: TxSeq -> ShrinkState -> [TxSeq]
+applyShrinkStateAction txSeq = \case
+    ShrinkState _ (action : _) ->
+        applyShrinkAction action txSeq
+    ShrinkState _ [] ->
+        []
+    ShrinkStateFinished ->
+        []
 
-toTxSeq :: ShrinkableTxSeq -> TxSeq
-toTxSeq = txSeq
+getTxSeq :: ShrinkableTxSeq -> TxSeq
+getTxSeq = txSeq
 
-toShrinkableTxSeq :: TxSeq -> ShrinkableTxSeq
-toShrinkableTxSeq txSeq = ShrinkableTxSeq (initialShrinkState txSeq) txSeq
+getShrinkState :: ShrinkableTxSeq -> ShrinkState
+getShrinkState = shrinkState
 
 genTxSeq :: Gen UTxO -> Gen Address -> Gen ShrinkableTxSeq
-genTxSeq genUTxO genAddr = fmap toShrinkableTxSeq $ sized $ \size ->
+genTxSeq genUTxO genAddr = fmap toShrinkable $ sized $ \size ->
     TxSeq.unfoldNM size genDelta =<< genUTxO
   where
     genDelta :: UTxO -> Gen (Either TxSeqGroupBoundary Tx)
@@ -173,12 +176,16 @@ genTxSeq genUTxO genAddr = fmap toShrinkableTxSeq $ sized $ \size ->
         , (4, Right <$> genTxFromUTxO genAddr u)
         ]
 
+    toShrinkable :: TxSeq -> ShrinkableTxSeq
+    toShrinkable s = ShrinkableTxSeq (initialShrinkState s) s
+
 shrinkTxSeq :: ShrinkableTxSeq -> [ShrinkableTxSeq]
 shrinkTxSeq ShrinkableTxSeq {shrinkState, txSeq} =
-    catMaybes $ makeShrinkable <$> applyShrinkStateAction shrinkState txSeq
+    catMaybes $ toShrinkable <$>
+        (applyShrinkStateAction txSeq shrinkState <> [txSeq])
   where
-    makeShrinkable :: TxSeq -> Maybe ShrinkableTxSeq
-    makeShrinkable s = flip ShrinkableTxSeq s <$> nextShrinkState s shrinkState
+    toShrinkable :: TxSeq -> Maybe ShrinkableTxSeq
+    toShrinkable s = flip ShrinkableTxSeq s <$> nextShrinkState s shrinkState
 
 genTxFromUTxO :: Gen Address -> UTxO -> Gen Tx
 genTxFromUTxO genAddr u = do

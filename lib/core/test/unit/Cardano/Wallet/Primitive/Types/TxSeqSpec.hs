@@ -25,7 +25,7 @@ import Cardano.Wallet.Primitive.Types.TokenMap.Gen
 import Cardano.Wallet.Primitive.Types.TokenPolicy
     ( TokenName (..), TokenPolicyId (..) )
 import Cardano.Wallet.Primitive.Types.TxSeq.Gen
-    ( ShrinkableTxSeq, genTxSeq, shrinkTxSeq, toTxSeq )
+    ( ShrinkableTxSeq, genTxSeq, shrinkTxSeq, getTxSeq )
 import Cardano.Wallet.Primitive.Types.UTxO.Gen
     ( genUTxO )
 import Data.Function
@@ -49,7 +49,6 @@ import Test.QuickCheck
     , forAll
     , label
     , property
-    , scale
     , withMaxSuccess
     , (===)
     )
@@ -59,7 +58,6 @@ import Test.QuickCheck.Instances.ByteString
     ()
 
 import qualified Cardano.Wallet.Primitive.Types.TxSeq as TxSeq
-import qualified Data.Foldable as F
 
 spec :: Spec
 spec = do
@@ -143,7 +141,7 @@ spec = do
 --------------------------------------------------------------------------------
 
 prop_dropHeadTxs_isValid :: ShrinkableTxSeq -> Property
-prop_dropHeadTxs_isValid (toTxSeq -> txs) =
+prop_dropHeadTxs_isValid (getTxSeq -> txs) =
     all TxSeq.isValid (TxSeq.dropHeadTxs txs) === True
 
 --------------------------------------------------------------------------------
@@ -151,7 +149,7 @@ prop_dropHeadTxs_isValid (toTxSeq -> txs) =
 --------------------------------------------------------------------------------
 
 prop_dropLastTxs_isValid :: ShrinkableTxSeq -> Property
-prop_dropLastTxs_isValid (toTxSeq -> txs) =
+prop_dropLastTxs_isValid (getTxSeq -> txs) =
     all TxSeq.isValid (TxSeq.dropLastTxs txs) === True
 
 --------------------------------------------------------------------------------
@@ -160,12 +158,12 @@ prop_dropLastTxs_isValid (toTxSeq -> txs) =
 
 prop_genTxSeq_isValid :: Property
 prop_genTxSeq_isValid =
-    forAll (genTxSeq genUTxO genAddress) $ \(toTxSeq -> txs) ->
+    forAll (genTxSeq genUTxO genAddress) $ \(getTxSeq -> txs) ->
         TxSeq.isValid txs
 
 prop_genTxSeq_toTxGroups_length :: Property
 prop_genTxSeq_toTxGroups_length =
-    forAll (genTxSeq genUTxO genAddress) $ \(toTxSeq -> txSeq) ->
+    forAll (genTxSeq genUTxO genAddress) $ \(getTxSeq -> txSeq) ->
         let txGroups = TxSeq.toTxGroups txSeq in
         checkCoverage
             $ cover 0.5 (null txGroups)
@@ -178,7 +176,7 @@ prop_genTxSeq_toTxGroups_length =
 
 prop_genTxSeq_toTxGroups_lengths :: Property
 prop_genTxSeq_toTxGroups_lengths =
-    forAll (genTxSeq genUTxO genAddress) $ \(toTxSeq -> txSeq) ->
+    forAll (genTxSeq genUTxO genAddress) $ \(getTxSeq -> txSeq) ->
         let txGroups = TxSeq.toTxGroups txSeq in
         checkCoverage
             $ cover 10 (maybe False null (headMay txGroups))
@@ -200,7 +198,7 @@ prop_genTxSeq_toTxGroups_lengths =
 --------------------------------------------------------------------------------
 
 prop_mapAssetIds_identity :: ShrinkableTxSeq -> Property
-prop_mapAssetIds_identity (toTxSeq -> txs) =
+prop_mapAssetIds_identity (getTxSeq -> txs) =
     TxSeq.mapAssetIds id txs === txs
 
 prop_mapAssetIds_composition
@@ -209,7 +207,7 @@ prop_mapAssetIds_composition
     -> Fun AssetId AssetId
     -> Property
 prop_mapAssetIds_composition
-    (toTxSeq -> txs) (applyFun -> f) (applyFun -> g) =
+    (getTxSeq -> txs) (applyFun -> f) (applyFun -> g) =
         TxSeq.mapAssetIds f (TxSeq.mapAssetIds g txs) ===
         TxSeq.mapAssetIds (f . g) txs
 
@@ -218,7 +216,7 @@ prop_mapAssetIds_composition
 --------------------------------------------------------------------------------
 
 prop_mapTxIds_identity :: ShrinkableTxSeq -> Property
-prop_mapTxIds_identity (toTxSeq -> txs) =
+prop_mapTxIds_identity (getTxSeq -> txs) =
     TxSeq.mapTxIds id txs === txs
 
 prop_mapTxIds_composition
@@ -227,7 +225,7 @@ prop_mapTxIds_composition
     -> Fun (Hash "Tx") (Hash "Tx")
     -> Property
 prop_mapTxIds_composition
-    (toTxSeq -> txs) (applyFun -> f) (applyFun -> g) =
+    (getTxSeq -> txs) (applyFun -> f) (applyFun -> g) =
         TxSeq.mapTxIds f (TxSeq.mapTxIds g txs) ===
         TxSeq.mapTxIds (f . g) txs
 
@@ -237,12 +235,12 @@ prop_mapTxIds_composition
 
 prop_removeGroupBoundary_groupBoundaryCount_length
     :: ShrinkableTxSeq -> Property
-prop_removeGroupBoundary_groupBoundaryCount_length (toTxSeq -> txSeq) =
+prop_removeGroupBoundary_groupBoundaryCount_length (getTxSeq -> txSeq) =
     length (TxSeq.removeGroupBoundary txSeq) === TxSeq.groupBoundaryCount txSeq
 
 prop_removeGroupBoundary_groupBoundaryCount_pred
     :: ShrinkableTxSeq -> Property
-prop_removeGroupBoundary_groupBoundaryCount_pred (toTxSeq -> txSeq)
+prop_removeGroupBoundary_groupBoundaryCount_pred (getTxSeq -> txSeq)
     | groupBoundaryCount == 0 =
         TxSeq.removeGroupBoundary txSeq === []
     | otherwise =
@@ -253,11 +251,11 @@ prop_removeGroupBoundary_groupBoundaryCount_pred (toTxSeq -> txSeq)
     groupBoundaryCount = TxSeq.groupBoundaryCount txSeq
 
 prop_removeGroupBoundary_isValid :: ShrinkableTxSeq -> Property
-prop_removeGroupBoundary_isValid (toTxSeq -> txSeq) =
+prop_removeGroupBoundary_isValid (getTxSeq -> txSeq) =
     all TxSeq.isValid (TxSeq.removeGroupBoundary txSeq) === True
 
 prop_removeGroupBoundary_toTxs :: ShrinkableTxSeq -> Property
-prop_removeGroupBoundary_toTxs (toTxSeq -> txSeq) =
+prop_removeGroupBoundary_toTxs (getTxSeq -> txSeq) =
     all (== TxSeq.toTxs txSeq) (TxSeq.toTxs <$> TxSeq.removeGroupBoundary txSeq)
     === True
 
@@ -268,18 +266,18 @@ prop_removeGroupBoundary_toTxs (toTxSeq -> txSeq) =
 prop_shrinkTxSeq_length :: Property
 prop_shrinkTxSeq_length =
     forAll (genTxSeq genUTxO genAddress) $ \txs ->
-    forAll (chooseInt (0, TxSeq.length (toTxSeq txs))) $ \targetLength ->
+    forAll (chooseInt (0, TxSeq.length (getTxSeq txs))) $ \targetLength ->
     prop_inner txs targetLength
   where
     prop_inner :: ShrinkableTxSeq -> Int -> Property
     prop_inner txs targetLength =
-        TxSeq.length (toTxSeq $ shrinkTxSeqToLength targetLength txs)
+        TxSeq.length (getTxSeq $ shrinkTxSeqToLength targetLength txs)
             === targetLength
 
     shrinkTxSeqToLength :: Int -> ShrinkableTxSeq -> ShrinkableTxSeq
     shrinkTxSeqToLength targetLength txs = fromMaybe txs $
         shrinkWhile
-        ((>= targetLength) . TxSeq.length . toTxSeq)
+        ((>= targetLength) . TxSeq.length . getTxSeq)
         shrinkTxSeq
         txs
 
@@ -288,14 +286,14 @@ prop_shrinkTxSeq_genShrinkSequence_isValid =
     forAll (genShrinkSequence shrinkTxSeq =<< genTxSeq genUTxO genAddress) $
         \txSeqs ->
             label ("shrink sequence length: " <> show (length txSeqs)) $
-            all TxSeq.isValid (toTxSeq <$> txSeqs)
+            all TxSeq.isValid (getTxSeq <$> txSeqs)
 
 prop_shrinkTxSeq_minimum_length :: Property
 prop_shrinkTxSeq_minimum_length =
     forAll (genTxSeq genUTxO genAddress) $ \s0 ->
         case shrinkSpaceMinimum shrinkTxSeq s0 of
-            Nothing -> TxSeq.length (toTxSeq s0) === 0
-            Just s1 -> TxSeq.length (toTxSeq s1) === 0
+            Nothing -> TxSeq.length (getTxSeq s0) === 0
+            Just s1 -> TxSeq.length (getTxSeq s1) === 0
   where
     shrinkSpaceMinimum :: (a -> [a]) -> a -> Maybe a
     shrinkSpaceMinimum = shrinkWhile (const True)
@@ -305,19 +303,19 @@ prop_shrinkTxSeq_minimum_length =
 --------------------------------------------------------------------------------
 
 prop_shrinkAssetIds_idempotent :: ShrinkableTxSeq -> Property
-prop_shrinkAssetIds_idempotent (toTxSeq -> txs) =
+prop_shrinkAssetIds_idempotent (getTxSeq -> txs) =
     TxSeq.assetIds (f (f txs)) === TxSeq.assetIds (f txs)
   where
     f = TxSeq.shrinkAssetIds
 
 prop_shrinkAssetIds_length :: ShrinkableTxSeq -> Property
-prop_shrinkAssetIds_length (toTxSeq -> txs) =
+prop_shrinkAssetIds_length (getTxSeq -> txs) =
     length (TxSeq.assetIds (f txs)) === length (TxSeq.assetIds txs)
   where
     f = TxSeq.shrinkAssetIds
 
 prop_shrinkAssetIds_isValid :: ShrinkableTxSeq -> Property
-prop_shrinkAssetIds_isValid (toTxSeq -> txs) =
+prop_shrinkAssetIds_isValid (getTxSeq -> txs) =
     TxSeq.isValid (TxSeq.shrinkAssetIds txs) === True
 
 --------------------------------------------------------------------------------
@@ -325,19 +323,19 @@ prop_shrinkAssetIds_isValid (toTxSeq -> txs) =
 --------------------------------------------------------------------------------
 
 prop_shrinkTxIds_idempotent :: ShrinkableTxSeq -> Property
-prop_shrinkTxIds_idempotent (toTxSeq -> txs) =
+prop_shrinkTxIds_idempotent (getTxSeq -> txs) =
     TxSeq.txIds (f (f txs)) === TxSeq.txIds (f txs)
   where
     f = TxSeq.shrinkTxIds
 
 prop_shrinkTxIds_length :: ShrinkableTxSeq -> Property
-prop_shrinkTxIds_length (toTxSeq -> txs) =
+prop_shrinkTxIds_length (getTxSeq -> txs) =
     length (TxSeq.txIds (f txs)) === length (TxSeq.txIds txs)
   where
     f = TxSeq.shrinkTxIds
 
 prop_shrinkTxIds_isValid :: ShrinkableTxSeq -> Property
-prop_shrinkTxIds_isValid (toTxSeq -> txs) =
+prop_shrinkTxIds_isValid (getTxSeq -> txs) =
     TxSeq.isValid (TxSeq.shrinkTxIds txs) === True
 
 --------------------------------------------------------------------------------
@@ -345,7 +343,7 @@ prop_shrinkTxIds_isValid (toTxSeq -> txs) =
 --------------------------------------------------------------------------------
 
 prop_toTxs_length_txCount :: ShrinkableTxSeq -> Property
-prop_toTxs_length_txCount (toTxSeq -> txSeq) =
+prop_toTxs_length_txCount (getTxSeq -> txSeq) =
     length (TxSeq.toTxs txSeq) === TxSeq.txCount txSeq
 
 --------------------------------------------------------------------------------

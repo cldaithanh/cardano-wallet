@@ -117,7 +117,7 @@ import Cardano.Wallet.Primitive.Types.Tx.Gen
 import Cardano.Wallet.Primitive.Types.TxSeq
     ( TxSeq )
 import Cardano.Wallet.Primitive.Types.TxSeq.Gen
-    ( ShrinkableTxSeq, genTxSeq, shrinkTxSeq, toTxSeq )
+    ( ShrinkableTxSeq, genTxSeq, shrinkTxSeq, getTxSeq )
 import Cardano.Wallet.Primitive.Types.UTxO
     ( UTxO (..), balance, dom, excluding, filterByAddress, restrictedTo )
 import Cardano.Wallet.Primitive.Types.UTxO.Gen
@@ -2398,7 +2398,7 @@ blockSeqToBlockList blockSeq =
         }
 
 blockSeqToTxSeq :: BlockSeq -> TxSeq
-blockSeqToTxSeq BlockSeq {shrinkableTxSeq} = toTxSeq shrinkableTxSeq
+blockSeqToTxSeq BlockSeq {shrinkableTxSeq} = getTxSeq shrinkableTxSeq
 
 applyBlockSeq
     :: (IsOurs s Address, IsOurs s RewardAccount)

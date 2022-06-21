@@ -1,3 +1,6 @@
+{-# LANGUAGE DuplicateRecordFields #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+
 module Cardano.Wallet.Primitive.Types.UTxO.Gen
     ( genUTxO
     , genUTxOLarge
@@ -9,7 +12,7 @@ module Cardano.Wallet.Primitive.Types.UTxO.Gen
 import Prelude
 
 import Cardano.Wallet.Primitive.Types.Tx
-    ( TxIn, TxOut )
+    ( TxIn, TxOut (..) )
 import Cardano.Wallet.Primitive.Types.Tx.Gen
     ( genTxIn, genTxInLargeRange, genTxOut, shrinkTxIn, shrinkTxOut )
 import Cardano.Wallet.Primitive.Types.UTxO

@@ -15,6 +15,7 @@
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE UndecidableInstances #-}
 {-# OPTIONS_GHC -fno-warn-orphans #-}
+{- HLINT ignore "Move brackets to avoid $" -}
 
 module Cardano.Wallet.Primitive.ModelSpec
     ( spec
@@ -41,6 +42,7 @@ import Cardano.Wallet.Primitive.Model
     , Wallet
     , applyBlock
     , applyBlockData
+    , applyBlocks
     , applyOurTxToUTxO
     , applyTxToUTxO
     , availableBalance
@@ -74,7 +76,7 @@ import Cardano.Wallet.Primitive.Types
 import Cardano.Wallet.Primitive.Types.Address
     ( Address (..) )
 import Cardano.Wallet.Primitive.Types.Address.Gen
-    ( Parity (..), addressParity )
+    ( Parity (..), addressParity, genAddress )
 import Cardano.Wallet.Primitive.Types.Coin
     ( Coin (..) )
 import Cardano.Wallet.Primitive.Types.Coin.Gen
@@ -107,16 +109,22 @@ import Cardano.Wallet.Primitive.Types.Tx.Gen
     , shrinkTxIn
     , shrinkTxOut
     )
+import Cardano.Wallet.Primitive.Types.TxSeq
+    ( TxSeq )
+import Cardano.Wallet.Primitive.Types.TxSeq.Gen
+    ( ShrinkableTxSeq, genTxSeq, getTxSeq, shrinkTxSeq )
 import Cardano.Wallet.Primitive.Types.UTxO
     ( UTxO (..), balance, dom, excluding, filterByAddress, restrictedTo )
 import Cardano.Wallet.Primitive.Types.UTxO.Gen
     ( genUTxO, shrinkUTxO )
 import Cardano.Wallet.Util
     ( ShowFmt (..), invariant )
+import Control.Applicative
+    ( ZipList (..) )
 import Control.DeepSeq
     ( NFData (..) )
 import Control.Monad
-    ( foldM, guard )
+    ( filterM, foldM, guard )
 import Control.Monad.Trans.State.Strict
     ( State, evalState, execState, runState, state )
 import Data.Delta
@@ -130,7 +138,7 @@ import Data.Functor
 import Data.Functor.Identity
     ( Identity (..) )
 import Data.Generics.Internal.VL.Lens
-    ( over, view, (^.) )
+    ( over, set, view, (^.) )
 import Data.Generics.Labels
     ()
 import Data.List
@@ -149,6 +157,8 @@ import Data.Word
     ( Word32, Word64 )
 import Fmt
     ( Buildable, blockListF, pretty )
+import Generics.SOP
+    ( NP (..) )
 import GHC.Generics
     ( Generic )
 import Test.Hspec
@@ -184,6 +194,7 @@ import Test.QuickCheck
     , scale
     , shrinkIntegral
     , shrinkList
+    , shrinkMap
     , shrinkMapBy
     , shrinkNothing
     , vector
@@ -192,12 +203,22 @@ import Test.QuickCheck
     , (===)
     )
 import Test.QuickCheck.Extra
-    ( chooseNatural, report, verify )
+    ( Pretty (..)
+    , chooseNatural
+    , genericRoundRobinShrink
+    , report
+    , verify
+    , (<:>)
+    , (<@>)
+    )
 import Test.QuickCheck.Instances.ByteString
     ()
+import Test.Utils.Pretty
+    ( (====) )
 
 import qualified Cardano.Wallet.Primitive.Types.Coin as Coin
 import qualified Cardano.Wallet.Primitive.Types.TokenBundle as TokenBundle
+import qualified Cardano.Wallet.Primitive.Types.TxSeq as TxSeq
 import qualified Cardano.Wallet.Primitive.Types.UTxO as UTxO
 import qualified Data.ByteString as BS
 import qualified Data.Foldable as F
@@ -324,6 +345,24 @@ spec = do
     parallel $ describe "Light-mode" $ do
         it "discovery on blocks = discovery on summary" $
             property prop_discoverFromBlockData
+
+    parallel $ describe "applyBlocks" $ do
+
+        describe "filteredTxs" $ do
+            it "prop_applyBlocks_filteredTxs_allOurs" $
+                prop_applyBlocks_filteredTxs_allOurs & property
+            it "prop_applyBlocks_filteredTxs_noneOurs" $
+                prop_applyBlocks_filteredTxs_noneOurs & property
+            it "prop_applyBlocks_filteredTxs_someOurs" $
+                prop_applyBlocks_filteredTxs_someOurs & property
+
+        describe "lastUTxO" $ do
+            it "prop_applyBlocks_lastUTxO_allOurs" $
+                prop_applyBlocks_lastUTxO_allOurs & property
+            it "prop_applyBlocks_lastUTxO_noneOurs" $
+                prop_applyBlocks_lastUTxO_noneOurs & property
+            it "prop_applyBlocks_lastUTxO_someOurs" $
+                prop_applyBlocks_lastUTxO_someOurs & property
 
 {-------------------------------------------------------------------------------
                                 Properties
@@ -652,6 +691,13 @@ instance IsOurs AllOurs a where
     isOurs _ = (Just shouldNotEvaluate,)
       where
         shouldNotEvaluate = error "AllOurs: unexpected evaluation"
+
+-- | A simplified wallet state that marks no entities as "ours".
+--
+data NoneOurs = NoneOurs
+
+instance IsOurs NoneOurs a where
+    isOurs _ = (Nothing,)
 
 -- | Encapsulates a filter condition for matching entities with 'IsOurs'.
 --
@@ -2367,3 +2413,186 @@ outputsCreatedByTx tx
         F.toList (collateralOutput tx)
     | otherwise =
         outputs tx
+
+--------------------------------------------------------------------------------
+-- Arbitrary sequences of blocks and transactions
+--------------------------------------------------------------------------------
+
+data BlockSeq = BlockSeq
+    { initialBlockHeight
+        :: Quantity "block" Word32
+    , initialSlotNo
+        :: SlotNo
+    , shrinkableTxSeq
+        :: ShrinkableTxSeq
+    }
+    deriving (Eq, Generic, Show)
+
+instance Arbitrary BlockSeq where
+    arbitrary = genBlockSeq
+    shrink = shrinkBlockSeq
+
+genBlockSeq :: Gen BlockSeq
+genBlockSeq = BlockSeq
+    <$> fmap toEnum (choose (0, 100))
+    <*> fmap toEnum (choose (0, 100))
+    <*> genTxSeq genUTxO genAddress
+
+shrinkBlockSeq :: BlockSeq -> [BlockSeq]
+shrinkBlockSeq = genericRoundRobinShrink
+    <@> shrinkMap toEnum fromEnum
+    <:> shrinkMap toEnum fromEnum
+    <:> shrinkTxSeq
+    <:> Nil
+
+blockSeqHeadUTxO :: BlockSeq -> UTxO
+blockSeqHeadUTxO = TxSeq.headUTxO . blockSeqToTxSeq
+
+blockSeqLastUTxO :: BlockSeq -> UTxO
+blockSeqLastUTxO = TxSeq.lastUTxO . blockSeqToTxSeq
+
+blockSeqOurTxs
+    :: forall s. (IsOurs s Address, IsOurs s RewardAccount)
+    => s
+    -> BlockSeq
+    -> [Tx]
+blockSeqOurTxs s0 blockSeq = blockSeq
+    & blockSeqToTxSeq
+    & TxSeq.transitions
+    & filterM isOurTransitionM
+    & flip evalState s0
+    & fmap (\(_, tx, _) -> tx)
+  where
+    isOurAddressM :: Address -> State s Bool
+    isOurAddressM = fmap isJust . state . isOurs
+
+    isOurTransitionM :: (UTxO, Tx, UTxO) -> State s Bool
+    isOurTransitionM (u, tx, _) =
+        isOurTx tx =<< UTxO.filterByAddressM isOurAddressM u
+
+blockSeqToBlockData :: BlockSeq -> BlockData m addr tx state
+blockSeqToBlockData = List . blockSeqToBlockList
+  where
+    blockSeqToBlockList :: BlockSeq -> NonEmpty Block
+    blockSeqToBlockList blockSeq =
+        NE.fromList $ getZipList $ makeBlock
+            <$> ZipList (enumFrom $ blockSeq & initialBlockHeight)
+            <*> ZipList (enumFrom $ blockSeq & initialSlotNo)
+            <*> ZipList (NE.toList $ TxSeq.toTxGroups txSeq)
+      where
+        txSeq :: TxSeq
+        txSeq = blockSeqToTxSeq blockSeq
+
+        makeBlock :: Quantity "block" Word32 -> SlotNo -> [Tx] -> Block
+        makeBlock blockHeight slotNo transactions = Block
+            { header = BlockHeader
+                { blockHeight
+                , slotNo
+                , headerHash = Hash ""
+                , parentHeaderHash = Nothing
+                }
+            , transactions
+            , delegations = []
+            }
+
+blockSeqToTxSeq :: BlockSeq -> TxSeq
+blockSeqToTxSeq BlockSeq {shrinkableTxSeq} = getTxSeq shrinkableTxSeq
+
+utxoToWallet :: s -> UTxO -> Wallet s
+utxoToWallet s u = unsafeInitWallet u currentTip s
+  where
+    currentTip :: BlockHeader
+    currentTip = shouldNotEvaluate "currentTip"
+
+    shouldNotEvaluate :: String -> a
+    shouldNotEvaluate name = error $ unwords
+        [name, "was unexpectedly evaluated"]
+
+applyBlocksFilteredTxs
+    :: NonEmpty ([FilteredBlock], (DeltaWallet s, Wallet s)) -> [Tx]
+applyBlocksFilteredTxs = mconcat . mconcat . NE.toList
+    -- Note that transactions within filtered blocks appear in reverse order:
+    . fmap (fmap (reverse . fmap fst . view #transactions) . fst)
+
+applyBlocksLastUTxO
+    :: NonEmpty ([FilteredBlock], (DeltaWallet s, Wallet s)) -> UTxO
+applyBlocksLastUTxO = utxo . snd . snd . NE.last
+
+nullifyFee :: Tx -> Tx
+nullifyFee = set #fee Nothing
+
+ourUTxO :: forall s. (IsOurs s Address) => s -> UTxO -> UTxO
+ourUTxO s u = evalState (UTxO.filterByAddressM isOurAddressM u) s
+  where
+    isOurAddressM :: Address -> State s Bool
+    isOurAddressM = fmap isJust . state . isOurs
+
+--------------------------------------------------------------------------------
+-- Testing 'applyBlocks' with arbitrary sequences of blocks and transactions
+--------------------------------------------------------------------------------
+
+prop_applyBlocks_filteredTxs_allOurs :: Pretty BlockSeq -> Property
+prop_applyBlocks_filteredTxs_allOurs (Pretty blockSeq) =
+    fmap nullifyFee txsReturned ==== fmap nullifyFee txsExpected
+  where
+    txsExpected = blockSeqOurTxs AllOurs blockSeq
+    txsReturned = applyBlocksFilteredTxs $ runIdentity $ applyBlocks
+        (blockSeqToBlockData blockSeq)
+        (utxoToWallet AllOurs utxoHeadProvided)
+    utxoHeadProvided = blockSeqHeadUTxO blockSeq
+
+prop_applyBlocks_filteredTxs_noneOurs :: Pretty BlockSeq -> Property
+prop_applyBlocks_filteredTxs_noneOurs (Pretty blockSeq) =
+    txsReturned ==== txsExpected
+  where
+    txsExpected = []
+    txsReturned = applyBlocksFilteredTxs $ runIdentity $ applyBlocks
+        (blockSeqToBlockData blockSeq)
+        (utxoToWallet NoneOurs utxoHeadProvided)
+    utxoHeadProvided = UTxO.empty
+
+prop_applyBlocks_filteredTxs_someOurs
+    :: Pretty (IsOursIf2 Address RewardAccount)
+    -> Pretty BlockSeq
+    -> Property
+prop_applyBlocks_filteredTxs_someOurs (Pretty someOurs) (Pretty blockSeq) =
+    fmap nullifyFee txsReturned ==== fmap nullifyFee txsExpected
+  where
+    txsExpected = blockSeqOurTxs someOurs blockSeq
+    txsReturned = applyBlocksFilteredTxs $ runIdentity $ applyBlocks
+        (blockSeqToBlockData blockSeq)
+        (utxoToWallet someOurs utxoHeadProvided)
+    utxoHeadProvided = ourUTxO someOurs $ blockSeqHeadUTxO blockSeq
+
+prop_applyBlocks_lastUTxO_allOurs :: Pretty BlockSeq -> Property
+prop_applyBlocks_lastUTxO_allOurs (Pretty blockSeq) =
+    utxoLastReturned ==== utxoLastExpected
+  where
+    utxoHeadProvided = blockSeqHeadUTxO blockSeq
+    utxoLastExpected = blockSeqLastUTxO blockSeq
+    utxoLastReturned = applyBlocksLastUTxO $ runIdentity $ applyBlocks
+        (blockSeqToBlockData blockSeq)
+        (utxoToWallet AllOurs utxoHeadProvided)
+
+prop_applyBlocks_lastUTxO_noneOurs :: Pretty BlockSeq -> Property
+prop_applyBlocks_lastUTxO_noneOurs (Pretty blockSeq) =
+    utxoLastReturned ==== utxoLastExpected
+  where
+    utxoHeadProvided = UTxO.empty
+    utxoLastExpected = UTxO.empty
+    utxoLastReturned = applyBlocksLastUTxO $ runIdentity $ applyBlocks
+        (blockSeqToBlockData blockSeq)
+        (utxoToWallet NoneOurs utxoHeadProvided)
+
+prop_applyBlocks_lastUTxO_someOurs
+    :: Pretty (IsOursIf2 Address RewardAccount)
+    -> Pretty BlockSeq
+    -> Property
+prop_applyBlocks_lastUTxO_someOurs (Pretty someOurs) (Pretty blockSeq) =
+    utxoLastReturned ==== utxoLastExpected
+  where
+    utxoHeadProvided = ourUTxO someOurs $ blockSeqHeadUTxO blockSeq
+    utxoLastExpected = ourUTxO someOurs $ blockSeqLastUTxO blockSeq
+    utxoLastReturned = applyBlocksLastUTxO $ runIdentity $ applyBlocks
+        (blockSeqToBlockData blockSeq)
+        (utxoToWallet someOurs utxoHeadProvided)

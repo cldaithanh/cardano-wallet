@@ -873,7 +873,6 @@ fromBabbagePParams eraInfo currentNodeProtocolParameters pp =
   where
     fromByteToWord (W.Coin v) = W.Coin $ 8 * v
 
-
 -- | Extract the current network decentralization level from the given set of
 -- protocol parameters.
 decentralizationLevelFromPParams

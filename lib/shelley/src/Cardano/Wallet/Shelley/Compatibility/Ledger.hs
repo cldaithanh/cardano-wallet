@@ -368,16 +368,15 @@ computeMinimumAdaQuantityInternal
     -- ^ The token bundle to evaluate.
     -> Coin
     -- ^ The minimum ada quantity for the given token bundle.
-computeMinimumAdaQuantityInternal (MinimumUTxOValue protocolMinimum) bundle =
-    toWalletCoin $
-        Ledger.scaledMinDeposit
+computeMinimumAdaQuantityInternal m bundle = case m of
+    MinimumUTxOValue protocolMinimum ->
+        toWalletCoin $ Ledger.scaledMinDeposit
             (toLedgerTokenBundle bundle)
             (toLedgerCoin protocolMinimum)
-computeMinimumAdaQuantityInternal (MinimumUTxOValueCostPerWord (Coin perWord)) bundle =
-    let
-        outputSize = Alonzo.utxoEntrySize $
-            toAlonzoTxOut (TxOut dummyAddr bundle) Nothing
-    in
+    MinimumUTxOValueCostPerWord (Coin perWord) ->
+        let outputSize = Alonzo.utxoEntrySize $
+                toAlonzoTxOut (TxOut dummyAddr bundle) Nothing
+        in
         Coin $ fromIntegral outputSize * perWord
   where
     -- We just need an address the ledger can deserialize. It doesn't actually

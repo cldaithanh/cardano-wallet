@@ -1130,6 +1130,8 @@ toApiNetworkParameters (NetworkParameters gp sp pp) txConstraints toEpochInfo = 
             $ view #decentralizationLevel pp
         , desiredPoolNumber = view #desiredNumberOfStakePools pp
         , minimumUtxoValue = toApiCoin $ case (view #minimumUTxOvalue pp) of
+            MinimumUTxOFunctionZero ->
+                Coin 0
             MinimumUTxOFunctionConstant c ->
                 c
             MinimumUTxOFunctionLinear c ->

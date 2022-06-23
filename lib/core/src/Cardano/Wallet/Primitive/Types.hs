@@ -1074,7 +1074,8 @@ instance Buildable (EraInfo EpochNo) where
         boundF Nothing = " <not started>"
 
 data MinimumUTxOFunction
-    = MinimumUTxOFunctionConstant Coin
+    = MinimumUTxOFunctionZero
+    | MinimumUTxOFunctionConstant Coin
     | MinimumUTxOFunctionLinear Coin
 
     -- | With Alonzo, `MinimumUTxOFunction` is replaced by an ada-cost per word of
@@ -1086,6 +1087,7 @@ data MinimumUTxOFunction
 instance NFData MinimumUTxOFunction
 
 instance Buildable MinimumUTxOFunction where
+    build (MinimumUTxOFunctionZero) = "zero"
     build (MinimumUTxOFunctionConstant c) = "constant " <> build c
     build (MinimumUTxOFunctionLinear c) = "linear " <> build c
     build (MinimumUTxOFunctionCostPerWord c) = build c <> " per word"

@@ -38,6 +38,8 @@ import Cardano.Wallet.Shelley.Compatibility.Ledger
     ( Convert (..), computeMinimumAdaQuantityInternal )
 import Data.Bifunctor
     ( second )
+import Data.Function
+    ( (&) )
 import Data.Proxy
     ( Proxy (..) )
 import Data.Typeable
@@ -119,6 +121,7 @@ prop_computeMinimumAdaQuantity_forCoin minParam c =
         === expectedMinimumAdaQuantity
   where
     expectedMinimumAdaQuantity = case minParam of
+        MinimumUTxOFunctionZero -> Coin 0
         MinimumUTxOFunctionConstant c' -> c'
         MinimumUTxOFunctionLinear c' -> c'
         MinimumUTxOFunctionCostPerWord (Coin x) -> Coin $ x * 29
@@ -279,7 +282,9 @@ instance Arbitrary Coin where
 
 instance Arbitrary MinimumUTxOFunction where
     arbitrary = oneof
-        [ MinimumUTxOFunctionConstant . Coin.fromWord64
+        [ MinimumUTxOFunctionZero
+            & pure
+        , MinimumUTxOFunctionConstant . Coin.fromWord64
             <$> genSmallWord
         , MinimumUTxOFunctionLinear . Coin.fromWord64 . (* 1_000_000)
             <$> genSmallWord

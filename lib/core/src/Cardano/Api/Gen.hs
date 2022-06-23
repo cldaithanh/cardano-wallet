@@ -5,6 +5,7 @@
 {-# LANGUAGE NumericUnderscores #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE StandaloneDeriving #-}
+{-# LANGUAGE TupleSections #-}
 {-# LANGUAGE TypeApplications #-}
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 
@@ -65,6 +66,7 @@ module Cardano.Api.Gen
     , genStakePoolRelay
     , genTtl
     , genTx
+    , genTxFromUTxO
     , genTxAuxScripts
     , genTxBody
     , genTxBodyContent
@@ -130,12 +132,16 @@ import Cardano.Ledger.SafeHash
     ( unsafeMakeSafeHash )
 import Cardano.Ledger.Shelley.API
     ( MIRPot (..) )
+import Control.Monad
+    ( filterM )
 import Data.Aeson
     ( ToJSON (..), (.=) )
 import Data.ByteString
     ( ByteString )
 import Data.Coerce
     ( coerce )
+import Data.Foldable
+    ( foldl' )
 import Data.Int
     ( Int64 )
 import Data.IntCast
@@ -154,6 +160,8 @@ import Data.String
     ( fromString )
 import Data.Text
     ( Text )
+import Data.Traversable
+    ( for, forM )
 import Data.Word
     ( Word16, Word32, Word64 )
 import Network.Socket
@@ -173,6 +181,7 @@ import Test.QuickCheck
     , Positive (..)
     , arbitrary
     , choose
+    , chooseEnum
     , chooseInt
     , chooseInteger
     , elements
@@ -184,6 +193,7 @@ import Test.QuickCheck
     , oneof
     , scale
     , sized
+    , sublistOf
     , vector
     , vectorOf
     )
@@ -200,6 +210,8 @@ import qualified Cardano.Ledger.Shelley.API as Ledger
     ( StakePoolRelay (..), portToWord16 )
 import qualified Cardano.Ledger.Shelley.TxBody as Ledger
     ( EraIndependentTxBody )
+import qualified Cardano.Wallet.Primitive.Types as Wallet
+import qualified Cardano.Wallet.Primitive.Types.UTxO as Wallet
 import qualified Data.Aeson as Aeson
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Lazy as BL
@@ -613,7 +625,12 @@ genStakeCredential =
       byScript = StakeCredentialByScript <$> genScriptHash
 
 genStakeAddress :: Gen StakeAddress
-genStakeAddress = makeStakeAddress <$> genNetworkId <*> genStakeCredential
+genStakeAddress =
+    makeStakeAddress <$> genNetworkId <*> genStakeCredential
+
+genStakeAddressForNetwork :: NetworkId -> Gen StakeAddress
+genStakeAddressForNetwork networkId =
+    makeStakeAddress networkId <$> genStakeCredential
 
 genScriptData :: Gen ScriptData
 genScriptData =
@@ -653,7 +670,8 @@ genExecutionUnits = do
     pure $ ExecutionUnits (fromWord64 steps) (fromWord64 mem)
 
 genTxWithdrawals :: CardanoEra era -> Gen (TxWithdrawals BuildTx era)
-genTxWithdrawals era =
+genTxWithdrawals era = do
+  networkId <- genNetworkId
   case withdrawalsSupportedInEra era of
     Nothing ->
         pure TxWithdrawalsNone
@@ -661,7 +679,12 @@ genTxWithdrawals era =
         frequency
           [ ( 1 , pure TxWithdrawalsNone )
           , ( 1 , pure $ TxWithdrawals supported [] )
-          , ( 3 , TxWithdrawals supported
+          -- No conflicting withdrawal networks
+          , ( 7 , TxWithdrawals supported
+                  <$> scale (`div` 3) (listOf (genWithdrawalInfoForNetworkId networkId era))
+            )
+          -- Possibly conflicting withdrawal networks
+          , ( 1 , TxWithdrawals supported
                   <$> scale (`div` 3) (listOf (genWithdrawalInfo era))
             )
           ]
@@ -674,6 +697,19 @@ genWithdrawalInfo
            )
 genWithdrawalInfo era = do
     stakeAddr <- genStakeAddress
+    amt <- genLovelace
+    wit <- BuildTxWith <$> genWitnessStake era
+    pure (stakeAddr, amt, wit)
+
+genWithdrawalInfoForNetworkId
+    :: NetworkId
+    -> CardanoEra era
+    -> Gen ( StakeAddress
+           , Lovelace
+           , BuildTxWith BuildTx (Witness WitCtxStake era)
+           )
+genWithdrawalInfoForNetworkId networkId era = do
+    stakeAddr <- genStakeAddressForNetwork networkId
     amt <- genLovelace
     wit <- BuildTxWith <$> genWitnessStake era
     pure (stakeAddr, amt, wit)
@@ -1313,6 +1349,185 @@ genUpdateProposal era =
                       )
                 ]
 
+-- x :: Wallet.UTxO -> [(TxIn, TxOut BuildTx era)]
+-- x wUtxo =
+--     (\(wTxIn, wTxOut) -> (toCardanoTxIn wTxin, toCardanoTxOut _era wTxOut)) <$> Wallet.toList wUtxo
+
+-- | Split up of the value into random parts, using "all" of the value.
+genValueSplitAll :: Value -> Gen [Value]
+genValueSplitAll val | val == mempty = pure []
+genValueSplitAll val | otherwise     = do
+    sub <- genSubValue val
+    let (rem, took) = takeValue sub val
+    (took :) <$> genValueSplitAll rem
+
+-- | Split up the value into random parts, using "some to all" of the value.
+genValueSplitSome :: Value -> Gen [Value]
+genValueSplitSome val = do
+    gas <- chooseInt (0, 15)
+    go gas val
+    where
+        go :: Int -> Value -> Gen [Value]
+        go 0 v               = pure [v]
+        go _ v   | v == mempty = pure []
+        go gas v | otherwise   = do
+            sub <- genSubValue v
+            let (rem, took) = takeValue sub v
+            (took :) <$> go (gas - 1) rem
+
+genSubValue :: Value -> Gen Value
+genSubValue v | v == mempty = pure mempty
+              | otherwise = do
+    let availableAssets = valueToList v
+
+    -- Choose a random amount of each available asset
+    subsetQty <-
+        forM availableAssets $ \(assetId, (Quantity qty)) ->
+          ((assetId,) . Quantity) <$> choose (0, qty)
+
+    -- Choose a random set of assets of the available
+    subsetAssets <- sublistOf subsetQty
+
+    pure $ valueFromList subsetAssets
+
+takeValue :: Value -> Value -> (Value, Value)
+takeValue val x =
+    foldl'
+      (\(rem, took) (assetId, qty) -> valueFromList . (:[]) <$> takeAsset assetId qty rem)
+      (x, mempty)
+      (valueToList val)
+
+takeAsset :: AssetId -> Quantity -> Value -> (Value, (AssetId, Quantity))
+takeAsset assetId qty val =
+    let valMap = Map.fromList $ valueToList val
+    in case Map.lookup assetId valMap of
+        Nothing -> (val, (assetId, mempty))
+        Just qtyAvailable ->
+            if qtyAvailable >= qty
+            then
+                let qtyRemaining = qtyAvailable - qty
+                in (valueFromList $ Map.toList $ Map.insert assetId qtyRemaining valMap, (assetId, qty))
+            else
+                (valueFromList $ Map.toList $ Map.delete assetId valMap, (assetId, qtyAvailable))
+
+genSubUTxO
+    :: forall era ctx
+     . CardanoEra era
+    -> [TxOut BuildTx era]
+    -> Gen [TxOut ctx era]
+genSubUTxO era utxo = do
+    let
+        availableBalance :: [TxOut BuildTx era] -> Value
+        availableBalance =
+            foldMap (\(TxOut _addr val _datum _refScript) ->
+                         txOutValueToValue val
+                    )
+
+    -- Choose a subset of the UTxO available to us
+    chosenUTxO <- sublistOf utxo
+
+    -- Take the value of the UTxO subset
+    let chosenBalance = availableBalance chosenUTxO
+
+    -- Split that value randomly
+    split <- frequency
+      -- Sometimes using ALL the available value
+      [ (1, genValueSplitAll chosenBalance)
+      -- Sometimes using SOME of the available value
+      , (2, genValueSplitSome chosenBalance)
+      -- We give the second more weight as there is overlap between these
+      -- two generators (genValueSplitSome sometimes generates the same
+      -- value as genValueSplitAll).
+      ]
+
+    -- Convert that split value into tx outs
+    let
+        toTxOutValue :: Value -> TxOutValue era
+        toTxOutValue value =
+            case multiAssetSupportedInEra era of
+                Left adaOnlyInEra ->
+                    TxOutAdaOnly adaOnlyInEra $ selectLovelace value
+                Right multiAssetInEra ->
+                    TxOutValue multiAssetInEra value
+
+        txOutValues :: [TxOutValue era]
+        txOutValues = toTxOutValue <$> split
+
+    for txOutValues $ \val ->
+        TxOut <$> genAddressInEra era
+              <*> pure val
+              <*> genTxOutDatum era
+              <*> genReferenceScript era
+
+-- | Generates a random subsequence of the given list, with at least one
+-- element.
+sublistOf1 :: [a] -> Gen [a]
+sublistOf1 [] = error "sublistOf1 requires list with at least one element"
+sublistOf1 xs = do
+    fs <- filterM (\_ -> chooseEnum (False, True)) xs
+    case fs of
+        [] -> (:[]) <$> elements xs
+        _  -> pure fs
+
+genTxXFromUTxO
+    :: CardanoEra era
+    -> [(TxIn, TxOut BuildTx era)]
+    -> Gen ([TxIn], [TxOut ctx era])
+genTxXFromUTxO era utxo = do
+    -- Choose a subset of the UTxO available to us
+    chosenUTxO <- sublistOf1 utxo
+    let chosenTxIns = fst <$> chosenUTxO
+        chosenTxOuts = snd <$> chosenUTxO
+
+    txOuts <- frequency
+      -- Mostly choose tx outs so that they are <= available value
+      [ (8, genSubUTxO era chosenTxOuts
+        )
+      -- Sometimes choose so they can exceed available value
+      , (2, scale (`div` 3) $ listOf1 $ genTxOut era)
+      ]
+
+    pure (chosenTxIns, txOuts)
+
+genTxBodyContentFromUTxO
+    :: CardanoEra era
+    -> [(TxIn, TxOut BuildTx era)]
+    -> Gen (TxBodyContent BuildTx era)
+genTxBodyContentFromUTxO era utxo = do
+    body <- genTxBodyContent era
+
+    if null utxo
+    then
+        pure body
+    else do
+        (txIns, txOuts) <- genTxXFromUTxO era utxo
+        txIns' <- do
+          ctxs <- vectorOf (length txIns) (genWitnessSpend era)
+          pure $ zip txIns (BuildTxWith <$> ctxs)
+        pure $ body { Api.txIns = txIns'
+                    , Api.txOuts = txOuts
+                    }
+
+genTxBodyFromUTxO
+    :: IsCardanoEra era
+    => CardanoEra era
+    -> [(TxIn, TxOut BuildTx era)]
+    -> Gen (TxBody era)
+genTxBodyFromUTxO era utxo = do
+    res <- makeTransactionBody <$> genTxBodyContentFromUTxO era utxo
+    case res of
+        Left err -> error (displayError err)
+        Right txBody -> pure txBody
+
+genTxFromUTxO
+    :: forall era
+     . IsCardanoEra era
+    => CardanoEra era
+    -> [(TxIn, TxOut BuildTx era)]
+    -> Gen (Tx era)
+genTxFromUTxO era utxo =
+    makeSignedTransaction [] <$> genTxBodyFromUTxO era utxo
+
 genTxBodyContent :: CardanoEra era -> Gen (TxBodyContent BuildTx era)
 genTxBodyContent era = do
     txIns <- scale (`div` 3) $ do
@@ -1464,6 +1679,16 @@ genWitness era body =
                   <*> genSigningKey AsByronKey
             , makeShelleyKeyWitness body <$> genShelleyWitnessSigningKey
             ]
+
+-- genTxForUTxO era utxo = do
+--     body <- genTxBodyForUTxO utxo
+--     let tx = makeSignedTransaction [] body
+--         fee = Api.evaluateTransactionFee (Api.txProtocolParams body) tx nWits 0
+--     (txIns, txOuts) <- genTxInsOutsForUTxOAndFee utxo fee
+--     body { Api.txIns = txIns
+--          , Api.txOuts = txOuts
+--          , Api.txFee = fee
+--          }
 
 genTxInEra :: forall era. IsCardanoEra era => CardanoEra era -> Gen (Tx era)
 genTxInEra era = do

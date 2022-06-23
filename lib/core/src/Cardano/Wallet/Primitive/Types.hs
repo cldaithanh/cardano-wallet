@@ -1085,7 +1085,7 @@ data MinimumUTxOFunction
 instance NFData MinimumUTxOFunction
 
 instance Buildable MinimumUTxOFunction where
-    build (MinimumUTxOFunctionLinear c) = "constant " <> build c
+    build (MinimumUTxOFunctionLinear c) = "linear " <> build c
     build (MinimumUTxOFunctionCostPerWord c) = build c <> " per word"
 
 -- | Protocol parameters that can be changed through the update system.

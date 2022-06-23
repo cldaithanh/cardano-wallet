@@ -1074,7 +1074,8 @@ instance Buildable (EraInfo EpochNo) where
         boundF Nothing = " <not started>"
 
 data MinimumUTxOFunction
-    = MinimumUTxOFunctionLinear Coin
+    = MinimumUTxOFunctionConstant Coin
+    | MinimumUTxOFunctionLinear Coin
 
     -- | With Alonzo, `MinimumUTxOFunction` is replaced by an ada-cost per word of
     -- the output. Note that the alonzo ledger assumes fixed sizes for address
@@ -1085,6 +1086,7 @@ data MinimumUTxOFunction
 instance NFData MinimumUTxOFunction
 
 instance Buildable MinimumUTxOFunction where
+    build (MinimumUTxOFunctionConstant c) = "constant " <> build c
     build (MinimumUTxOFunctionLinear c) = "linear " <> build c
     build (MinimumUTxOFunctionCostPerWord c) = build c <> " per word"
 

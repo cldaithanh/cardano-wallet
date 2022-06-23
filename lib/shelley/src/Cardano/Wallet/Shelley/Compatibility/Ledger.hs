@@ -369,6 +369,8 @@ computeMinimumAdaQuantityInternal
     -> Coin
     -- ^ The minimum ada quantity for the given token bundle.
 computeMinimumAdaQuantityInternal m bundle = case m of
+    MinimumUTxOFunctionConstant protocolMinimum ->
+        protocolMinimum
     MinimumUTxOFunctionLinear protocolMinimum ->
         toWalletCoin $ Ledger.scaledMinDeposit
             (toLedgerTokenBundle bundle)

@@ -119,6 +119,7 @@ prop_computeMinimumAdaQuantity_forCoin minParam c =
         === expectedMinimumAdaQuantity
   where
     expectedMinimumAdaQuantity = case minParam of
+        MinimumUTxOFunctionConstant c' -> c'
         MinimumUTxOFunctionLinear c' -> c'
         MinimumUTxOFunctionCostPerWord (Coin x) -> Coin $ x * 29
 
@@ -278,7 +279,9 @@ instance Arbitrary Coin where
 
 instance Arbitrary MinimumUTxOFunction where
     arbitrary = oneof
-        [ MinimumUTxOFunctionLinear . Coin.fromWord64 . (* 1_000_000)
+        [ MinimumUTxOFunctionConstant . Coin.fromWord64
+            <$> genSmallWord
+        , MinimumUTxOFunctionLinear . Coin.fromWord64 . (* 1_000_000)
             <$> genSmallWord
         , MinimumUTxOFunctionCostPerWord . Coin.fromWord64
             <$> genSmallWord

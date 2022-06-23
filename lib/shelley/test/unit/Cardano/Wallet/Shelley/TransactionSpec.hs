@@ -1979,7 +1979,7 @@ mockProtocolParameters = dummyProtocolParameters
         , getTokenBundleMaxSize = TokenBundleMaxSize $ TxSize 4000
         , getMaxExecutionUnits = ExecutionUnits 10_000_000_000 14_000_000
         }
-    , minimumUTxOvalue = MinimumUTxOFunction $ Coin 1000000
+    , minimumUTxOvalue = MinimumUTxOFunctionLinear $ Coin 1000000
     , maximumCollateralInputCount = 3
     , minimumCollateralPercentage = 150
     }

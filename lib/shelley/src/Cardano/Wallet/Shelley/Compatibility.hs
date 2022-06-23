@@ -799,7 +799,7 @@ fromShelleyPParams eraInfo currentNodeProtocolParameters pp =
         , desiredNumberOfStakePools =
             desiredNumberOfStakePoolsFromPParams pp
         , minimumUTxOvalue =
-            MinimumUTxOFunction . toWalletCoin $ SLAPI._minUTxOValue pp
+            MinimumUTxOFunctionLinear . toWalletCoin $ SLAPI._minUTxOValue pp
         , stakeKeyDeposit = stakeKeyDepositFromPParams pp
         , eras = fromBoundToEpochNo <$> eraInfo
         -- Collateral inputs were not supported or required in Shelley:

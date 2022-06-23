@@ -119,7 +119,7 @@ prop_computeMinimumAdaQuantity_forCoin minParam c =
         === expectedMinimumAdaQuantity
   where
     expectedMinimumAdaQuantity = case minParam of
-        MinimumUTxOFunction c' -> c'
+        MinimumUTxOFunctionLinear c' -> c'
         MinimumUTxOFunctionCostPerWord (Coin x) -> Coin $ x * 29
 
 prop_computeMinimumAdaQuantity_agnosticToAdaQuantity
@@ -203,7 +203,7 @@ unit_computeMinimumAdaQuantity_fixedSizeBundle
 unit_computeMinimumAdaQuantity_fixedSizeBundle bundle expectation =
     withMaxSuccess 100 $
     computeMinimumAdaQuantityInternal
-        (MinimumUTxOFunction protocolMinimum) bundle === expectation
+        (MinimumUTxOFunctionLinear protocolMinimum) bundle === expectation
   where
     protocolMinimum = Coin 1_000_000
 
@@ -278,8 +278,10 @@ instance Arbitrary Coin where
 
 instance Arbitrary MinimumUTxOFunction where
     arbitrary = oneof
-        [ MinimumUTxOFunction . Coin.fromWord64 . (* 1_000_000) <$> genSmallWord
-        , MinimumUTxOFunctionCostPerWord . Coin.fromWord64 <$> genSmallWord
+        [ MinimumUTxOFunctionLinear . Coin.fromWord64 . (* 1_000_000)
+            <$> genSmallWord
+        , MinimumUTxOFunctionCostPerWord . Coin.fromWord64
+            <$> genSmallWord
         ]
       where
       genSmallWord = fromIntegral @Int @Word64 . getPositive <$> arbitrary

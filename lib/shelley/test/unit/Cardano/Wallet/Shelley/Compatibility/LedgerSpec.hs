@@ -11,7 +11,7 @@ module Cardano.Wallet.Shelley.Compatibility.LedgerSpec
 import Prelude
 
 import Cardano.Wallet.Primitive.Types
-    ( MinimumUTxOValue (..) )
+    ( MinimumUTxOFunction (..) )
 import Cardano.Wallet.Primitive.Types.Coin
     ( Coin (..) )
 import Cardano.Wallet.Primitive.Types.TokenBundle
@@ -109,7 +109,7 @@ spec = describe "Cardano.Wallet.Shelley.Compatibility.LedgerSpec" $
 --------------------------------------------------------------------------------
 
 prop_computeMinimumAdaQuantity_forCoin
-    :: MinimumUTxOValue
+    :: MinimumUTxOFunction
     -> Coin
     -> Property
 prop_computeMinimumAdaQuantity_forCoin minParam c =
@@ -119,12 +119,12 @@ prop_computeMinimumAdaQuantity_forCoin minParam c =
         === expectedMinimumAdaQuantity
   where
     expectedMinimumAdaQuantity = case minParam of
-        MinimumUTxOValue c' -> c'
-        MinimumUTxOValueCostPerWord (Coin x) -> Coin $ x * 29
+        MinimumUTxOFunction c' -> c'
+        MinimumUTxOFunctionCostPerWord (Coin x) -> Coin $ x * 29
 
 prop_computeMinimumAdaQuantity_agnosticToAdaQuantity
     :: Blind TokenBundle
-    -> MinimumUTxOValue
+    -> MinimumUTxOFunction
     -> Property
 prop_computeMinimumAdaQuantity_agnosticToAdaQuantity
     (Blind bundle) minParam =
@@ -148,7 +148,7 @@ prop_computeMinimumAdaQuantity_agnosticToAdaQuantity
 
 prop_computeMinimumAdaQuantity_agnosticToAssetQuantities
     :: Blind TokenBundle
-    -> MinimumUTxOValue
+    -> MinimumUTxOFunction
     -> Property
 prop_computeMinimumAdaQuantity_agnosticToAssetQuantities
     (Blind bundle) minVal =
@@ -202,7 +202,8 @@ unit_computeMinimumAdaQuantity_fixedSizeBundle
     -> Property
 unit_computeMinimumAdaQuantity_fixedSizeBundle bundle expectation =
     withMaxSuccess 100 $
-    computeMinimumAdaQuantityInternal (MinimumUTxOValue protocolMinimum) bundle === expectation
+    computeMinimumAdaQuantityInternal
+        (MinimumUTxOFunction protocolMinimum) bundle === expectation
   where
     protocolMinimum = Coin 1_000_000
 
@@ -275,10 +276,10 @@ instance Arbitrary Coin where
     arbitrary = genTxOutCoin
     shrink = shrinkTxOutCoin
 
-instance Arbitrary MinimumUTxOValue where
+instance Arbitrary MinimumUTxOFunction where
     arbitrary = oneof
-        [ MinimumUTxOValue . Coin.fromWord64 . (* 1_000_000) <$> genSmallWord
-        , MinimumUTxOValueCostPerWord . Coin.fromWord64 <$> genSmallWord
+        [ MinimumUTxOFunction . Coin.fromWord64 . (* 1_000_000) <$> genSmallWord
+        , MinimumUTxOFunctionCostPerWord . Coin.fromWord64 <$> genSmallWord
         ]
       where
       genSmallWord = fromIntegral @Int @Word64 . getPositive <$> arbitrary

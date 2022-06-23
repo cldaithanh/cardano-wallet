@@ -52,7 +52,7 @@ import Cardano.Crypto.Hash
 import Cardano.Ledger.SafeHash
     ( unsafeMakeSafeHash )
 import Cardano.Wallet.Primitive.Types
-    ( MinimumUTxOValue (..) )
+    ( MinimumUTxOFunction (..) )
 import Cardano.Wallet.Primitive.Types.Address
     ( Address (..) )
 import Cardano.Wallet.Primitive.Types.Coin
@@ -119,7 +119,7 @@ import qualified Ouroboros.Network.Block as O
 --   for a token map.
 --
 computeMinimumAdaQuantity
-    :: MinimumUTxOValue
+    :: MinimumUTxOFunction
     -- ^ The absolute minimum ada quantity specified by the protocol.
     -> TokenMap
     -- ^ The token map to evaluate.
@@ -362,18 +362,18 @@ toWalletScript keyrole = fromLedgerScript
 --
 -- TODO: [ADP-954] Datum hashes are currently not taken into account.
 computeMinimumAdaQuantityInternal
-    :: MinimumUTxOValue
+    :: MinimumUTxOFunction
     -- ^ The absolute minimum ada quantity specified by the protocol.
     -> TokenBundle
     -- ^ The token bundle to evaluate.
     -> Coin
     -- ^ The minimum ada quantity for the given token bundle.
 computeMinimumAdaQuantityInternal m bundle = case m of
-    MinimumUTxOValue protocolMinimum ->
+    MinimumUTxOFunction protocolMinimum ->
         toWalletCoin $ Ledger.scaledMinDeposit
             (toLedgerTokenBundle bundle)
             (toLedgerCoin protocolMinimum)
-    MinimumUTxOValueCostPerWord (Coin perWord) ->
+    MinimumUTxOFunctionCostPerWord (Coin perWord) ->
         let outputSize = Alonzo.utxoEntrySize $
                 toAlonzoTxOut (TxOut dummyAddr bundle) Nothing
         in

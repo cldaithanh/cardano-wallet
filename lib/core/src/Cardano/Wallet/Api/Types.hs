@@ -308,7 +308,7 @@ import Cardano.Wallet.Primitive.Types
     , EpochNo (..)
     , ExecutionUnitPrices (..)
     , GenesisParameters (..)
-    , MinimumUTxOValue (..)
+    , MinimumUTxOFunction (..)
     , NetworkParameters (..)
     , NonWalletCertificate (..)
     , PoolId (..)
@@ -1130,9 +1130,9 @@ toApiNetworkParameters (NetworkParameters gp sp pp) txConstraints toEpochInfo = 
             $ view #decentralizationLevel pp
         , desiredPoolNumber = view #desiredNumberOfStakePools pp
         , minimumUtxoValue = toApiCoin $ case (view #minimumUTxOvalue pp) of
-            MinimumUTxOValue c ->
+            MinimumUTxOFunction c ->
                 c
-            MinimumUTxOValueCostPerWord _perWord ->
+            MinimumUTxOFunctionCostPerWord _perWord ->
                 txOutputMinimumAdaQuantity txConstraints TokenMap.empty
         , eras = apiEras
         , maximumCollateralInputCount =

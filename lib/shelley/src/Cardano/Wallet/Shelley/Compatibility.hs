@@ -220,7 +220,7 @@ import Cardano.Wallet.Primitive.AddressDerivation
 import Cardano.Wallet.Primitive.Types
     ( Certificate (..)
     , ChainPoint (..)
-    , MinimumUTxOValue (..)
+    , MinimumUTxOFunction (..)
     , PoolCertificate (..)
     , PoolRegistrationCertificate (..)
     , PoolRetirementCertificate (..)
@@ -799,7 +799,7 @@ fromShelleyPParams eraInfo currentNodeProtocolParameters pp =
         , desiredNumberOfStakePools =
             desiredNumberOfStakePoolsFromPParams pp
         , minimumUTxOvalue =
-            MinimumUTxOValue . toWalletCoin $ SLAPI._minUTxOValue pp
+            MinimumUTxOFunction . toWalletCoin $ SLAPI._minUTxOValue pp
         , stakeKeyDeposit = stakeKeyDepositFromPParams pp
         , eras = fromBoundToEpochNo <$> eraInfo
         -- Collateral inputs were not supported or required in Shelley:
@@ -829,7 +829,7 @@ fromAlonzoPParams eraInfo currentNodeProtocolParameters pp =
             pp
         , desiredNumberOfStakePools =
             desiredNumberOfStakePoolsFromPParams pp
-        , minimumUTxOvalue = MinimumUTxOValueCostPerWord
+        , minimumUTxOvalue = MinimumUTxOFunctionCostPerWord
             . toWalletCoin $ Alonzo._coinsPerUTxOWord pp
         , stakeKeyDeposit = stakeKeyDepositFromPParams pp
         , eras = fromBoundToEpochNo <$> eraInfo
@@ -858,7 +858,7 @@ fromBabbagePParams eraInfo currentNodeProtocolParameters pp =
             pp
         , desiredNumberOfStakePools =
             desiredNumberOfStakePoolsFromPParams pp
-        , minimumUTxOvalue = MinimumUTxOValueCostPerWord
+        , minimumUTxOvalue = MinimumUTxOFunctionCostPerWord
             . fromByteToWord . toWalletCoin $ Babbage._coinsPerUTxOByte pp
         , stakeKeyDeposit = stakeKeyDepositFromPParams pp
         , eras = fromBoundToEpochNo <$> eraInfo

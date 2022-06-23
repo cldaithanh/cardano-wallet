@@ -96,7 +96,7 @@ import Cardano.Wallet.Primitive.Types
     , FeePolicy (LinearFee)
     , GenesisParameters (..)
     , LinearFunction (..)
-    , MinimumUTxOValue (..)
+    , MinimumUTxOFunction (..)
     , NetworkParameters (..)
     , PoolId
     , ProtocolParameters (..)
@@ -936,7 +936,7 @@ fromBlockfrostPP network BF.ProtocolParams{..} = do
     desiredNumberOfStakePools <-
         _protocolParamsNOpt <?#> "NOpt"
     minimumUTxOvalue <-
-        MinimumUTxOValueCostPerWord . Coin
+        MinimumUTxOFunctionCostPerWord . Coin
             <$> intCast @_ @Integer _protocolParamsCoinsPerUtxoWord
             <?#> "CoinsPerUtxoWord"
     stakeKeyDeposit <-

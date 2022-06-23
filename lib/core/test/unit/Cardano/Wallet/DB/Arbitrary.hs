@@ -94,7 +94,7 @@ import Cardano.Wallet.Primitive.Types
     , ExecutionUnits (..)
     , FeePolicy (..)
     , LinearFunction (LinearFunction)
-    , MinimumUTxOValue (..)
+    , MinimumUTxOFunction (..)
     , PoolId (..)
     , ProtocolParameters (..)
     , Range (..)
@@ -718,7 +718,7 @@ instance Arbitrary ExecutionUnitPrices where
     shrink = genericShrink
     arbitrary = genericArbitrary
 
-instance Arbitrary MinimumUTxOValue where
+instance Arbitrary MinimumUTxOFunction where
     shrink = genericShrink
     arbitrary = genericArbitrary
 

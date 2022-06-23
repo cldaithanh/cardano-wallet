@@ -96,10 +96,13 @@ import qualified Cardano.Ledger.Alonzo as Alonzo
 import qualified Cardano.Ledger.Alonzo.Rules.Utxo as Alonzo
 import qualified Cardano.Ledger.Alonzo.TxBody as Alonzo
 import qualified Cardano.Ledger.Babbage as Babbage
+import qualified Cardano.Ledger.Babbage.PParams as Babbage
+import qualified Cardano.Ledger.Babbage.Rules.Utxo as Babbage
 import qualified Cardano.Ledger.Babbage.TxBody as Babbage
 import qualified Cardano.Ledger.Crypto as Ledger
 import qualified Cardano.Ledger.Keys as Ledger
 import qualified Cardano.Ledger.Mary.Value as Ledger
+import qualified Cardano.Ledger.Serialization as Ledger
 import qualified Cardano.Ledger.Shelley.API as Ledger
 import qualified Cardano.Ledger.ShelleyMA.Rules.Utxo as Ledger
 import qualified Cardano.Ledger.ShelleyMA.Timelocks as MA
@@ -377,12 +380,22 @@ computeMinimumAdaQuantityInternal m bundle = case m of
         toWalletCoin $ Ledger.scaledMinDeposit
             (toLedgerTokenBundle bundle)
             (toLedgerCoin protocolMinimum)
+    MinimumUTxOFunctionCostPerByte perByte ->
+        let params = Babbage.emptyPParams
+                {Babbage._coinsPerUTxOByte = toLedgerCoin perByte}
+            sizedTxOut = Ledger.mkSized $
+                toBabbageTxOut (TxOut dummyAddr bundle) completelyIgnoreDatums
+        in
+        toWalletCoin $ Babbage.babbageMinUTxOValue params sizedTxOut
     MinimumUTxOFunctionCostPerWord (Coin perWord) ->
         let outputSize = Alonzo.utxoEntrySize $
                 toAlonzoTxOut (TxOut dummyAddr bundle) Nothing
         in
         Coin $ fromIntegral outputSize * perWord
   where
+    -- TODO: Do not ignore datums.
+    completelyIgnoreDatums = Nothing
+
     -- We just need an address the ledger can deserialize. It doesn't actually
     -- use the length of it.
     --

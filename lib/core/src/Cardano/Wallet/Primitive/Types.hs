@@ -1077,7 +1077,7 @@ data MinimumUTxOFunction
     = MinimumUTxOFunctionZero
     | MinimumUTxOFunctionConstant Coin
     | MinimumUTxOFunctionLinear Coin
-
+    | MinimumUTxOFunctionCostPerByte Coin
     -- | With Alonzo, `MinimumUTxOFunction` is replaced by an ada-cost per word of
     -- the output. Note that the alonzo ledger assumes fixed sizes for address
     -- and coin, so the size is not the serialized size exactly.
@@ -1090,6 +1090,7 @@ instance Buildable MinimumUTxOFunction where
     build (MinimumUTxOFunctionZero) = "zero"
     build (MinimumUTxOFunctionConstant c) = "constant " <> build c
     build (MinimumUTxOFunctionLinear c) = "linear " <> build c
+    build (MinimumUTxOFunctionCostPerByte c) = build c <> " per byte"
     build (MinimumUTxOFunctionCostPerWord c) = build c <> " per word"
 
 -- | Protocol parameters that can be changed through the update system.

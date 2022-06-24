@@ -132,6 +132,8 @@ import Cardano.Ledger.SafeHash
     ( unsafeMakeSafeHash )
 import Cardano.Ledger.Shelley.API
     ( MIRPot (..) )
+import Control.Exception
+    ( SomeException, evaluate, try )
 import Control.Monad
     ( filterM )
 import Data.Aeson
@@ -152,6 +154,8 @@ import Data.Maybe
     ( maybeToList )
 import Data.Maybe.Strict
     ( strictMaybeToMaybe )
+import Data.Proxy
+    ( Proxy (..) )
 import Data.Ratio
     ( Ratio, (%) )
 import Data.Set
@@ -164,10 +168,15 @@ import Data.Traversable
     ( for, forM )
 import Data.Word
     ( Word16, Word32, Word64 )
+import qualified Debug.Trace as Debug
+import GHC.Stack
+    ( HasCallStack )
 import Network.Socket
     ( PortNumber )
 import Numeric.Natural
     ( Natural )
+import System.IO.Unsafe
+    ( unsafePerformIO )
 import System.Random
     ( Random )
 import Test.Cardano.Chain.UTxO.Gen
@@ -276,8 +285,7 @@ genTxInsCollateral era =
     case collateralSupportedInEra era of
       Nothing        -> pure TxInsCollateralNone
       Just supported -> oneof
-                          [ pure TxInsCollateralNone
-                          , TxInsCollateral supported
+                          [ TxInsCollateral supported
                             <$> scale (`div` 3) (listOf genTxIn)
                           ]
 
@@ -1027,6 +1035,29 @@ genProtocolParameters =
     <*> liftArbitrary genNat
     <*> liftArbitrary genNat
 
+languages :: [(a, AnyScriptWitness era)] -> Set AnyPlutusScriptVersion
+languages witnesses =
+    Set.fromList
+    [ AnyPlutusScriptVersion v
+    | (_, AnyScriptWitness (PlutusScriptWitness _ v _ _ _ _)) <- witnesses
+    ]
+
+requiresScriptPParams
+    :: IsCardanoEra era
+    => CardanoEra era
+    -> TxBodyContent BuildTx era
+    -> Bool
+requiresScriptPParams ByronEra =
+    Set.null . languages . collectTxBodyScriptWitnesses
+requiresScriptPParams ShelleyEra =
+    Set.null . languages . collectTxBodyScriptWitnesses
+requiresScriptPParams AllegraEra =
+    Set.null . languages . collectTxBodyScriptWitnesses
+requiresScriptPParams MaryEra =
+    Set.null . languages . collectTxBodyScriptWitnesses
+requiresScriptPParams AlonzoEra = const True
+requiresScriptPParams BabbageEra = const  True
+
 genProtocolParametersWithAlonzoScripts :: Gen ProtocolParameters
 genProtocolParametersWithAlonzoScripts =
   ProtocolParameters
@@ -1470,7 +1501,8 @@ sublistOf1 xs = do
         _  -> pure fs
 
 genTxXFromUTxO
-    :: CardanoEra era
+    :: HasCallStack
+    => CardanoEra era
     -> [(TxIn, TxOut BuildTx era)]
     -> Gen ([TxIn], [TxOut ctx era])
 genTxXFromUTxO era utxo = do
@@ -1490,45 +1522,85 @@ genTxXFromUTxO era utxo = do
     pure (chosenTxIns, txOuts)
 
 genTxBodyContentFromUTxO
-    :: CardanoEra era
+    :: (HasCallStack, IsCardanoEra era)
+    => CardanoEra era
     -> [(TxIn, TxOut BuildTx era)]
     -> Gen (TxBodyContent BuildTx era)
 genTxBodyContentFromUTxO era utxo = do
-    body <- genTxBodyContent era
-
     if null utxo
     then
-        pure body
+        genTxBodyContentForBalancing era
     else do
         (txIns, txOuts) <- genTxXFromUTxO era utxo
         txIns' <- do
           ctxs <- vectorOf (length txIns) (genWitnessSpend era)
           pure $ zip txIns (BuildTxWith <$> ctxs)
-        pure $ body { Api.txIns = txIns'
-                    , Api.txOuts = txOuts
-                    }
+        body <- genTxBodyContentForBalancing era
+        let txBody = body { Api.txIns = txIns'
+                          , Api.txOuts = txOuts
+                          }
+        let witnesses = collectTxBodyScriptWitnesses txBody
+        -- No use of a script language means no need for collateral
+        if Set.null (languages witnesses)
+        then do
+            pparams <- BuildTxWith <$> liftArbitrary genProtocolParameters
+            collateral <-
+                case collateralSupportedInEra era of
+                    Nothing -> pure TxInsCollateralNone
+                    Just supported -> TxInsCollateral supported <$> frequency
+                        [ (95, return [])
+                        , (5, listOf genTxIn)
+                        ]
+            pure $ txBody
+                { Api.txProtocolParams = pparams
+                , Api.txInsCollateral = collateral
+                }
+        else do
+            pparams <-
+                (BuildTxWith . Just) <$> genProtocolParametersWithAlonzoScripts
+            collateral <-
+                case collateralSupportedInEra era of
+                    Nothing -> pure TxInsCollateralNone
+                    Just supported -> TxInsCollateral supported <$> frequency
+                        [ (95, return [])
+                        , (5, listOf genTxIn)
+                        ]
+            pure $ txBody
+                { Api.txProtocolParams = pparams
+                , Api.txInsCollateral = collateral
+                }
+
 
 genTxBodyFromUTxO
-    :: IsCardanoEra era
+    :: (HasCallStack, IsCardanoEra era)
     => CardanoEra era
     -> [(TxIn, TxOut BuildTx era)]
     -> Gen (TxBody era)
 genTxBodyFromUTxO era utxo = do
-    res <- makeTransactionBody <$> genTxBodyContentFromUTxO era utxo
+    txBodyContent <- genTxBodyContentFromUTxO era utxo
+    let res = unsafePerformIO $ try (evaluate $ makeTransactionBody txBodyContent)
     case res of
-        Left err -> error (displayError err)
-        Right txBody -> pure txBody
+        Left (err :: SomeException) ->
+            error (show err <> "\n" <> show txBodyContent)
+        Right (Left err) ->
+            error (displayError err <> "\n" <> show txBodyContent)
+        Right (Right txBody) ->
+            pure txBody
 
 genTxFromUTxO
     :: forall era
-     . IsCardanoEra era
+     . (HasCallStack, IsCardanoEra era)
     => CardanoEra era
     -> [(TxIn, TxOut BuildTx era)]
     -> Gen (Tx era)
 genTxFromUTxO era utxo =
     makeSignedTransaction [] <$> genTxBodyFromUTxO era utxo
 
-genTxBodyContent :: CardanoEra era -> Gen (TxBodyContent BuildTx era)
+genTxBodyContent
+    :: forall era
+    . (HasCallStack, IsCardanoEra era)
+    => CardanoEra era
+    -> Gen (TxBodyContent BuildTx era)
 genTxBodyContent era = do
     txIns <- scale (`div` 3) $ do
         txIns <- listOf1 genTxIn
@@ -1591,7 +1663,7 @@ genTxBodyContent era = do
             (BuildTxWith . Just) <$> genProtocolParametersWithAlonzoScripts
         collateral <-
             case collateralSupportedInEra era of
-                Nothing -> pure TxInsCollateralNone
+                Nothing -> error "impossible" -- pure TxInsCollateralNone
                 Just supported -> TxInsCollateral supported <$> frequency
                     [ (95, return [])
                     , (5, listOf genTxIn)
@@ -1600,14 +1672,6 @@ genTxBodyContent era = do
             { Api.txProtocolParams = pparams
             , Api.txInsCollateral = collateral
             }
-
-    where
-        languages :: [(a, AnyScriptWitness era)] -> Set AnyPlutusScriptVersion
-        languages witnesses =
-            Set.fromList
-            [ AnyPlutusScriptVersion v
-            | (_, AnyScriptWitness (PlutusScriptWitness _ v _ _ _ _)) <- witnesses
-            ]
 
 genTxBody :: IsCardanoEra era => CardanoEra era -> Gen (TxBody era)
 genTxBody era = do
@@ -1620,21 +1684,28 @@ genTxBody era = do
 -- balancing.
 genTxBodyForBalancing :: IsCardanoEra era => CardanoEra era -> Gen (TxBody era)
 genTxBodyForBalancing era = do
-    res <- makeTransactionBody <$> genStrippedContent
+    res <- makeTransactionBody <$> genTxBodyContentForBalancing era
     case res of
       Left err -> error (displayError err)
       Right txBody -> pure txBody
+
+genTxBodyContentForBalancing
+    :: IsCardanoEra era
+    => CardanoEra era
+    -> Gen (TxBodyContent BuildTx era)
+genTxBodyContentForBalancing era = do
+    content <- genTxBodyContent era
+
+    frequency
+        [ (90, strip <$> genTxBodyContent era)
+        , (10, genTxBodyContent era)
+        ]
   where
-    genStrippedContent = do
-        content <- genTxBodyContent era
-        genShouldStrip >>= \case
-            True -> pure $ content
-                { txInsCollateral = case txInsCollateral content of
-                    TxInsCollateralNone -> TxInsCollateralNone
-                    TxInsCollateral colInEra _ -> TxInsCollateral colInEra []
-                }
-            False -> pure content
-    genShouldStrip = frequency [ (90, pure True), (10, pure False) ]
+    strip content = content
+        { txInsCollateral = case txInsCollateral content of
+                TxInsCollateralNone -> TxInsCollateralNone
+                TxInsCollateral colInEra _ -> TxInsCollateral colInEra []
+        }
 
 genWitnesses :: CardanoEra era -> TxBody era -> Gen [KeyWitness era]
 genWitnesses era body =

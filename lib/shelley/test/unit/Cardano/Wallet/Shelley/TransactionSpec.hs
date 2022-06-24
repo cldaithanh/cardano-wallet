@@ -3006,83 +3006,95 @@ prop_balanceTransactionUnresolvedInputs seed = do
                      , toCardanoTxOut shelleyBasedEra wTxOut
                      )
                 ) $ UTxO.toList $ view #utxo w
-    forAll (genTxFromUTxO Cardano.AlonzoEra walletUTxO) $ \tx -> do
+    checkCoverage $ forAll (genTxFromUTxO Cardano.AlonzoEra walletUTxO) $ \tx -> do
+    -- forAll (genTxForBalancing Cardano.AlonzoEra) $ \tx -> do
         let (Cardano.Tx (Cardano.TxBody content) _) = tx
-        let inputs = Cardano.txIns content
-        let redeemers = []
-            partialTx = PartialTx tx [] redeemers
-        let res = balanceTransaction' wallet seed partialTx
+        let inputs = (fromCardanoTxIn . fst) <$> Cardano.txIns content
+            outputs = fromCardanoTxOut <$> Cardano.txOuts content
+            resolvedInputs = (\(i,o) -> (i, o, Nothing)) <$> zip inputs outputs
+            redeemers = []
+            partialTx = PartialTx tx resolvedInputs redeemers
+        forAll (dropResolvedInputs partialTx) $ \(partialTx', dropped) -> do
+          let res = balanceTransaction' wallet seed partialTx'
 
-        cover 0.01 (isUnresolvedTxInsErr res) "unknown txins" $
-            case res of
-                Right _ -> label "succeeded despite unresolved input"
-                            $ property True
-                        -- Balancing can succeed if the dropped inputs
-                        -- happen to be a part of the wallet UTxO.
-                Left (ErrBalanceTxAssignRedeemers
-                    (ErrAssignRedeemersTranslationError
-                        (TranslationLogicMissingInput _)))
-                    -> property True
-                Left (ErrBalanceTxAssignRedeemers (ErrAssignRedeemersTranslationError
-                        (ByronTxOutInContext _outSource)))
-                    -> label "translation error byron tx out in context" $ property True
-                Left (ErrBalanceTxAssignRedeemers (ErrAssignRedeemersTranslationError
-                        (RdmrPtrPointsToNothing _rdmrPtr)))
-                    -> label "Redeemer pointer points to nothing" $ property True
-                Left (ErrBalanceTxAssignRedeemers (ErrAssignRedeemersTranslationError
-                        (LanguageNotSupported _lang)))
-                    -> label "language not supported" $ property True
-                Left (ErrBalanceTxAssignRedeemers (ErrAssignRedeemersTranslationError
-                        (InlineDatumsNotSupported _outSource)))
-                    -> label "inline datums not supported" $ property True
-                Left (ErrBalanceTxAssignRedeemers (ErrAssignRedeemersTranslationError
-                        (ReferenceScriptsNotSupported _outSource)))
-                    -> label "ref scripts not supported" $ property True
-                Left (ErrBalanceTxAssignRedeemers (ErrAssignRedeemersTranslationError
-                        (ReferenceInputsNotSupported _outSource)))
-                    -> label "ref inputs not supported" $ property True
-                Left (ErrBalanceTxAssignRedeemers (ErrAssignRedeemersScriptFailure _r _s))
-                    -> label "assign redeemers script failure" $ property True
-                Left (ErrBalanceTxAssignRedeemers (ErrAssignRedeemersTargetNotFound _r))
-                    -> label "assign redeemers target not found" $ property True
-                Left (ErrBalanceTxAssignRedeemers (ErrAssignRedeemersInvalidData _r _s))
-                    -> label "assign redeemers invalid data" $ property True
-                Left (ErrBalanceTxAssignRedeemers (ErrAssignRedeemersTranslationError _))
-                    -> label "other assign redeemers translation error" $ property True
-                Left (ErrBalanceTxUpdateError _ErrUpdateSealedTx)
-                    -> label "balance tx update error" $ property True
-                Left (ErrBalanceTxSelectAssets (ErrSelectAssetsPrepareOutputsError _))
-                    -> label "select assets prepare outputs error" $ property True
-                Left (ErrBalanceTxSelectAssets (ErrSelectAssetsNoSuchWallet _))
-                    -> label "select assets prepare no such wallet error" $ property True
-                Left (ErrBalanceTxSelectAssets (ErrSelectAssetsAlreadyWithdrawing _))
-                    -> label "select assets already withdrawing error" $ property True
-                Left (ErrBalanceTxSelectAssets (ErrSelectAssetsSelectionError (SelectionBalanceErrorOf (BalanceInsufficient err))))
-                    -> label ("select assets selection balance error - insufficient.") $ property True
-                Left (ErrBalanceTxSelectAssets (ErrSelectAssetsSelectionError (SelectionBalanceErrorOf (SelectionLimitReached _))))
-                    -> label "select assets selection balance error - limit reached" $ property True
-                Left (ErrBalanceTxSelectAssets (ErrSelectAssetsSelectionError (SelectionBalanceErrorOf (InsufficientMinCoinValues _))))
-                    -> label "select assets selection balance error - insufficient min coin" $ property True
-                Left (ErrBalanceTxSelectAssets (ErrSelectAssetsSelectionError (SelectionBalanceErrorOf (UnableToConstructChange _))))
-                    -> label "select assets selection balance error - change" $ property True
-                Left (ErrBalanceTxSelectAssets (ErrSelectAssetsSelectionError (SelectionBalanceErrorOf (EmptyUTxO))))
-                    -> label "select assets selection balance error - empty utxo" $ property True
-                Left (ErrBalanceTxSelectAssets (ErrSelectAssetsSelectionError (SelectionCollateralErrorOf _)))
-                    -> label "select assets selection collateral error" $ property True
-                Left (ErrBalanceTxSelectAssets (ErrSelectAssetsSelectionError (SelectionOutputErrorOf _)))
-                    -> label "select assets selection output error" $ property True
-                Left (ErrBalanceTxMaxSizeLimitExceeded)
-                    -> label "balance tx max size limit exceeded" $ property True
-                Left (ErrBalanceTxExistingCollateral)
-                    -> label "balance tx existing collateral" $ property True
-                Left (ErrBalanceTxConflictingNetworks)
-                    -> label "balance tx conflicting networks" $ property True
-                Left (ErrBalanceTxInternalError _ErrBalanceTxInternalError)
-                    -> label "balance tx conflicting networks" $ property True
-                Left (ErrBalanceTxZeroAdaOutput)
-                    -> label "balance tx zero ada output" $ property True
-                Left (ErrByronTxNotSupported)
-                    -> label "balance byron tx not supported" $ property True
+          cover 1 (isUnresolvedTxInsErr res) "unknown txins" $
+              case res of
+                  Right _
+                      | null dropped
+                        -> label "nothing dropped" $ property True
+                      | otherwise
+                        -> label "succeeded despite unresolved input" $ property True
+                            -- let droppedSet =
+                            --         Set.fromList $ map (\(i,_,_) -> i) dropped
+                            -- property $
+                            --     (requiredInputs `Set.intersection` droppedSet)
+                            --         === mempty
+                          -- Balancing can succeed if the dropped inputs
+                          -- happen to be a part of the wallet UTxO.
+                  Left (ErrBalanceTxAssignRedeemers
+                      (ErrAssignRedeemersTranslationError
+                          (TranslationLogicMissingInput _)))
+                      -> property True
+                  Left (ErrBalanceTxAssignRedeemers (ErrAssignRedeemersTranslationError
+                          (ByronTxOutInContext _outSource)))
+                      -> label "translation error byron tx out in context" $ property True
+                  Left (ErrBalanceTxAssignRedeemers (ErrAssignRedeemersTranslationError
+                          (RdmrPtrPointsToNothing _rdmrPtr)))
+                      -> label "Redeemer pointer points to nothing" $ property True
+                  Left (ErrBalanceTxAssignRedeemers (ErrAssignRedeemersTranslationError
+                          (LanguageNotSupported _lang)))
+                      -> label "language not supported" $ property True
+                  Left (ErrBalanceTxAssignRedeemers (ErrAssignRedeemersTranslationError
+                          (InlineDatumsNotSupported _outSource)))
+                      -> label "inline datums not supported" $ property True
+                  Left (ErrBalanceTxAssignRedeemers (ErrAssignRedeemersTranslationError
+                          (ReferenceScriptsNotSupported _outSource)))
+                      -> label "ref scripts not supported" $ property True
+                  Left (ErrBalanceTxAssignRedeemers (ErrAssignRedeemersTranslationError
+                          (ReferenceInputsNotSupported _outSource)))
+                      -> label "ref inputs not supported" $ property True
+                  Left (ErrBalanceTxAssignRedeemers (ErrAssignRedeemersScriptFailure _r _s))
+                      -> label "assign redeemers script failure" $ property True
+                  Left (ErrBalanceTxAssignRedeemers (ErrAssignRedeemersTargetNotFound _r))
+                      -> label "assign redeemers target not found" $ property True
+                  Left (ErrBalanceTxAssignRedeemers (ErrAssignRedeemersInvalidData _r _s))
+                      -> label "assign redeemers invalid data" $ property True
+                  Left (ErrBalanceTxAssignRedeemers (ErrAssignRedeemersTranslationError _))
+                      -> label "other assign redeemers translation error" $ property True
+                  Left (ErrBalanceTxUpdateError _ErrUpdateSealedTx)
+                      -> label "balance tx update error" $ property True
+                  Left (ErrBalanceTxSelectAssets (ErrSelectAssetsPrepareOutputsError _))
+                      -> label "select assets prepare outputs error" $ property True
+                  Left (ErrBalanceTxSelectAssets (ErrSelectAssetsNoSuchWallet _))
+                      -> label "select assets prepare no such wallet error" $ property True
+                  Left (ErrBalanceTxSelectAssets (ErrSelectAssetsAlreadyWithdrawing _))
+                      -> label "select assets already withdrawing error" $ property True
+                  Left (ErrBalanceTxSelectAssets (ErrSelectAssetsSelectionError (SelectionBalanceErrorOf (BalanceInsufficient err))))
+                      -> label ("select assets selection balance error - insufficient.") $ property True
+                  Left (ErrBalanceTxSelectAssets (ErrSelectAssetsSelectionError (SelectionBalanceErrorOf (SelectionLimitReached _))))
+                      -> label "select assets selection balance error - limit reached" $ property True
+                  Left (ErrBalanceTxSelectAssets (ErrSelectAssetsSelectionError (SelectionBalanceErrorOf (InsufficientMinCoinValues _))))
+                      -> label "select assets selection balance error - insufficient min coin" $ property True
+                  Left (ErrBalanceTxSelectAssets (ErrSelectAssetsSelectionError (SelectionBalanceErrorOf (UnableToConstructChange _))))
+                      -> label "select assets selection balance error - change" $ property True
+                  Left (ErrBalanceTxSelectAssets (ErrSelectAssetsSelectionError (SelectionBalanceErrorOf (EmptyUTxO))))
+                      -> label "select assets selection balance error - empty utxo" $ property True
+                  Left (ErrBalanceTxSelectAssets (ErrSelectAssetsSelectionError (SelectionCollateralErrorOf _)))
+                      -> label "select assets selection collateral error" $ property True
+                  Left (ErrBalanceTxSelectAssets (ErrSelectAssetsSelectionError (SelectionOutputErrorOf _)))
+                      -> label "select assets selection output error" $ property True
+                  Left (ErrBalanceTxMaxSizeLimitExceeded)
+                      -> label "balance tx max size limit exceeded" $ property True
+                  Left (ErrBalanceTxExistingCollateral)
+                      -> label "balance tx existing collateral" $ property True
+                  Left (ErrBalanceTxConflictingNetworks)
+                      -> label "balance tx conflicting networks" $ property True
+                  Left (ErrBalanceTxInternalError _ErrBalanceTxInternalError)
+                      -> label "balance tx conflicting networks" $ property True
+                  Left (ErrBalanceTxZeroAdaOutput)
+                      -> label "balance tx zero ada output" $ property True
+                  Left (ErrByronTxNotSupported)
+                      -> label "balance byron tx not supported" $ property True
     -- checkCoverage
     -- $ forAll (dropResolvedInputs partialTx') $ \(partialTx, dropped) -> do
     --     let res = balanceTransaction' wallet seed partialTx

@@ -60,6 +60,7 @@ module Cardano.Wallet.Shelley.Transaction
     , distributeSurplusDelta
     , sizeOfCoin
     , maximumCostOfIncreasingCoin
+    , computeMinimumCoinForUTxO
     ) where
 
 import Prelude
@@ -79,6 +80,8 @@ import Cardano.Api
     , ShelleyBasedEra (..)
     , ToCBOR
     )
+import Cardano.Api.Extra
+    ( MinimumUTxO (..) )
 import Cardano.Binary
     ( serialize' )
 import Cardano.Crypto.Wallet
@@ -177,7 +180,7 @@ import Cardano.Wallet.Shelley.Compatibility
     , toStakePoolDlgCert
     )
 import Cardano.Wallet.Shelley.Compatibility.Ledger
-    ( computeMinimumAdaQuantity, toAlonzoTxOut, toBabbageTxOut )
+    ( toAlonzoTxOut, toBabbageTxOut )
 import Cardano.Wallet.Transaction
     ( AnyScript (..)
     , DelegationAction (..)
@@ -224,7 +227,7 @@ import Data.Generics.Internal.VL.Lens
 import Data.Generics.Labels
     ()
 import Data.IntCast
-    ( intCast )
+    ( intCast, intCastMaybe )
 import Data.Kind
     ( Type )
 import Data.Map.Strict
@@ -241,6 +244,8 @@ import Data.Word
     ( Word16, Word64, Word8 )
 import GHC.Generics
     ( Generic )
+import GHC.Stack
+    ( HasCallStack )
 import Numeric.Natural
     ( Natural )
 import Ouroboros.Network.Block
@@ -1449,6 +1454,58 @@ _assignScriptRedeemers pparams ti resolveInput redeemers tx =
                 }
             }
 
+computeMinimumCoinForUTxO :: HasCallStack => MinimumUTxO -> TokenMap -> Coin
+computeMinimumCoinForUTxO = \case
+    MinimumUTxONone ->
+        const (Coin 0)
+    MinimumUTxOForShelleyBasedEra era pp -> \m ->
+        let result = Cardano.calculateMinimumUTxO era
+                (tokenMapToTxOut era m)
+                (Cardano.fromLedgerPParams era pp)
+        in
+        case result of
+            Left e -> error $ unwords
+                [ "computeMinimumCoinForUTxO:"
+                , "unexpected error:"
+                , show e
+                ]
+            Right value ->
+                unsafeValueToWalletCoin value
+  where
+    tokenMapToTxOut
+        :: ShelleyBasedEra era
+        -> TokenMap
+        -> Cardano.TxOut Cardano.CtxTx era
+    tokenMapToTxOut era m =
+        toCardanoTxOut era $ TxOut dummyAddress $ TokenBundle.fromTokenMap m
+      where
+        dummyAddress :: Address
+        dummyAddress = Address ""
+
+unsafeLovelaceToWalletCoin :: HasCallStack => Cardano.Lovelace -> Coin
+unsafeLovelaceToWalletCoin (Cardano.Lovelace v) =
+  case intCastMaybe @Integer @Natural v of
+      Nothing -> error $ unwords
+          [ "unsafeLovelaceToWalletCoin:"
+          , "encountered negative value:"
+          , show v
+          ]
+      Just lovelaceNonNegative ->
+          Coin lovelaceNonNegative
+
+unsafeValueToLovelace :: HasCallStack => Cardano.Value -> Cardano.Lovelace
+unsafeValueToLovelace v =
+    case Cardano.valueToLovelace v of
+        Nothing -> error $ unwords
+            [ "unsafeValueToLovelace:"
+            , "encountered value with non-ada assets:"
+            , show v
+            ]
+        Just lovelace -> lovelace
+
+unsafeValueToWalletCoin :: HasCallStack => Cardano.Value -> Coin
+unsafeValueToWalletCoin = unsafeLovelaceToWalletCoin . unsafeValueToLovelace
+
 txConstraints :: ProtocolParameters -> TxWitnessTag -> TxConstraints
 txConstraints protocolParams witnessTag = TxConstraints
     { txBaseCost
@@ -1493,7 +1550,7 @@ txConstraints protocolParams witnessTag = TxConstraints
         TokenQuantity $ fromIntegral $ maxBound @Word64
 
     txOutputMinimumAdaQuantity =
-        computeMinimumAdaQuantity (minimumUTxOvalue protocolParams)
+        computeMinimumCoinForUTxO (minimumUTxO protocolParams)
 
     txRewardWithdrawalCost c =
         marginalCostOf empty {txRewardWithdrawal = c}

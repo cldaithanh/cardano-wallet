@@ -19,6 +19,8 @@ module Cardano.Wallet.DummyTarget.Primitive.Types
 
 import Prelude
 
+import Cardano.Api.Extra
+    ( MinimumUTxO (MinimumUTxONone) )
 import Cardano.Wallet.Network
     ( NetworkLayer (..) )
 import Cardano.Wallet.Primitive.Slotting
@@ -123,6 +125,7 @@ dummyProtocolParameters = ProtocolParameters
     { decentralizationLevel = minBound
     , txParameters = dummyTxParameters
     , desiredNumberOfStakePools = 100
+    , minimumUTxO = MinimumUTxONone
     , minimumUTxOvalue = MinimumUTxOValue $ Coin 0
     , stakeKeyDeposit = Coin 0
     , eras = emptyEraInfo

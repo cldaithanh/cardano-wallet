@@ -33,6 +33,8 @@ import Cardano.Address.Derivation
     ( XPrv, XPub )
 import Cardano.Address.Script
     ( Cosigner (..), Script (..), ScriptTemplate (..) )
+import Cardano.Api.Extra
+    ( MinimumUTxO (MinimumUTxONone) )
 import Cardano.Crypto.Wallet
     ( unXPrv )
 import Cardano.Mnemonic
@@ -679,9 +681,14 @@ arbitrarySharedAccount =
                              Protocol Parameters
 -------------------------------------------------------------------------------}
 
+instance Arbitrary MinimumUTxO where
+    arbitrary = pure MinimumUTxONone
+    shrink = const []
+
 instance Arbitrary ProtocolParameters where
     shrink = genericRoundRobinShrink
         <@> shrink
+        <:> shrink
         <:> shrink
         <:> shrink
         <:> shrink
@@ -696,6 +703,7 @@ instance Arbitrary ProtocolParameters where
         <$> arbitrary
         <*> arbitrary
         <*> choose (0, 100)
+        <*> arbitrary
         <*> arbitrary
         <*> arbitrary
         <*> arbitrary

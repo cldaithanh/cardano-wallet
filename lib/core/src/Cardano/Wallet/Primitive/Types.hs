@@ -171,6 +171,8 @@ module Cardano.Wallet.Primitive.Types
 
 import Prelude
 
+import Cardano.Api.Extra
+    ( MinimumUTxO )
 import Cardano.Slotting.Slot
     ( SlotNo (..), WithOrigin (..) )
 import Cardano.Wallet.Orphans
@@ -1103,6 +1105,8 @@ data ProtocolParameters = ProtocolParameters
         :: Word16
         -- ^ The current desired number of stakepools in the network.
         -- Also known as k parameter.
+    , minimumUTxO
+        :: MinimumUTxO
     , minimumUTxOvalue
         :: MinimumUTxOValue
         -- ^ The minimum UTxO value.

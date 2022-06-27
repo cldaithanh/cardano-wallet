@@ -43,6 +43,8 @@ module Cardano.Wallet.Byron.Compatibility
 
 import Prelude
 
+import Cardano.Api.Extra
+    ( MinimumUTxO (MinimumUTxONone) )
 import Cardano.Binary
     ( serialize' )
 import Cardano.Chain.Block
@@ -141,6 +143,7 @@ mainnetNetworkParameters = W.NetworkParameters
             , getMaxExecutionUnits = W.ExecutionUnits 0 0
             }
         , desiredNumberOfStakePools = 0
+        , minimumUTxO = MinimumUTxONone
         , minimumUTxOvalue = W.MinimumUTxOValue $ W.Coin 0
         , stakeKeyDeposit = W.Coin 0
         , eras = W.emptyEraInfo
@@ -364,6 +367,7 @@ protocolParametersFromPP eraInfo currentNodeProtocolParameters pp =
             , getMaxExecutionUnits = W.ExecutionUnits 0 0
             }
         , desiredNumberOfStakePools = 0
+        , minimumUTxO = MinimumUTxONone
         , minimumUTxOvalue = W.MinimumUTxOValue $ W.Coin 0
         , stakeKeyDeposit = W.Coin 0
         , eras = fromBound <$> eraInfo

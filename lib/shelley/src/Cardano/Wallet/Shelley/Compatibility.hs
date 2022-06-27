@@ -87,6 +87,7 @@ module Cardano.Wallet.Shelley.Compatibility
     , fromCardanoLovelace
     , rewardAccountFromAddress
     , fromShelleyPParams
+    , fromMaryPParams
     , fromAlonzoPParams
     , fromBabbagePParams
     , fromLedgerExUnits
@@ -180,6 +181,8 @@ import Cardano.Api
     , cardanoEraStyle
     , deserialiseFromRawBytes
     )
+import Cardano.Api.Extra
+    ( MinimumUTxO (MinimumUTxOForShelleyBasedEra) )
 import Cardano.Api.Shelley
     ( InAnyShelleyBasedEra (..)
     , IsShelleyBasedEra (..)
@@ -319,6 +322,7 @@ import Ouroboros.Consensus.Cardano.Block
     , HardForkBlock (..)
     , StandardAlonzo
     , StandardBabbage
+    , StandardMary
     , StandardShelley
     )
 import Ouroboros.Consensus.HardFork.Combinator.AcrossEras
@@ -373,6 +377,7 @@ import qualified Cardano.Ledger.Credential as SL
 import qualified Cardano.Ledger.Crypto as SL
 import qualified Cardano.Ledger.Era as Ledger.Era
 import qualified Cardano.Ledger.Mary.Value as SL
+import qualified Cardano.Ledger.Mary as Mary
 import qualified Cardano.Ledger.SafeHash as SafeHash
 import qualified Cardano.Ledger.Shelley as SL hiding
     ( Value )
@@ -813,6 +818,34 @@ fromBoundToEpochNo :: Bound -> W.EpochNo
 fromBoundToEpochNo (Bound _relTime _slotNo (EpochNo e)) =
     W.EpochNo $ fromIntegral e
 
+fromMaryPParams
+    :: HasCallStack
+    => W.EraInfo Bound
+    -> Maybe Cardano.ProtocolParameters
+    -> Mary.PParams StandardMary
+    -> W.ProtocolParameters
+fromMaryPParams eraInfo currentNodeProtocolParameters pp =
+    W.ProtocolParameters
+        { decentralizationLevel =
+            decentralizationLevelFromPParams pp
+        , txParameters =
+            txParametersFromPParams
+                maryTokenBundleMaxSize (W.ExecutionUnits 0 0) pp
+        , desiredNumberOfStakePools =
+            desiredNumberOfStakePoolsFromPParams pp
+        , minimumUTxO =
+            MinimumUTxOForShelleyBasedEra ShelleyBasedEraMary pp
+        , minimumUTxOvalue =
+            MinimumUTxOValue . toWalletCoin $ SLAPI._minUTxOValue pp
+        , stakeKeyDeposit = stakeKeyDepositFromPParams pp
+        , eras = fromBoundToEpochNo <$> eraInfo
+        -- Collateral inputs were not supported or required in Mary:
+        , maximumCollateralInputCount = 0
+        , minimumCollateralPercentage = 0
+        , executionUnitPrices = Nothing
+        , currentNodeProtocolParameters
+        }
+
 fromAlonzoPParams
     :: HasCallStack
     => W.EraInfo Bound
@@ -829,6 +862,8 @@ fromAlonzoPParams eraInfo currentNodeProtocolParameters pp =
             pp
         , desiredNumberOfStakePools =
             desiredNumberOfStakePoolsFromPParams pp
+        , minimumUTxO =
+            MinimumUTxOForShelleyBasedEra ShelleyBasedEraAlonzo pp
         , minimumUTxOvalue = MinimumUTxOValueCostPerWord
             . toWalletCoin $ Alonzo._coinsPerUTxOWord pp
         , stakeKeyDeposit = stakeKeyDepositFromPParams pp
@@ -858,6 +893,8 @@ fromBabbagePParams eraInfo currentNodeProtocolParameters pp =
             pp
         , desiredNumberOfStakePools =
             desiredNumberOfStakePoolsFromPParams pp
+        , minimumUTxO =
+            MinimumUTxOForShelleyBasedEra ShelleyBasedEraBabbage pp
         , minimumUTxOvalue = MinimumUTxOValueCostPerWord
             . fromByteToWord . toWalletCoin $ Babbage._coinsPerUTxOByte pp
         , stakeKeyDeposit = stakeKeyDepositFromPParams pp

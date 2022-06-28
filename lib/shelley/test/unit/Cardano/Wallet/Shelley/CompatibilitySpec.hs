@@ -60,6 +60,8 @@ import Cardano.Wallet.Primitive.Types.Address
     ( Address (..) )
 import Cardano.Wallet.Primitive.Types.Coin
     ( Coin (..) )
+import Cardano.Wallet.Primitive.Types.Coin.Gen
+    ( genCoin, shrinkCoin )
 import Cardano.Wallet.Primitive.Types.Hash
     ( Hash (..) )
 import Cardano.Wallet.Primitive.Types.RewardAccount
@@ -80,6 +82,10 @@ import Cardano.Wallet.Primitive.Types.Tx.Gen
 import Cardano.Wallet.Shelley.Compatibility
     ( CardanoBlock
     , StandardCrypto
+    , byteCountToWordCount
+    , bytesPerWord
+    , wordCountToByteCount
+    , coinsPerByteToCoinsPerWord
     , computeTokenBundleSerializedLengthBytes
     , decentralizationLevelFromPParams
     , fromCardanoValue
@@ -125,6 +131,8 @@ import Data.Word
     ( Word16, Word32, Word64 )
 import GHC.TypeLits
     ( natVal )
+import Numeric.Natural
+    ( Natural )
 import Ouroboros.Network.Block
     ( BlockNo (..), SlotNo (..), Tip (..) )
 import Test.Hspec
@@ -154,6 +162,8 @@ import Test.QuickCheck
     , (===)
     , (==>)
     )
+import Test.QuickCheck.Instances.Natural
+    ()
 import Test.QuickCheck.Monadic
     ( assert, monadicIO, monitor, run )
 
@@ -269,6 +279,15 @@ spec = do
         it "unit_assessTokenBundleSize_fixedSizeBundle_128" $
             property unit_assessTokenBundleSize_fixedSizeBundle_128
 
+    describe "Conversions between bytes and words" $ do
+
+        it "prop_byteCountToWordCount_wordCountToByteCount" $
+            prop_byteCountToWordCount_wordCountToByteCount & property
+        it "prop_wordCountToByteCount_byteCountToWordCount" $
+            prop_wordCountToByteCount_byteCountToWordCount & property
+        it "prop_coinsPerByteToCoinsPerWord" $
+            prop_coinsPerByteToCoinsPerWord & property
+
     describe "Utilities" $ do
 
         describe "UnitInterval" $ do
@@ -373,6 +392,61 @@ spec = do
         testScriptPreimages Cardano.SimpleScriptV1
         testScriptPreimages Cardano.SimpleScriptV2
         testTimelockScriptImagesLang
+
+--------------------------------------------------------------------------------
+-- Conversions between bytes and words
+--------------------------------------------------------------------------------
+
+prop_byteCountToWordCount_wordCountToByteCount :: Natural -> Property
+prop_byteCountToWordCount_wordCountToByteCount wordCount =
+    byteCountToWordCount (wordCountToByteCount wordCount) === wordCount
+
+prop_wordCountToByteCount_byteCountToWordCount :: Natural -> Property
+prop_wordCountToByteCount_byteCountToWordCount byteCount =
+    checkCoverage $
+    cover 10
+        (byteCount' == byteCount)
+        "byteCount' == byteCount" $
+    cover 10
+        (byteCount' /= byteCount)
+        "byteCount' /= byteCount" $
+    conjoin
+        [ byteCount' >= byteCount
+        , byteCount' <= byteCount + bytesPerWord - 1
+        ]
+  where
+    byteCount' :: Natural
+    byteCount' = wordCountToByteCount (byteCountToWordCount byteCount)
+
+prop_coinsPerByteToCoinsPerWord :: Coin -> Natural -> Property
+prop_coinsPerByteToCoinsPerWord coinsPerByte byteCount = property $
+    checkCoverage $
+    cover 10
+        (costWhenCountingBytes == costWhenCountingWords)
+        "costWhenCountingBytes == costWhenCountingWords" $
+    cover 10
+        (costWhenCountingBytes /= costWhenCountingWords)
+        "costWhenCountingBytes /= costWhenCountingWords" $
+    conjoin
+        [ costWhenCountingWords >= costWhenCountingBytes
+        , costWhenCountingWords <= costWhenCountingBytes <> coinsPerWord
+        ]
+  where
+    calculateCost :: Natural -> Coin -> Coin
+    calculateCost unitLengthCount (Coin costPerUnitLength) =
+        Coin (unitLengthCount * costPerUnitLength)
+
+    coinsPerWord :: Coin
+    coinsPerWord = coinsPerByteToCoinsPerWord coinsPerByte
+
+    costWhenCountingBytes :: Coin
+    costWhenCountingBytes = calculateCost byteCount coinsPerByte
+
+    costWhenCountingWords :: Coin
+    costWhenCountingWords = calculateCost wordCount coinsPerWord
+
+    wordCount :: Natural
+    wordCount = byteCountToWordCount byteCount
 
 --------------------------------------------------------------------------------
 -- Conversions
@@ -693,6 +767,10 @@ testTimelockScriptImagesLang :: Spec
 testTimelockScriptImagesLang =
     forM_ timelockScriptMatrix $ \(title, adrestiaScript, nodeScript) ->
         checkScriptPreimage title adrestiaScript nodeScript
+
+instance Arbitrary Coin where
+    arbitrary = genCoin
+    shrink = shrinkCoin
 
 instance Arbitrary (Hash "Genesis") where
     arbitrary = Hash . BS.pack <$> vector 32

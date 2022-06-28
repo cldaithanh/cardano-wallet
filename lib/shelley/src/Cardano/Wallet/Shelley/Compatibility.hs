@@ -139,6 +139,12 @@ module Cardano.Wallet.Shelley.Compatibility
     , fromBabbageBlock
     , getBabbageProducer
 
+    -- * Conversions between bytes and words
+    , bytesPerWord
+    , byteCountToWordCount
+    , wordCountToByteCount
+    , coinsPerByteToCoinsPerWord
+
       -- * Internal Conversions
     , decentralizationLevelFromPParams
 
@@ -859,7 +865,8 @@ fromBabbagePParams eraInfo currentNodeProtocolParameters pp =
         , desiredNumberOfStakePools =
             desiredNumberOfStakePoolsFromPParams pp
         , minimumUTxOvalue = MinimumUTxOValueCostPerWord
-            . fromByteToWord . toWalletCoin $ Babbage._coinsPerUTxOByte pp
+            . coinsPerByteToCoinsPerWord . toWalletCoin
+            $ Babbage._coinsPerUTxOByte pp
         , stakeKeyDeposit = stakeKeyDepositFromPParams pp
         , eras = fromBoundToEpochNo <$> eraInfo
         , maximumCollateralInputCount = unsafeIntToWord $
@@ -870,9 +877,6 @@ fromBabbagePParams eraInfo currentNodeProtocolParameters pp =
             Just $ executionUnitPricesFromPParams pp
         , currentNodeProtocolParameters
         }
-  where
-    fromByteToWord (W.Coin v) = W.Coin $ 8 * v
-
 
 -- | Extract the current network decentralization level from the given set of
 -- protocol parameters.
@@ -2363,6 +2367,41 @@ instance KnownNat protocolMagic => HasNetworkId ('Testnet protocolMagic) where
 
 instance HasNetworkId ('Staging protocolMagic) where
     networkIdVal _ = Cardano.Mainnet
+
+--------------------------------------------------------------------------------
+-- Conversions between bytes and words
+--------------------------------------------------------------------------------
+
+-- | The number of bytes in a word.
+--
+bytesPerWord :: Natural
+bytesPerWord = 8
+
+-- | Calculates the smallest number of words that can store the given number of
+--   bytes.
+--
+-- Satisfies the following property:
+--
+-- prop> byteCountToWordCount (wordCountToByteCount wordCount) == wordCount
+--
+byteCountToWordCount :: Natural -> Natural
+byteCountToWordCount byteCount =
+    (byteCount + bytesPerWord - 1) `div` bytesPerWord
+
+-- | Converts a number of words to a number of bytes.
+--
+-- Satisfies the following property:
+--
+-- prop> byteCountToWordCount (wordCountToByteCount wordCount) == wordCount
+--
+wordCountToByteCount :: Natural -> Natural
+wordCountToByteCount wordCount = wordCount * bytesPerWord
+
+-- | Converts a "coins-per-byte" value into a "coins-per-word" value.
+--
+coinsPerByteToCoinsPerWord :: W.Coin -> W.Coin
+coinsPerByteToCoinsPerWord (W.Coin coinsPerByte) =
+    W.Coin $ bytesPerWord * coinsPerByte
 
 {-------------------------------------------------------------------------------
                                     Logging

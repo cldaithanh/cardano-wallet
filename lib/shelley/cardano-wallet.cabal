@@ -284,6 +284,7 @@ test-suite unit
     , transformers
     , unliftio
     , QuickCheck
+    , quickcheck-instances
   build-tool-depends:
       hspec-discover:hspec-discover
   type:

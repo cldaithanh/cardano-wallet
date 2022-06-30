@@ -125,6 +125,8 @@ import Cardano.Wallet.Primitive.Types.Coin
     ( Coin (Coin, unCoin) )
 import Cardano.Wallet.Primitive.Types.Hash
     ( Hash )
+import Cardano.Wallet.Primitive.Types.MinimumUTxO
+    ( minimumUTxONone )
 import Cardano.Wallet.Primitive.Types.RewardAccount
     ( RewardAccount )
 import Cardano.Wallet.Primitive.Types.TokenBundle
@@ -884,6 +886,8 @@ fromBlockfrostPP network BF.ProtocolParams{..} = do
                     }
         , maximumCollateralInputCount = maxCollateralInputs
         , minimumCollateralPercentage = collateralPercent
+        -- TODO: Determine the appropriate value for this field:
+        , minimumUTxO = minimumUTxONone
         , currentNodeProtocolParameters =
             Just
                 Node.ProtocolParameters

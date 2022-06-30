@@ -177,7 +177,9 @@ import Cardano.Wallet.Shelley.Compatibility
     , toStakePoolDlgCert
     )
 import Cardano.Wallet.Shelley.Compatibility.Ledger
-    ( computeMinimumAdaQuantity, toAlonzoTxOut, toBabbageTxOut )
+    ( toAlonzoTxOut, toBabbageTxOut )
+import Cardano.Wallet.Shelley.MinimumUTxO
+    ( computeMinimumCoinForUTxO )
 import Cardano.Wallet.Transaction
     ( AnyScript (..)
     , DelegationAction (..)
@@ -1493,7 +1495,7 @@ txConstraints protocolParams witnessTag = TxConstraints
         TokenQuantity $ fromIntegral $ maxBound @Word64
 
     txOutputMinimumAdaQuantity =
-        computeMinimumAdaQuantity (minimumUTxOvalue protocolParams)
+        computeMinimumCoinForUTxO (minimumUTxO protocolParams)
 
     txRewardWithdrawalCost c =
         marginalCostOf empty {txRewardWithdrawal = c}

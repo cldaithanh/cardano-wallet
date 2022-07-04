@@ -17,9 +17,9 @@
                 "spaces": "none",
                 "linebreaks": "none"
             },
-            "( in other": {
+            "( in tuple": {
                 "force-linebreak": false,
-                "spaces": "both",
+                "spaces": "none",
                 "linebreaks": "none"
             },
             "[": {
@@ -41,10 +41,10 @@
             "do": "indent-by 4",
             "app": "indent-by 4",
             "where-binds": "indent-by 2",
-            "multi-if": "indent-by 4",
+            "multi-if": "indent-by 2",
             "class": "indent-by 4",
             "if": "indent-by 4",
-            "let-binds": "indent-by 4",
+            "let-binds": "align",
             "onside": 4,
             "case": "indent-by 4",
             "let-in": "align",
@@ -54,13 +54,16 @@
         "align": {
             "where": false,
             "matches": false,
-            "limits": [80,80],
+            "limits": [
+                10,
+                25
+            ],
             "import-spec": false,
             "class": false,
             "let-binds": false,
-            "case": false,
+            "case": true,
             "import-module": false,
-            "record-fields": false
+            "record-fields": true
         },
         "op": {
             ",": {
@@ -75,8 +78,8 @@
             },
             ". in type": {
                 "force-linebreak": false,
-                "spaces": "both",
-                "linebreaks": "before"
+                "spaces": "after",
+                "linebreaks": "after"
             },
             ", in other": {
                 "force-linebreak": false,
@@ -109,9 +112,9 @@
                 "linebreaks": "before"
             },
             "-> in type": {
-                "force-linebreak": false,
+                "force-linebreak": true,
                 "spaces": "both",
-                "linebreaks": "before"
+                "linebreaks": "none"
             },
             "::": {
                 "force-linebreak": false,
@@ -124,7 +127,7 @@
             "import-spec-list": "vertical",
             "declaration": "try-oneline",
             "app": "try-oneline",
-            "type": "try-oneline",
+            "type": "vertical",
             "list-comp": "flex",
             "if": "vertical",
             "con-decls": "vertical",
@@ -133,11 +136,11 @@
             "export-spec-list": "try-oneline"
         },
         "penalty": {
-            "indent": 10,
+            "indent": 1,
             "max-line-length": 80,
-            "overfull": 70,
+            "overfull": 10,
             "overfull-once": 200,
-            "linebreak": 50
+            "linebreak": 100
         },
         "options": {
             "sort-pragmas": true,
@@ -146,11 +149,7 @@
             "preserve-vertical-space": true,
             "preserve-horizontal-space": true,
             "align-let-binds-and-in-expr": false,
-            "decl-no-blank-lines": [
-                "where",
-                "instance",
-                "class"
-            ],
+            "decl-no-blank-lines": ["where", "instance", "class"],
             "split-language-pragmas": false,
             "sort-import-lists": true,
             "sort-imports": false
@@ -158,5 +157,21 @@
     },
     "language": "Haskell2010",
     "style": "johan-tibell",
-    "extensions": []
+    "extensions": [
+        "DataKinds" ,
+        "DeriveFunctor" ,
+        "DeriveGeneric" ,
+        "DuplicateRecordFields" ,
+        "FlexibleContexts" ,
+        "NamedFieldPuns" ,
+        "OverloadedLabels" ,
+        "RankNTypes" ,
+        "ScopedTypeVariables" ,
+        "StandaloneDeriving" ,
+        "TypeFamilies" ,
+        "UndecidableInstances",
+        "ViewPatterns"
+
+
+    ]
 }

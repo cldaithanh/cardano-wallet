@@ -3,7 +3,7 @@
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
-module Cardano.Wallet.DB.Store.Wallets.StoreSpec ( spec ) where
+module Cardano.Wallet.DB.Store.Wallets.StoreSpec ( spec, genDeltaTxWallets ) where
 
 import Prelude
 

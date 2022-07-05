@@ -108,11 +108,11 @@ import Cardano.Wallet.DB.Sqlite.Types
 import Cardano.Wallet.DB.Store.Checkpoints
     ( PersistAddressBook (..), blockHeaderFromEntity, mkStoreWallets )
 import Cardano.Wallet.DB.Store.Meta.Model
-    ( ManipulateTxMetaHistory (..), TxMetaHistory (TxMetaHistory) )
+    ( ManipulateTxMetaHistory (..), TxMetaHistory (TxMetaHistory), DeltaTxMetaHistory (..) )
 import Cardano.Wallet.DB.Store.Transactions.Model
     ( TxHistoryF (..), decorateWithTxOuts, withdrawals )
 import Cardano.Wallet.DB.Store.Wallets.Model
-    ( TxWalletsHistory, mkTransactionInfo )
+    ( TxWalletsHistory, mkTransactionInfo, DeltaWalletsMetaWithSubmissions (..) )
 import Cardano.Wallet.DB.Store.Wallets.Store
     ( DeltaTxWalletsHistory (..), mkStoreTxWalletsHistory )
 import Cardano.Wallet.DB.WalletState
@@ -651,6 +651,8 @@ newDBLayerWith _cacheBehavior _tr ti SqliteContext{runQuery} = do
                         let
                             delta = Just
                                 $ ChangeTxMetaWalletsHistory wid
+                                $ ChangeMeta
+                                $ Manipulate
                                 $ RollBackTxMetaHistory nearestPoint
                         in  (delta, Right ())
                     pure
@@ -776,6 +778,8 @@ newDBLayerWith _cacheBehavior _tr ti SqliteContext{runQuery} = do
                         let
                             delta = Just
                                 $ ChangeTxMetaWalletsHistory wid
+                                $ ChangeMeta
+                                $ Manipulate
                                 $ AgeTxMetaHistory tip
                         in  (delta, Right ())
         , removePendingOrExpiredTx = \wid txId -> ExceptT $ do
@@ -793,6 +797,8 @@ newDBLayerWith _cacheBehavior _tr ti SqliteContext{runQuery} = do
                                 let
                                     delta = Just
                                         $ ChangeTxMetaWalletsHistory wid
+                                        $ ChangeMeta
+                                        $ Manipulate
                                         $ PruneTxMetaHistory $ TxId txId
                                 in  (delta, Right ())
                             else (Nothing, Left $ ErrRemoveTxNoSuchTransaction
@@ -1020,7 +1026,7 @@ selectTxHistory
 selectTxHistory cp ti wid minWithdrawal order whichMeta
     (decorateWithTxOuts ->  TxHistoryF txs, wmetas) = do
     tinfos <- mapM (uncurry $ mkTransactionInfo ti (W.currentTip cp)) $ do
-        TxMetaHistory metas <- maybeToList $ Map.lookup wid wmetas
+        (TxMetaHistory metas, _) <- maybeToList $ Map.lookup wid wmetas
         meta <- toList metas
         guard $  whichMeta meta
         transaction <- maybeToList $ Map.lookup (txMetaTxId meta) txs

@@ -1,4 +1,7 @@
 {-# LANGUAGE DataKinds #-}
+{-# LANGUAGE DuplicateRecordFields #-}
+
+{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE NoMonomorphismRestriction #-}
 {-# LANGUAGE OverloadedLabels #-}
@@ -31,11 +34,9 @@ import Cardano.Wallet.DB.Sqlite.Schema
 import Cardano.Wallet.DB.Sqlite.Types
     ( TxId (getTxId) )
 import Cardano.Wallet.DB.Store.Meta.Model
-    ( DeltaTxMetaHistory (..)
-    , ManipulateTxMetaHistory
-    , TxMetaHistory (..)
-    , mkTxMetaHistory
-    )
+    ( DeltaTxMetaHistory (..), TxMetaHistory (..), mkTxMetaHistory )
+import Cardano.Wallet.DB.Store.Submissions.Model
+    ( DeltaTxLocalSubmission (..), TxLocalSubmissionHistory (..) )
 import Cardano.Wallet.DB.Store.Transactions.Model
     ( Decoration (With)
     , TxHistory
@@ -52,7 +53,7 @@ import Cardano.Wallet.Primitive.Types.TokenMap
 import Cardano.Wallet.Primitive.Types.Tx
     ( TxMeta (..), TxOut (..) )
 import Data.Delta
-    ( Delta (..) )
+    ( Delta (..), Embedding' (..) )
 import Data.DeltaMap
     ( DeltaMap (Adjust, Insert) )
 import Data.Foldable
@@ -62,7 +63,7 @@ import Data.Function
 import Data.Functor
     ( (<&>) )
 import Data.Generics.Internal.VL
-    ( (^.) )
+    ( over, view, (^.) )
 import Data.Map.Strict
     ( Map )
 import Data.Quantity
@@ -74,6 +75,7 @@ import Fmt
 
 import qualified Cardano.Wallet.DB.Sqlite.Schema as DB
 import qualified Cardano.Wallet.DB.Store.Meta.Model as TxMetaStore
+import qualified Cardano.Wallet.DB.Store.Submissions.Model as TxSubmissions
 import qualified Cardano.Wallet.DB.Store.Transactions.Model as TxStore
 import qualified Cardano.Wallet.Primitive.Types as W
 import qualified Cardano.Wallet.Primitive.Types.Coin as WC
@@ -84,7 +86,7 @@ import qualified Data.Set as Set
 
 data DeltaTxWalletsHistory
     = ExpandTxWalletsHistory W.WalletId [(WT.Tx, WT.TxMeta)]
-    | ChangeTxMetaWalletsHistory W.WalletId ManipulateTxMetaHistory
+    | ChangeTxMetaWalletsHistory W.WalletId DeltaWalletsMetaWithSubmissions
     | GarbageCollectTxWalletsHistory
     | RemoveWallet W.WalletId
     deriving ( Show, Eq )
@@ -92,35 +94,69 @@ data DeltaTxWalletsHistory
 instance Buildable DeltaTxWalletsHistory where
     build = build . show
 
-type TxWalletsHistory = (TxHistory, Map W.WalletId TxMetaHistory)
+data DeltaWalletsMetaWithSubmissions
+    = ChangeMeta DeltaTxMetaHistory
+    | ChangeSubmissions DeltaTxLocalSubmission
+    deriving ( Show, Eq )
+
+type MetasAndSubmissionsHistory = (TxMetaHistory, TxLocalSubmissionHistory)
+
+constraintSubmissions
+    :: MetasAndSubmissionsHistory -> MetasAndSubmissionsHistory
+constraintSubmissions (metas,submissions) =
+    ( metas
+    , over #relations (\m -> Map.restrictKeys m
+                       $ Map.keysSet (metas ^. #relations)) submissions)
+
+instance Delta DeltaWalletsMetaWithSubmissions where
+    type Base DeltaWalletsMetaWithSubmissions = MetasAndSubmissionsHistory
+    apply (ChangeMeta cm) (metas,submissions) =
+        constraintSubmissions (apply cm metas, submissions)
+    apply (ChangeSubmissions cs) (metas,submissions) =
+        constraintSubmissions (metas, apply cs submissions)
+
+embedConstrainedSubmissions :: Embedding'
+        DeltaWalletsMetaWithSubmissions
+        (DeltaTxMetaHistory, DeltaTxLocalSubmission)
+embedConstrainedSubmissions =
+    Embedding'
+    { load = Right
+    , write = id
+    , update = \_ _ -> \case
+          ChangeMeta dtmh -> (dtmh, TxSubmissions.Expand mempty)
+          ChangeSubmissions dtls -> (TxMetaStore.Expand mempty, dtls)
+    }
+
+type TxWalletsHistory = (TxHistory, Map W.WalletId MetasAndSubmissionsHistory)
 
 instance Delta DeltaTxWalletsHistory where
     type Base DeltaTxWalletsHistory = TxWalletsHistory
     apply (ExpandTxWalletsHistory wid cs) (txh,mtxmh) =
         ( apply (TxStore.Append $ mkTxHistory $ fst <$> cs) txh
         , mtxmh & case Map.lookup wid mtxmh of
-              Nothing -> apply @(DeltaMap _ DeltaTxMetaHistory)
-                  $ Insert wid
-                  $ mkTxMetaHistory wid cs
-              Just _ -> apply @(DeltaMap _ DeltaTxMetaHistory)
+              Nothing -> apply @(DeltaMap _ DeltaWalletsMetaWithSubmissions)
+                  $ Insert wid (mkTxMetaHistory wid cs, mempty)
+              Just _ -> apply @(DeltaMap _ DeltaWalletsMetaWithSubmissions)
                   $ Adjust wid
+                  $ ChangeMeta
                   $ TxMetaStore.Expand
                   $ mkTxMetaHistory wid cs)
-    apply (ChangeTxMetaWalletsHistory wid change) (txh, mtxmh) =
-        (txh, Map.filter (not . null . relations)
-            $ mtxmh & apply (Adjust wid $ Manipulate change))
-    apply GarbageCollectTxWalletsHistory (TxHistoryF txh, mtxmh) =
+    apply (ChangeTxMetaWalletsHistory wid change) (txh,mtxmh) =
+        ( txh
+        , Map.filter (not . null . view #relations . fst)
+          $ mtxmh & apply (Adjust wid change))
+    apply GarbageCollectTxWalletsHistory (TxHistoryF txh,mtxmh) =
         ( TxHistoryF $ Map.restrictKeys txh $ walletsLinkedTransactions mtxmh
         , mtxmh)
-    apply (RemoveWallet wid) (TxHistoryF txh, mtxmh) =
-        ( TxHistoryF txh, Map.delete wid mtxmh )
+    apply (RemoveWallet wid) (TxHistoryF txh,mtxmh) =
+        (TxHistoryF txh, Map.delete wid mtxmh)
 
-linkedTransactions :: TxMetaHistory -> Set TxId
-linkedTransactions
-    (TxMetaHistory m) = Map.keysSet m
+linkedTransactions :: MetasAndSubmissionsHistory -> Set TxId
+linkedTransactions (TxMetaHistory m,_) = Map.keysSet m
 
-walletsLinkedTransactions :: Map W.WalletId TxMetaHistory -> Set TxId
-walletsLinkedTransactions = Set.unions . toList .  fmap linkedTransactions
+walletsLinkedTransactions
+    :: Map W.WalletId MetasAndSubmissionsHistory -> Set TxId
+walletsLinkedTransactions = Set.unions . toList . fmap linkedTransactions
 
 mkTransactionInfo :: Monad m
     => TimeInterpreter m
@@ -197,3 +233,5 @@ mkTransactionInfo ti tip TxRelationF {..} DB.TxMeta {..} = do
               (txCollateralOutTokenName token)
         , txCollateralOutTokenQuantity token)
     mkTxWithdrawal w = (txWithdrawalAccount w, txWithdrawalAmount w)
+
+

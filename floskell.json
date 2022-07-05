@@ -17,14 +17,9 @@
                 "spaces": "none",
                 "linebreaks": "none"
             },
-            "( in tuple": {
-                "force-linebreak": false,
-                "spaces": "none",
-                "linebreaks": "none"
-            },
             "[": {
                 "force-linebreak": false,
-                "spaces": "after",
+                "spaces": "both",
                 "linebreaks": "after"
             },
             "[ in type": {
@@ -161,7 +156,6 @@
         "DataKinds" ,
         "DeriveFunctor" ,
         "DeriveGeneric" ,
-        "DuplicateRecordFields" ,
         "FlexibleContexts" ,
         "NamedFieldPuns" ,
         "OverloadedLabels" ,

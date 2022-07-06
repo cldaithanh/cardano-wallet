@@ -236,7 +236,6 @@ LocalTxSubmission
 
     UniqueLocalTxSubmission localTxSubmissionTxId localTxSubmissionWalletId
     Primary localTxSubmissionTxId localTxSubmissionWalletId
-    Foreign TxMeta OnDeleteCascade fk_tx_meta localTxSubmissionTxId localTxSubmissionWalletId
     deriving Show Generic Eq
 
 -- A checkpoint for a given wallet is referred to by (wallet_id, slot).

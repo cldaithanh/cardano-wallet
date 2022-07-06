@@ -222,6 +222,8 @@ import qualified Cardano.Wallet.Primitive.Types.Tx as W
 import qualified Data.Map.Strict as Map
 import qualified Data.Set as Set
 import qualified Data.Text as T
+import Cardano.Wallet.DB.Store.Submissions.Model (DeltaTxLocalSubmission(..), TxLocalSubmissionHistory (..))
+import qualified Cardano.Wallet.DB.Store.Submissions.Model as TxSubmissions
 
 {-------------------------------------------------------------------------------
                                Database "factory"
@@ -754,17 +756,37 @@ newDBLayerWith _cacheBehavior _tr ti SqliteContext{runQuery} = do
                     lift $ selectTxHistory cp ti wid minWithdrawal
                         order filtering txHistory
 
-        , putLocalTxSubmission = \wid txid tx sl -> ExceptT $ do
+        , putLocalTxSubmission = \wid txid tx sl -> do
             let errNoSuchWallet = ErrPutLocalTxSubmissionNoSuchWallet $
                     ErrNoSuchWallet wid
             let errNoSuchTx = ErrPutLocalTxSubmissionNoSuchTransaction $
                     ErrNoSuchTransaction wid txid
+            ExceptT $ do
+                    (_,  ws)  <- readDBVar transactionsDBVar
+                    pure $ case Map.lookup wid ws of
+                        Nothing -> Left errNoSuchWallet
+                        Just (TxMetaHistory metas, _)  -> case
+                            Map.lookup (TxId txid) metas of
+                                Nothing -> Left errNoSuchTx
+                                Just _ -> Right ()
+            ExceptT $ modifyDBMaybe transactionsDBVar
+                    $ \(_txsOld, ws) ->
+                case Map.lookup wid ws of
+                    Nothing -> (Nothing, Left errNoSuchWallet)
+                    Just _  ->
+                        let
+                            delta = Just
+                                $ ChangeTxMetaWalletsHistory wid
+                                $ ChangeSubmissions
+                                $ TxSubmissions.Expand
+                                $ TxLocalSubmissionHistory
+                                $ Map.fromList [
+                                    ( TxId txid
+                                    , LocalTxSubmission (TxId txid) wid sl tx
+                                    )
+                                ]
+                        in  (delta, Right ())
 
-            selectWallet wid >>= \case
-                Nothing -> pure $ Left errNoSuchWallet
-                Just _ -> handleConstraint errNoSuchTx $ do
-                    let record = LocalTxSubmission (TxId txid) wid sl tx
-                    void $ upsert record [ LocalTxSubmissionLastSlot =. sl ]
 
         , readLocalTxSubmissionPending =
             fmap (map localTxSubmissionFromEntity)
@@ -782,8 +804,27 @@ newDBLayerWith _cacheBehavior _tr ti SqliteContext{runQuery} = do
                                 $ Manipulate
                                 $ AgeTxMetaHistory tip
                         in  (delta, Right ())
-        , removePendingOrExpiredTx = \wid txId -> ExceptT $ do
-            modifyDBMaybe transactionsDBVar $ \(TxHistoryF txsOld, ws) ->
+        , removePendingOrExpiredTx = \wid txId -> do
+            ExceptT $ modifyDBMaybe transactionsDBVar $ \(TxHistoryF txsOld, ws) ->
+                case Map.lookup wid ws of
+                    Nothing ->
+                        ( Nothing
+                        , Left
+                            $ ErrRemoveTxNoSuchWallet
+                            $ ErrNoSuchWallet wid
+                        )
+                    Just _  ->
+                        if TxId txId `Map.member` txsOld
+                            then
+                                let
+                                    delta = Just
+                                        $ ChangeTxMetaWalletsHistory wid
+                                        $ ChangeSubmissions
+                                        $ Prune $ TxId txId
+                                in  (delta, Right ())
+                            else (Nothing, Left $ ErrRemoveTxNoSuchTransaction
+                                $ ErrNoSuchTransaction wid txId)
+            ExceptT $ modifyDBMaybe transactionsDBVar $ \(TxHistoryF txsOld, ws) ->
                 case Map.lookup wid ws of
                     Nothing ->
                         ( Nothing

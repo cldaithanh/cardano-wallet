@@ -651,7 +651,7 @@ instance Arbitrary (SharedState 'Mainnet SharedKey) where
             (Shared.Active $ SharedAddressPools
                 (Shared.newSharedAddressPool @'Mainnet defaultAddressPoolGap pt Nothing)
                 (Shared.newSharedAddressPool @'Mainnet defaultAddressPoolGap pt Nothing)
-                emptyPendingIxs
+                Shared.emptyPendingIxs
             )
 
 defaultSharedStatePrefix :: DerivationPrefix

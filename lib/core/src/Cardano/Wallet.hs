@@ -351,7 +351,6 @@ import Cardano.Wallet.Primitive.Model
     , getState
     , initWallet
     , totalUTxO
-    , updateState
     )
 import Cardano.Wallet.Primitive.Passphrase
     ( ErrWrongPassphrase (..)

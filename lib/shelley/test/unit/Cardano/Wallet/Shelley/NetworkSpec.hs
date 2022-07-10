@@ -23,7 +23,14 @@ import Cardano.Wallet.Shelley.Compatibility
 import Cardano.Wallet.Shelley.Launch
     ( CardanoNodeConn, withSystemTempDir )
 import Cardano.Wallet.Shelley.Launch.Cluster
-    ( ClusterLog (..), singleNodeParams, withBFTNode )
+    ( ClusterEra (..)
+    , ClusterLog (..)
+    , LocalClusterConfig (..)
+    , LogFileConfig (..)
+    , RunningNode (..)
+    , defaultPoolConfigs
+    , withCluster
+    )
 import Cardano.Wallet.Shelley.Network.Node
     ( Observer (..), ObserverLog (..), newObserver, withNetworkLayer )
 import Control.Monad
@@ -80,8 +87,8 @@ concurrentConnectionSpec = describe "NetworkLayer regression test #1708" $ do
                     testnet np sock vData sTol $ \nl -> do
                         -- Wait for the first tip result from the node
                         waiter <- newEmptyMVar
-                        race_ 
-                            (watchNodeTip nl (putMVar waiter)) 
+                        race_
+                            (watchNodeTip nl (putMVar waiter))
                             (takeMVar waiter)
             void $ waitAnyCancel tasks
 
@@ -246,9 +253,12 @@ withTestNode
     -> (NetworkParameters -> CardanoNodeConn -> NodeToClientVersionData -> IO a)
     -> IO a
 withTestNode tr action = do
-    cfg <- singleNodeParams Error Nothing
+    let cfg = LocalClusterConfig
+            defaultPoolConfigs
+            BabbageHardFork
+            (LogFileConfig Info Nothing Info)
     withSystemTempDir (contramap MsgTempDir tr) "network-spec" $ \dir ->
-        withBFTNode tr dir cfg $ \sock _block0 (np, vData) ->
+        withCluster tr dir cfg [] $ \(RunningNode sock _ (np, vData) _) ->
             action np sock vData
 
 testnet :: NetworkId

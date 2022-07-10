@@ -18,6 +18,7 @@ import Prelude
 
 import Cardano.Wallet.Api.Types
     ( ApiCertificate (JoinPool, QuitPool, RegisterRewardAccount)
+    , ApiEra (..)
     , ApiHealthCheck
     , ApiStakeKeys
     , ApiStakePool (flags)
@@ -1059,8 +1060,8 @@ spec = describe "SHELLEY_STAKE_POOLS" $ do
                 setOf pools' (view #pledge)
                     `shouldBe`
                     Set.fromList
-                        [ Quantity oneMillionAda
-                        , Quantity $ 2 * oneMillionAda
+                        [ Quantity $ 100 * oneMillionAda
+                        , Quantity $ 200 * oneMillionAda
                         ]
 
         it "at least one pool eventually produces block" $ \ctx -> runResourceT $ do
@@ -1430,10 +1431,18 @@ spec = describe "SHELLEY_STAKE_POOLS" $ do
             fromIntegral (unCoin c)
 
     costOfJoining :: Context -> Natural
-    costOfJoining = costOf (\coeff cst -> 454 * coeff + cst)
+    costOfJoining ctx =
+        if _mainEra ctx >= ApiBabbage
+        then costOf (\coeff cst -> 458 * coeff + cst) ctx
+         -- FIXME: with 2 more bytes in babbage this test still failed:
+         --  STAKE_POOLS_JOIN_01x - Fee boundary values, STAKE_POOLS_JOIN_01x
+        else costOf (\coeff cst -> 454 * coeff + cst) ctx
 
     costOfQuitting :: Context -> Natural
-    costOfQuitting = costOf (\coeff cst -> 303 * coeff + cst)
+    costOfQuitting ctx =
+        if _mainEra ctx >= ApiBabbage
+        then costOf (\coeff cst -> 305 * coeff + cst) ctx
+        else costOf (\coeff cst -> 303 * coeff + cst) ctx
 
     costOf :: (Natural -> Natural -> Natural) -> Context -> Natural
     costOf withCoefficients ctx =

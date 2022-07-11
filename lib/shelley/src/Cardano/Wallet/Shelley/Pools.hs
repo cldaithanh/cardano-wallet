@@ -271,13 +271,14 @@ withNodeStakePoolLayer
     -> Maybe Settings
     -> PoolDb.DBLayer IO
     -> NetworkParameters
+    -> [PoolCertificate] -- Shelley genesis pools
     -> NetworkLayer IO (CardanoBlock StandardCrypto)
     -> ContT ExitCode IO StakePoolLayer
-withNodeStakePoolLayer tr settings dbLayer@DBLayer{..} netParams netLayer = lift do
+withNodeStakePoolLayer tr settings dbLayer@DBLayer{..} netParams genesisPools netLayer = lift do
     gcStatus <- newTVarIO NotStarted
     forM_ settings $ atomically . putSettings
     void $ forkFinally
-        (monitorStakePools tr netParams netLayer dbLayer)
+        (monitorStakePools tr netParams genesisPools netLayer dbLayer)
         (traceAfterThread (contramap MsgExitMonitoring tr))
 
     -- fixme: needs to be simplified as part of ADP-634
@@ -703,10 +704,11 @@ readPoolDbData DBLayer {..} currentEpoch = atomically $ do
 monitorStakePools
     :: Tracer IO StakePoolLog
     -> NetworkParameters
+    -> [PoolCertificate] -- Shelley genesis pools; not present on mainnet
     -> NetworkLayer IO (CardanoBlock StandardCrypto)
     -> DBLayer IO
     -> IO ()
-monitorStakePools tr (NetworkParameters gp sp _pp) nl DBLayer{..} =
+monitorStakePools tr (NetworkParameters gp sp _pp) genesisPools nl DBLayer{..} =
     monitor =<< mkLatestGarbageCollectionEpochRef
   where
     monitor latestGarbageCollectionEpochRef = do
@@ -726,6 +728,12 @@ monitorStakePools tr (NetworkParameters gp sp _pp) nl DBLayer{..} =
             toChainPoint :: BlockHeader -> ChainPoint
             toChainPoint (BlockHeader  0 _ _ _) = ChainPointAtGenesis
             toChainPoint (BlockHeader sl _ h _) = ChainPoint sl h
+
+
+        let psudoGenesisSlotNo = SlotNo 0
+        atomically $ do
+            putPoolCertificates psudoGenesisSlotNo genesisPools
+
 
         chainSync nl (contramap MsgChainMonitoring tr) $ ChainFollower
             { readChainPoints = map toChainPoint <$> initCursor
@@ -1053,8 +1061,8 @@ instance HasSeverityAnnotation StakePoolLog where
         MsgExitMonitoring msg -> getSeverityAnnotation msg
         MsgChainMonitoring msg -> getSeverityAnnotation msg
         MsgStakePoolGarbageCollection{} -> Debug
-        MsgStakePoolRegistration{} -> Debug
-        MsgStakePoolRetirement{} -> Debug
+        MsgStakePoolRegistration{} -> Warning
+        MsgStakePoolRetirement{} -> Warning
         MsgErrProduction{} -> Error
         MsgFetchPoolMetadata e -> getSeverityAnnotation e
         MsgFetchTakeBreak{} -> Debug

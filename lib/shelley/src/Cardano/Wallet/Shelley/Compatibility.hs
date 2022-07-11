@@ -118,6 +118,7 @@ module Cardano.Wallet.Shelley.Compatibility
     , toShelleyBlockHeader
     , toBabbageBlockHeader
     , fromShelleyHash
+    , fromShelleyTxOut
     , fromCardanoHash
     , fromChainHash
     , fromPrevHash
@@ -987,9 +988,8 @@ localNodeConnectInfo sp net = LocalNodeConnectInfo params net . nodeSocketFile
 fromGenesisData
     :: forall e crypto. (Era e, e ~ SL.ShelleyEra crypto)
     => ShelleyGenesis e
-    -> [(SL.Addr crypto, SL.Coin)]
-    -> (W.NetworkParameters, W.Block)
-fromGenesisData g initialFunds =
+    -> (W.NetworkParameters, W.Block, [W.PoolCertificate])
+fromGenesisData g =
     ( W.NetworkParameters
         { genesisParameters = W.GenesisParameters
             { getGenesisBlockHash = dummyGenesisHash
@@ -999,7 +999,8 @@ fromGenesisData g initialFunds =
         , protocolParameters =
             fromShelleyPParams W.emptyEraInfo Nothing $ sgProtocolParams g
         }
-    , genesisBlockFromTxOuts initialFunds
+    , genesisBlockFromTxOuts (Map.toList $ sgInitialFunds g)
+    , poolCerts $ sgStaking g
     )
   where
     -- TODO: There is not yet any agreed upon definition of a
@@ -1008,6 +1009,17 @@ fromGenesisData g initialFunds =
     -- For now we use a dummy value.
     dummyGenesisHash = W.Hash . BS.pack $ replicate 32 1
 
+    poolCerts :: SLAPI.ShelleyGenesisStaking (Crypto e) -> [W.PoolCertificate]
+    poolCerts (SLAPI.ShelleyGenesisStaking pools stake) = do
+        (_, pp) <- Map.toList pools
+        pure $ W.Registration $ W.PoolRegistrationCertificate
+            { W.poolId = fromPoolKeyHash $ SL._poolId pp
+            , W.poolOwners = fromOwnerKeyHash <$> Set.toList (SL._poolOwners pp)
+            , W.poolMargin = fromUnitInterval (SL._poolMargin pp)
+            , W.poolCost = toWalletCoin (SL._poolCost pp)
+            , W.poolPledge = toWalletCoin (SL._poolPledge pp)
+            , W.poolMetadata = fromPoolMetadata <$> strictMaybeToMaybe (SL._poolMD pp)
+            }
 
     -- | Construct a ("fake") genesis block from genesis transaction outputs.
     --

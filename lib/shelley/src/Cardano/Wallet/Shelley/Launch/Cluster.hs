@@ -1,5 +1,6 @@
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE DerivingStrategies #-}
+{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE NamedFieldPuns #-}
@@ -34,9 +35,6 @@ module Cardano.Wallet.Shelley.Launch.Cluster
     , RunningNode (..)
 
       -- * Cluster node launcher
-    , withBFTNode
-    , withStakePool
-    , PoolConfig (..)
     , defaultPoolConfigs
     , poolConfigsFromEnv
     , clusterEraFromEnv
@@ -63,9 +61,6 @@ module Cardano.Wallet.Shelley.Launch.Cluster
     , oneMillionAda
     , genMonetaryPolicyScript
 
-    -- * Text fixture global vars
-    , operators
-
     -- * Logging
     , ClusterLog (..)
     ) where
@@ -74,8 +69,6 @@ import Prelude
 
 import Cardano.Address.Derivation
     ( XPub, xpubPublicKey )
-import Cardano.Api.Shelley
-    ( ShelleyGenesis (..) )
 import Cardano.BM.Data.Output
     ( ScribeDefinition (..)
     , ScribeFormat (..)
@@ -86,8 +79,6 @@ import Cardano.BM.Data.Severity
     ( Severity (..) )
 import Cardano.BM.Data.Tracer
     ( HasPrivacyAnnotation (..), HasSeverityAnnotation (..) )
-import Cardano.Chain.Genesis
-    ( readGenesisData )
 import Cardano.CLI
     ( parseLoggingSeverity )
 import Cardano.Launcher
@@ -99,6 +90,17 @@ import Cardano.Launcher.Node
     , nodeSocketFile
     , withCardanoNode
     )
+import Cardano.Ledger.BaseTypes
+    ( Network (Mainnet)
+    , NonNegativeInterval
+    , PositiveUnitInterval
+    , UnitInterval
+    , boundRational
+    )
+import Cardano.Ledger.Era
+    ( Era (Crypto) )
+import Cardano.Ledger.Shelley.API
+    ( ShelleyGenesis (..) )
 import Cardano.Pool.Metadata
     ( SMASHPoolId (..) )
 import Cardano.Startup
@@ -117,9 +119,12 @@ import Cardano.Wallet.Primitive.Types
     ( Block (..)
     , EpochNo (..)
     , NetworkParameters (..)
+    , PoolCertificate
     , PoolId (..)
     , TokenMetadataServer (..)
     )
+import Cardano.Wallet.Primitive.Types.Address
+    ( Address (..) )
 import Cardano.Wallet.Primitive.Types.Coin
     ( Coin (..) )
 import Cardano.Wallet.Primitive.Types.TokenBundle
@@ -131,19 +136,17 @@ import Cardano.Wallet.Primitive.Types.TokenQuantity
 import Cardano.Wallet.Primitive.Types.Tx
     ( TxOut )
 import Cardano.Wallet.Shelley.Compatibility
-    ( StandardShelley )
+    ( StandardShelley, fromGenesisData )
 import Cardano.Wallet.Shelley.Launch
     ( TempDirLog (..), envFromText, isEnvSet, lookupEnvNonEmpty )
 import Cardano.Wallet.Unsafe
-    ( unsafeBech32Decode, unsafeFromHex, unsafeRunExceptT )
+    ( unsafeBech32Decode, unsafeFromHex )
 import Cardano.Wallet.Util
     ( mapFirst )
 import Codec.Binary.Bech32.TH
     ( humanReadablePart )
 import Control.Monad
-    ( forM, forM_, liftM2, replicateM, replicateM_, unless, void, when, (>=>) )
-import Control.Monad.Trans.Except
-    ( withExceptT )
+    ( forM, forM_, liftM2, replicateM, replicateM_, void, when, (>=>) )
 import Control.Retry
     ( constantDelay, limitRetriesByCumulativeDelay, retrying )
 import Control.Tracer
@@ -152,6 +155,8 @@ import Crypto.Hash.Utils
     ( blake2b256 )
 import Data.Aeson
     ( FromJSON (..), object, toJSON, (.:), (.=) )
+import Data.Aeson.QQ
+    ( aesonQQ )
 import Data.Bifunctor
     ( bimap )
 import Data.Bits
@@ -166,10 +171,16 @@ import Data.Char
     ( toLower )
 import Data.Either
     ( fromRight, isLeft, isRight )
+import Data.Foldable
+    ( traverse_ )
 import Data.Functor
     ( ($>), (<&>) )
+import Data.IntCast
+    ( intCast )
 import Data.List
     ( intercalate, nub, permutations, sort )
+import Data.Map
+    ( Map )
 import Data.Maybe
     ( catMaybes, fromMaybe )
 import Data.Text
@@ -195,34 +206,27 @@ import System.FilePath
 import System.IO.Unsafe
     ( unsafePerformIO )
 import System.Process.Typed
-    ( ProcessConfig
-    , proc
-    , readProcess
-    , readProcessStdout_
-    , setEnv
-    , setEnvInherit
-    )
+    ( ProcessConfig, proc, readProcess, setEnv, setEnvInherit )
 import Test.Utils.Paths
     ( getTestData )
 import Test.Utils.StaticServer
     ( withStaticServer )
 import UnliftIO.Async
-    ( async, link, race, wait )
+    ( async, link, wait )
 import UnliftIO.Chan
     ( newChan, readChan, writeChan )
-import UnliftIO.Concurrent
-    ( threadDelay )
 import UnliftIO.Exception
-    ( SomeException, finally, handle, throwIO, throwString )
+    ( SomeException, handle, throwIO, throwString )
 import UnliftIO.MVar
     ( MVar, modifyMVar, newMVar, putMVar, swapMVar, takeMVar )
 
 import qualified Cardano.Chain.Common as Byron
 import qualified Cardano.Chain.UTxO as Legacy
+import qualified Cardano.Ledger.Address as Ledger
+import qualified Cardano.Ledger.Shelley.API as Ledger
 import qualified Cardano.Wallet.Byron.Compatibility as Byron
 import qualified Cardano.Wallet.Primitive.Types.TokenBundle as TokenBundle
 import qualified Cardano.Wallet.Primitive.Types.TokenMap as TokenMap
-import qualified Cardano.Wallet.Shelley.Compatibility as Shelley
 import qualified Codec.Binary.Bech32 as Bech32
 import qualified Codec.CBOR.Encoding as CBOR
 import qualified Codec.CBOR.Write as CBOR
@@ -234,12 +238,10 @@ import qualified Data.ByteString as BS
 import qualified Data.ByteString.Char8 as B8
 import qualified Data.ByteString.Lazy as BL
 import qualified Data.ByteString.Lazy.Char8 as BL8
-import qualified Data.HashMap.Strict as HM
 import qualified Data.Map.Strict as Map
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as T
 import qualified Data.Text.Encoding.Error as T
-import qualified Data.Vector as V
 import qualified Data.Yaml as Yaml
 
 -- | Returns the shelley test data path, which is usually relative to the
@@ -392,14 +394,6 @@ readProcessStdoutOrFail processConfig = do
 getFirstLine :: BL8.ByteString -> BL8.ByteString
 getFirstLine = BL8.takeWhile (\c -> c /= '\r' && c /= '\n')
 
--- | Like 'cli', but sets the node socket path.
-cliNode
-    :: Tracer IO ClusterLog
-    -> CardanoNodeConn
-    -> [String]
-    -> IO (ExitCode, BL8.ByteString, BL8.ByteString)
-cliNode tr conn = cliConfigNode tr conn >=> readProcess
-
 -- | Runs a @cardano-cli@ command and retries for up to 30 seconds if the
 -- command failed.
 --
@@ -427,27 +421,253 @@ cliRetry tr msg processConfig = do
     isFail (st, _, _) = pure (st /= ExitSuccess)
     pol = limitRetriesByCumulativeDelay 30_000_000 $ constantDelay 1_000_000
 
-newtype PoolConfig = PoolConfig
-    { retirementEpoch :: Maybe EpochNo
+-- | The idea of what kind if pool we want to set up.
+data PoolRecipe = PoolRecipe
+    { pledgeAmt :: Integer
+    , index :: Int
+    , retirementEpoch :: Maybe EpochNo
       -- ^ An optional retirement epoch. If specified, then a pool retirement
       -- certificate will be published after the pool is initially registered.
+    , poolMetadata :: Aeson.Value
+    , delisted :: Bool
     }
     deriving (Eq, Show)
 
+-- | Represents the notion of a fully configured pool. All keys are known, but
+-- not necessarily exposed using this interface.
+data ConfiguredPool = ConfiguredPool
+    { operatePool
+        :: forall a. NodeParams -> (RunningNode -> IO a) -> IO a
+      -- ^ Precondition: the pool must first be registered.
+    , metadataUrl
+        :: Text
+    , recipe
+        :: PoolRecipe
+      -- ^ The 'PoolRecipe' used to create this 'ConfiguredPool'.
+    , registerViaTx :: RunningNode -> IO ()
+    }
 
-defaultPoolConfigs :: [PoolConfig]
-defaultPoolConfigs =
+data PoolMetadataServer = PoolMetadataServer
+    { registerMetadataForPoolIndex :: Int -> Aeson.Value -> IO ()
+    , urlFromPoolIndex  :: Int -> String
+    }
+
+withPoolMetadataServer
+    :: Tracer IO ClusterLog
+    -> FilePath
+    -> (PoolMetadataServer -> IO a)
+    -> IO a
+withPoolMetadataServer tr dir action = do
+    let metadir = dir </> "pool-metadata"
+    createDirectoryIfMissing False metadir
+    withStaticServer metadir $ \baseURL -> do
+        let _urlFromPoolIndex i = baseURL </> metadataFileName i
+        action $ PoolMetadataServer
+            { registerMetadataForPoolIndex = \i metadata -> do
+                let metadataBytes = Aeson.encode metadata
+                BL8.writeFile (metadir </> (metadataFileName i)) metadataBytes
+                let hash = blake2b256 (BL.toStrict metadataBytes)
+                traceWith tr $
+                    MsgRegisteringPoolMetadata
+                        (_urlFromPoolIndex i)
+                        (B8.unpack $ hex hash)
+            , urlFromPoolIndex = _urlFromPoolIndex
+            }
+  where
+
+    metadataFileName :: Int -> FilePath
+    metadataFileName i = show i <> ".json"
+
+configurePools
+    :: Tracer IO ClusterLog
+    -> FilePath
+    -> PoolMetadataServer
+    -> [PoolRecipe]
+    -> IO [ConfiguredPool]
+configurePools tr dir metadataServer =
+    mapM (configurePool tr dir metadataServer)
+
+configurePool
+    :: Tracer IO ClusterLog
+    -> FilePath
+    -> PoolMetadataServer
+    -> PoolRecipe
+    -> IO ConfiguredPool
+configurePool tr baseDir metadataServer pr@(PoolRecipe pledgeAmt i mretirementEpoch metadata _) = do
+    -- Use pool-specific dir
+    let name = "pool-" <> show i
+    let dir = baseDir </> name
+    createDirectoryIfMissing False dir
+
+    -- Generate/assign keys
+    (vrfPrv, vrfPub) <- genVrfKeyPair tr dir
+    (kesPrv, kesPub) <- genKesKeyPair tr dir
+    (opPrv, opPub, opCount, _meta) <- genOperatorKeyPair tr dir
+    opCert <- issueOpCert tr dir kesPub opPrv opCount
+    let ownerPub = dir </> "stake.pub"
+    let ownerPrv = dir </> "stake.prv"
+    genStakeAddrKeyPair tr (ownerPrv, ownerPub)
+
+    let metadataURL = urlFromPoolIndex metadataServer i
+    registerMetadataForPoolIndex metadataServer i metadata
+    let metadataBytes = Aeson.encode metadata
+
+    pure $ ConfiguredPool
+        { operatePool = \nodeParams action -> do
+
+            let NodeParams genesisFiles hardForks (port, peers) logCfg = nodeParams
+            let logCfg' = setLoggingName name logCfg
+
+            topology <- genTopology dir peers
+            withStaticServer dir $ \url -> do
+                traceWith tr $ MsgStartedStaticServer dir url
+
+                (config, block0, bp, vd, genesisPools)
+                    <- genNodeConfig
+                        dir
+                        ""
+                        genesisFiles
+                        hardForks
+                        logCfg'
+
+                let cfg = CardanoNodeConfig
+                        { nodeDir = dir
+                        , nodeConfigFile = config
+                        , nodeTopologyFile = topology
+                        , nodeDatabaseDir = "db"
+                        , nodeDlgCertFile = Nothing
+                        , nodeSignKeyFile = Nothing
+                        , nodeOpCertFile = Just opCert
+                        , nodeKesKeyFile = Just kesPrv
+                        , nodeVrfKeyFile = Just vrfPrv
+                        , nodePort = Just (NodePort port)
+                        , nodeLoggingHostname = Just name
+                        }
+                withCardanoNodeProcess tr name cfg $ \socket -> do
+                    -- Here is our chance to respect the 'retirementEpoch' of
+                    -- the 'PoolRecipe'.
+                    --
+                    -- NOTE: The retirement is duplicated with the one in
+                    -- @registerViaTx@. That might still work, and we might want
+                    -- to remove @registerViaTx@.
+                    --
+                    let retire e = do
+                            retCert <- issuePoolRetirementCert tr dir opPub e
+                            (rawTx, faucetPrv) <- preparePoolRetirement tr dir [retCert]
+                            tx <- signTx tr dir rawTx [faucetPrv, ownerPrv, opPrv]
+                            submitTx tr socket "retirement cert" tx
+
+                    traverse_ retire mretirementEpoch
+
+                    action $ RunningNode socket block0 (bp, vd) genesisPools
+
+        , registerViaTx = \(RunningNode socket _ _ _) -> do
+            stakeCert <- issueStakeVkCert tr dir "stake-pool" ownerPub
+            let poolRegistrationCert = dir </> "pool.cert"
+            cli tr
+                [ "stake-pool", "registration-certificate"
+                , "--cold-verification-key-file", opPub
+                , "--vrf-verification-key-file", vrfPub
+                , "--pool-pledge", show pledgeAmt
+                , "--pool-cost", "0"
+                , "--pool-margin", "0.1"
+                , "--pool-reward-account-verification-key-file", ownerPub
+                , "--pool-owner-stake-verification-key-file", ownerPub
+                , "--metadata-url", metadataURL
+                , "--metadata-hash", blake2b256S (BL.toStrict metadataBytes)
+                , "--mainnet"
+                , "--out-file", poolRegistrationCert
+                ]
+
+            mPoolRetirementCert <- traverse
+                (issuePoolRetirementCert tr dir opPub) mretirementEpoch
+            dlgCert <- issueDlgCert tr dir ownerPub opPub
+
+            -- In order to get a working stake pool we need to.
+            --
+            -- 1. Register a stake key for our pool.
+            -- 2. Register the stake pool
+            -- 3. Delegate funds to our pool's key.
+            --
+            -- We cheat a bit here by delegating to our stake address right away
+            -- in the transaction used to registered the stake key and the pool
+            -- itself.  Thus, in a single transaction, we end up with a
+            -- registered pool with some stake!
+
+            let certificates = catMaybes
+                    [ pure stakeCert
+                    , pure poolRegistrationCert
+                    , pure dlgCert
+                    , mPoolRetirementCert
+                    ]
+            (rawTx, faucetPrv) <- preparePoolRegistration
+                tr dir ownerPub certificates pledgeAmt
+            tx <- signTx tr dir rawTx [faucetPrv, ownerPrv, opPrv]
+            submitTx tr socket name tx
+        , metadataUrl = T.pack metadataURL
+        , recipe = pr
+        }
+
+defaultPoolConfigs :: [PoolRecipe]
+defaultPoolConfigs = zipWith (\i p -> p {index = i}) [1..]
     [ -- This pool should never retire:
-      PoolConfig {retirementEpoch = Nothing}
-      -- This pool should retire almost immediately:
-    , PoolConfig {retirementEpoch = Just 3}
-      -- This pool should retire, but not within the duration of a test run:
-    , PoolConfig {retirementEpoch = Just 100_000}
-      -- This pool should retire, but not within the duration of a test run:
-    , PoolConfig {retirementEpoch = Just 1_000_000}
-    ]
+      PoolRecipe
+        { pledgeAmt = 200 * millionAda
+        , retirementEpoch = Nothing
+        , poolMetadata = Aeson.object
+              [ "name" .= Aeson.String "Genesis Pool A"
+              , "ticker" .= Aeson.String "GPA"
+              , "description" .= Aeson.Null
+              , "homepage" .= Aeson.String "https://iohk.io"
+              ]
+        , delisted = False
+        , index = undefined
+        }
 
-poolConfigsFromEnv :: IO [PoolConfig]
+    , PoolRecipe
+        { pledgeAmt = 100 * millionAda
+        , retirementEpoch = Just 3
+        , poolMetadata = Aeson.object
+              [ "name" .= Aeson.String "Genesis Pool B"
+              , "ticker" .= Aeson.String "GPB"
+              , "description" .= Aeson.Null
+              , "homepage" .= Aeson.String "https://iohk.io"
+              ]
+        , delisted = False
+        , index = undefined
+        }
+
+    -- This pool should retire, but not within the duration of a test run:
+    , PoolRecipe
+        { pledgeAmt = 100 * millionAda
+        , retirementEpoch = Just 100_000
+        , poolMetadata = Aeson.object
+              [ "name" .= Aeson.String "Genesis Pool C"
+              , "ticker" .= Aeson.String "GPC"
+              , "description" .= Aeson.String "Lorem Ipsum Dolor Sit Amet."
+              , "homepage" .= Aeson.String "https://iohk.io"
+              ]
+        , delisted = True
+        , index = undefined
+        }
+    -- This pool should retire almost immediately:
+    , PoolRecipe
+        { pledgeAmt = 100 * millionAda
+        , retirementEpoch = Just 1_000_000
+        , poolMetadata = Aeson.object
+              [ "name" .= Aeson.String "Genesis Pool D"
+              , "ticker" .= Aeson.String "GPD"
+              , "description" .= Aeson.String "Lorem Ipsum Dolor Sit Amet."
+              , "homepage" .= Aeson.String "https://iohk.io"
+              ]
+        , delisted = False
+        , index = undefined
+        }
+    ]
+  where
+    millionAda = 1_000_000_000_000
+
+poolConfigsFromEnv :: IO [PoolRecipe]
 poolConfigsFromEnv = isEnvSet "NO_POOLS" <&> \case
     False -> defaultPoolConfigs
     True -> []
@@ -466,6 +686,7 @@ data ClusterEra
     | AllegraHardFork
     | MaryHardFork
     | AlonzoHardFork
+    | BabbageHardFork
     deriving (Show, Read, Eq, Ord, Bounded, Enum)
 
 -- | Convert @ClusterEra@ to a @ApiEra@.
@@ -476,6 +697,7 @@ clusterToApiEra = \case
     AllegraHardFork -> ApiAllegra
     MaryHardFork -> ApiMary
     AlonzoHardFork -> ApiAlonzo
+    BabbageHardFork -> ApiBabbage
 
 -- | Defaults to the latest era.
 clusterEraFromEnv :: IO ClusterEra
@@ -489,6 +711,7 @@ clusterEraFromEnv =
         "allegra" -> pure AllegraHardFork
         "mary" -> pure MaryHardFork
         "alonzo" -> pure AlonzoHardFork
+        "babbage" -> pure BabbageHardFork
         _ -> die $ var ++ ": unknown era"
     withDefault = fromMaybe maxBound
 
@@ -499,9 +722,10 @@ clusterEraToString = \case
     AllegraHardFork -> "allegra"
     MaryHardFork    -> "mary"
     AlonzoHardFork  -> "alonzo"
+    BabbageHardFork -> "babbage"
 
 data LocalClusterConfig = LocalClusterConfig
-    { cfgStakePools :: [PoolConfig]
+    { cfgStakePools :: [PoolRecipe]
     -- ^ Stake pools to register.
     , cfgLastHardFork :: ClusterEra
     -- ^ Which era to use.
@@ -516,6 +740,123 @@ data RunningNode = RunningNode
     Block
     -- ^ Genesis block
     (NetworkParameters, NodeToClientVersionData)
+    [PoolCertificate]
+    -- ^ Shelley genesis pools
+    deriving (Show, Eq)
+
+
+unsafeUnitInterval :: Rational -> UnitInterval
+unsafeUnitInterval x = fromMaybe
+        (error $ "unsafeUnitInterval: " <> show x <> " is out of bounds")
+        (boundRational x)
+
+unsafeNonNegativeInterval :: Rational -> NonNegativeInterval
+unsafeNonNegativeInterval x = fromMaybe
+        (error $ "unsafeNonNegativeInterval: " <> show x <> " is out of bounds")
+        (boundRational x)
+
+unsafePositiveUnitInterval :: Rational -> PositiveUnitInterval
+unsafePositiveUnitInterval x = fromMaybe
+        (error $ "unsafeNonNegativeInterval: " <> show x <> " is out of bounds")
+        (boundRational x)
+
+generateGenesis
+    :: FilePath
+    -> UTCTime
+    -> [(Coin, Address)]
+    -> (ShelleyGenesis StandardShelley -> ShelleyGenesis StandardShelley)
+       -- ^ For adding genesis pools and staking in Babbage and later.
+    -> IO GenesisFiles
+generateGenesis dir systemStart initialFunds addPoolsToGenesis = do
+    source <- getShelleyTestDataPath
+    Yaml.decodeFileThrow @_ @Aeson.Value (source </> "alonzo-genesis.yaml")
+        >>= Aeson.encodeFile (dir </> "genesis.alonzo.json")
+
+    let startTime = round @_ @Int . utcTimeToPOSIXSeconds $ systemStart
+    let systemStart' = posixSecondsToUTCTime . fromRational . toRational $ startTime
+
+    let pparams = Ledger.PParams
+            { _minfeeA = 100
+            , _minfeeB = 100000
+            , _minUTxOValue = Ledger.Coin 1_000_000
+
+            , _keyDeposit = Ledger.Coin 1_000_000
+            , _poolDeposit = Ledger.Coin 0
+
+            , _maxBBSize = 239857
+            , _maxBHSize = 217569
+            , _maxTxSize = 16384
+
+            , _minPoolCost = Ledger.Coin 0
+
+            , _extraEntropy = Ledger.NeutralNonce
+
+            -- There are a few smaller features/fixes which are enabled based on
+            -- the protocol version rather than just the era, so we need to
+            -- set it to a realisitic value.
+            , _protocolVersion = Ledger.ProtVer 6 0
+
+            -- Sensible pool & reward parameters:
+            , _nOpt = 3
+            , _rho = unsafeUnitInterval 0.178650067
+            , _tau = unsafeUnitInterval 0.1
+            , _a0 = unsafeNonNegativeInterval 0.1
+            , _d = unsafeUnitInterval 0.25
+
+            -- The epoch bound on pool retirements specifies how many epochs
+            -- in advance retirements may be announced. For testing purposes,
+            -- we allow retirements to be announced far into the future.
+            ,  _eMax = 1000000
+            }
+
+    let sg = addPoolsToGenesis $ ShelleyGenesis
+            { sgSystemStart = systemStart'
+            , sgActiveSlotsCoeff = unsafePositiveUnitInterval 0.5
+            , sgSlotLength = 0.2
+            , sgSecurityParam = 5
+            , sgEpochLength = 80
+            , sgUpdateQuorum = 1
+            , sgNetworkMagic = 764824073
+            , sgSlotsPerKESPeriod = 86400
+            , sgMaxKESEvolutions = 5
+            , sgNetworkId = Mainnet
+            , sgMaxLovelaceSupply = 1000000000000000000
+            , sgProtocolParams = pparams
+            , sgInitialFunds = extraInitialFunds -- <> sgInitialFunds sg'
+            , sgStaking = Ledger.emptyGenesisStaking
+
+            -- We need this to submit MIR certs (and probably for the BFT node
+            -- pre-babbage):
+            , sgGenDelegs = fromRight (error "invalid sgGenDelegs") $ Aeson.eitherDecode $ Aeson.encode [aesonQQ| {
+                    "8ae01cab15f6235958b1147e979987bbdb90788f7c4e185f1632427a": {
+                        "delegate": "b7bf59bb963aa785afe220f5b0d3deb826fd0bcaeeee58cb81ab443d",
+                        "vrf": "4ebcf8b4c13c24d89144d72f544d1c425b4a3aa1ace30af4eb72752e75b40d3e"
+                    }
+                }
+                |]
+            }
+
+    let shelleyGenesisFile = (dir </> "genesis.json")
+    Aeson.encodeFile shelleyGenesisFile sg
+
+    let byronGenesisFile = dir </> "genesis.byron.json"
+    Yaml.decodeFileThrow @_ @Aeson.Value (source </> "byron-genesis.yaml")
+        >>= withAddedKey "startTime" startTime
+        >>= Aeson.encodeFile byronGenesisFile
+
+    return $ GenesisFiles
+        { byronGenesis = byronGenesisFile
+        , shelleyGenesis = dir </> "genesis.json"
+        , alonzoGenesis = dir </> "genesis.alonzo.json"
+        }
+
+  where
+    extraInitialFunds :: Map (Ledger.Addr (Crypto StandardShelley)) Ledger.Coin
+    extraInitialFunds = Map.fromList
+        [ (fromMaybe (error "extraFunds: invalid addr") $ Ledger.deserialiseAddr addrBytes
+         , Ledger.Coin $ intCast c)
+        | (Coin c, Address addrBytes) <- initialFunds
+        ]
 
 -- | Execute an action after starting a cluster of stake pools. The cluster also
 -- contains a single BFT node that is pre-configured with keys available in the
@@ -537,77 +878,113 @@ withCluster
     -- ^ Temporary directory to create config files in.
     -> LocalClusterConfig
     -- ^ The configurations of pools to spawn.
-    -> (RunningNode -> IO ())
-    -- ^ Setup action to run using the BFT node.
+    -> [(Coin, Address)] -- Faucet funds
     -> (RunningNode -> IO a)
     -- ^ Action to run once when the stake pools are setup.
     -> IO a
-withCluster tr dir LocalClusterConfig{..} onSetup onClusterStart =
-    bracketTracer' tr "withCluster" $ do
+withCluster tr dir LocalClusterConfig{..} initialFunds onClusterStart = bracketTracer' tr "withCluster" $ do
+    withPoolMetadataServer tr dir $ \metadataServer -> do
+        createDirectoryIfMissing True dir
         traceWith tr $ MsgStartingCluster dir
         resetGlobals
         putClusterEra dir cfgLastHardFork
-        let poolCount = length cfgStakePools
-        (port0:ports) <- randomUnusedTCPPorts (poolCount + 2)
+
         systemStart <- addUTCTime 1 <$> getCurrentTime
-        let bftCfg = NodeParams systemStart cfgLastHardFork
-                (head $ rotate ports) cfgNodeLogging
-        withBFTNode tr dir bftCfg $ \bftSocket block0 params -> do
-            waitForSocket tr bftSocket
+        configuredPools <- configurePools tr dir metadataServer cfgStakePools
 
-            onSetup $ RunningNode bftSocket block0 params
+        genesisFiles <- generateGenesis
+            dir
+            systemStart
+            initialFunds
+            id
 
-            (rawTx, faucetPrv) <- prepareKeyRegistration tr dir
-            tx <- signTx tr dir rawTx [faucetPrv]
-            submitTx tr bftSocket "pre-registered stake key" tx
-
-            waitGroup <- newChan
-            doneGroup <- newChan
-            let waitAll = do
-                    traceWith tr $
-                        MsgDebug "waiting for stake pools to register"
-                    replicateM poolCount (readChan waitGroup)
-
-            let onException :: SomeException -> IO ()
-                onException e = do
-                    traceWith tr $
-                        MsgDebug $ "exception while starting pool: " <>
-                        T.pack (show e)
-                    writeChan waitGroup (Left e)
-
-            let pledgeOf 0 = 2*oneMillionAda
-                pledgeOf _ = oneMillionAda
-            asyncs <- forM (zip3 [0..] cfgStakePools $ tail $ rotate ports) $
-                \(idx, poolConfig, (port, peers)) -> do
-                    async (handle onException $ do
-                        let spCfg = NodeParams systemStart cfgLastHardFork
-                                (port, peers) cfgNodeLogging
-                        withStakePool
-                            tr dir idx spCfg (pledgeOf idx) poolConfig $ do
-                                writeChan waitGroup $ Right port
-                                readChan doneGroup)
-            mapM_ link asyncs
-
-            let cancelAll = do
-                    traceWith tr $ MsgDebug "stopping all stake pools"
-                    replicateM_ poolCount (writeChan doneGroup ())
-                    mapM_ wait asyncs
-
-            traceWith tr $ MsgRegisteringStakePools poolCount
-            group <- waitAll
-            if length (filter isRight group) /= poolCount then do
-                cancelAll
-                let errors = show (filter isLeft group)
-                throwIO $ ProcessHasExited
-                    ("cluster didn't start correctly: " <> errors)
-                    (ExitFailure 1)
-            else do
-                let cfg = NodeParams systemStart cfgLastHardFork
-                        (port0, ports) cfgNodeLogging
-                withRelayNode tr dir cfg $ \socket -> do
-                    let runningRelay = RunningNode socket block0 params
-                    onClusterStart runningRelay `finally` cancelAll
+        ports <- rotate <$> randomUnusedTCPPorts (1 + nPools)
+        let bftCfg = NodeParams
+                genesisFiles
+                cfgLastHardFork
+                (head ports)
+                cfgNodeLogging
+        withBFTNode tr dir bftCfg $ \bftSocket block0 param -> do
+            -- FIXME: genesis pools may techincally be incorrect;
+            -- withBFTNode should pass in the @RunningNode@ instead.
+            let runningBFTNode = RunningNode bftSocket block0 param []
+            -- NOTE: We used to perform 'registerViaTx' as part of 'launchPools'
+            -- where we waited for the pools to become active (e.g. get a stake
+            -- distribution)  in parallel. Now waiting seems to work fine
+            -- though, and we will soon only run tests on babbage anyway...
+            mapM_ (`registerViaTx` runningBFTNode) configuredPools
+            launchPools configuredPools genesisFiles (tail ports) onClusterStart'
   where
+    nPools = length cfgStakePools
+
+    onClusterStart' node@(RunningNode socket _ _ _) = do
+        (rawTx, faucetPrv) <- prepareKeyRegistration tr dir
+        tx <- signTx tr dir rawTx [faucetPrv]
+        submitTx tr socket "pre-registered stake key" tx
+        onClusterStart node
+
+    -- | Actually spin up the pools.
+    launchPools
+        :: [ConfiguredPool]
+        -> GenesisFiles
+        -> [(Int, [Int])]
+        -- @(port, peers)@ pairs availible for the nodes. Can be used to e.g.
+        -- add a BFT node as extra peer for all pools.
+        -> (RunningNode -> IO a)
+        -- ^ Action to run once when the stake pools are setup.
+        -> IO a
+    launchPools configuredPools genesisFiles ports action = do
+        waitGroup <- newChan
+        doneGroup <- newChan
+
+        let poolCount = length configuredPools
+
+        let waitAll = do
+                traceWith tr $
+                    MsgDebug "waiting for stake pools to register"
+                replicateM poolCount (readChan waitGroup)
+
+        let onException :: SomeException -> IO ()
+            onException e = do
+                traceWith tr $
+                    MsgDebug $ "exception while starting pool: " <>
+                    T.pack (show e)
+                writeChan waitGroup (Left e)
+
+        let mkConfig (port, peers) =
+                NodeParams
+                genesisFiles
+                cfgLastHardFork
+                (port, peers)
+                cfgNodeLogging
+        asyncs <- forM (zip configuredPools ports) $
+            \(configuredPool, (port, peers)) -> do
+                async $ handle onException $ do
+                    let cfg = mkConfig (port, peers)
+                    operatePool configuredPool cfg $ \runningPool -> do
+                            writeChan waitGroup $ Right runningPool
+                            readChan doneGroup
+        mapM_ link asyncs
+        let cancelAll = do
+                traceWith tr $ MsgDebug "stopping all stake pools"
+                replicateM_ poolCount (writeChan doneGroup ())
+                mapM_ wait asyncs
+
+        traceWith tr $ MsgRegisteringStakePools poolCount
+        group <- waitAll
+        if length (filter isRight group) /= poolCount then do
+            cancelAll
+            let errors = show (filter isLeft group)
+            throwIO $ ProcessHasExited
+                ("cluster didn't start correctly: " <> errors)
+                (ExitFailure 1)
+        else do
+            -- Run the action using the connection to the first pool
+            --
+            -- FIXME: We used to use a relay node
+            action $ either (error . show) id $ head group
+
+
     -- | Get permutations of the size (n-1) for a list of n elements, alongside
     -- with the element left aside. `[a]` is really expected to be `Set a`.
     --
@@ -627,7 +1004,7 @@ data LogFileConfig = LogFileConfig
 
 -- | Configuration parameters which update the @node.config@ test data file.
 data NodeParams = NodeParams
-    { systemStart :: UTCTime
+    { nodeGenesisFiles :: GenesisFiles
       -- ^ Genesis block start time
     , nodeHardForks :: ClusterEra
       -- ^ Era to hard fork into.
@@ -639,15 +1016,16 @@ data NodeParams = NodeParams
       -- file.
     } deriving (Show)
 
-singleNodeParams :: Severity -> Maybe (FilePath, Severity) -> IO NodeParams
-singleNodeParams severity extraLogFile = do
-    systemStart <- getCurrentTime
-    let logCfg = LogFileConfig
+singleNodeParams :: GenesisFiles -> Severity -> Maybe (FilePath, Severity) -> NodeParams
+singleNodeParams genesisFiles severity extraLogFile =
+    let
+        logCfg = LogFileConfig
             { minSeverityTerminal = severity
             , extraLogDir = fmap fst extraLogFile
             , minSeverityFile = maybe severity snd extraLogFile
             }
-    pure $ NodeParams systemStart maxBound (0, []) logCfg
+    in
+        NodeParams genesisFiles maxBound (0, []) logCfg
 
 withBFTNode
     :: Tracer IO ClusterLog
@@ -680,8 +1058,8 @@ withBFTNode tr baseDir params action =
             ]
             copyKeyFile
 
-        (config, block0, networkParams, versionData)
-            <- genConfig dir systemStart hardForks (setLoggingName name logCfg)
+        (config, block0, networkParams, versionData, _genesisPools)
+            <- genNodeConfig dir "-bft" genesisFiles hardForks (setLoggingName name logCfg)
         topology <- genTopology dir peers
 
         let cfg = CardanoNodeConfig
@@ -703,12 +1081,15 @@ withBFTNode tr baseDir params action =
   where
     name = "bft"
     dir = baseDir </> name
-    NodeParams systemStart hardForks (port, peers) logCfg = params
+    NodeParams genesisFiles hardForks (port, peers) logCfg = params
 
 -- | Launches a @cardano-node@ with the given configuration which will not forge
 -- blocks, but has every other cluster node as its peer. Any transactions
 -- submitted to this node will be broadcast to every node in the cluster.
-withRelayNode
+--
+-- FIXME: Do we really need the relay node. If so we should re-add it to
+-- withCluster, rather than connecting the wallet to one of the pools.
+_withRelayNode
     :: Tracer IO ClusterLog
     -- ^ Trace for subprocess control logging
     -> FilePath
@@ -716,15 +1097,16 @@ withRelayNode
     -- this.
     -> NodeParams
     -- ^ Parameters used to generate config files.
-    -> (CardanoNodeConn -> IO a)
+    -> (RunningNode -> IO a)
     -- ^ Callback function with socket path
     -> IO a
-withRelayNode tr baseDir params act =
+_withRelayNode tr baseDir params act =
     bracketTracer' tr "withRelayNode" $ do
         createDirectory dir
 
         let logCfg' = setLoggingName name logCfg
-        (config, _, _, _) <- genConfig dir systemStart hardForks logCfg'
+        (config, block0, bp, vd, _genesisPools)
+            <- genNodeConfig dir "-relay" genesisFiles hardForks logCfg'
         topology <- genTopology dir peers
 
         let cfg = CardanoNodeConfig
@@ -741,136 +1123,25 @@ withRelayNode tr baseDir params act =
                 , nodeLoggingHostname = Just name
                 }
 
-        withCardanoNodeProcess tr name cfg act
+        let act' socket = act $ RunningNode socket block0 (bp, vd) []
+        withCardanoNodeProcess tr name cfg act'
   where
     name = "node"
     dir = baseDir </> name
-    NodeParams systemStart hardForks (port, peers) logCfg = params
-
--- | Populates the configuration directory of a stake pool @cardano-node@.
---
--- Returns a tuple with:
---  * A config for launching the stake pool node.
---  * The public operator certificate - used for verifying registration.
---  * A transaction which should be submitted to register the pool.
-setupStakePoolData
-    :: Tracer IO ClusterLog
-    -- ^ Logging object.
-    -> FilePath
-    -- ^ Output directory.
-    -> String
-    -- ^ Short name of the stake pool.
-    -> NodeParams
-    -- ^ Parameters used for generating config files.
-    -> String
-    -- ^ Base URL of metadata server.
-    -> Integer
-    -- ^ Pledge (and stake) amount.
-    -> Maybe EpochNo
-    -- ^ Optional retirement epoch.
-    -> IO (CardanoNodeConfig, FilePath, FilePath)
-setupStakePoolData tr dir name params url pledgeAmt mRetirementEpoch = do
-    let NodeParams systemStart hardForks (port, peers) logCfg = params
-
-    (opPrv, opPub, opCount, metadata) <- genOperatorKeyPair tr dir
-    (vrfPrv, vrfPub) <- genVrfKeyPair tr dir
-    (kesPrv, kesPub) <- genKesKeyPair tr dir
-    (stakePrv, stakePub) <- genStakeAddrKeyPair tr dir
-
-    stakeCert <- issueStakeVkCert tr dir "stake-pool" stakePub
-    poolRegistrationCert <- issuePoolRegistrationCert
-        tr dir opPub vrfPub stakePub url metadata pledgeAmt
-    mPoolRetirementCert <- traverse
-        (issuePoolRetirementCert tr dir opPub) mRetirementEpoch
-    dlgCert <- issueDlgCert tr dir stakePub opPub
-    opCert <- issueOpCert tr dir kesPub opPrv opCount
-
-    let logCfg' = setLoggingName name logCfg
-    (config, _, _, _) <- genConfig dir systemStart hardForks logCfg'
-    topology <- genTopology dir peers
-
-    -- In order to get a working stake pool we need to.
-    --
-    -- 1. Register a stake key for our pool.
-    -- 2. Register the stake pool
-    -- 3. Delegate funds to our pool's key.
-    --
-    -- We cheat a bit here by delegating to our stake address right away
-    -- in the transaction used to registered the stake key and the pool
-    -- itself.  Thus, in a single transaction, we end up with a
-    -- registered pool with some stake!
-
-    let certificates = catMaybes
-            [ pure stakeCert
-            , pure poolRegistrationCert
-            , pure dlgCert
-            , mPoolRetirementCert
-            ]
-    (rawTx, faucetPrv) <- preparePoolRegistration
-        tr dir stakePub certificates pledgeAmt
-    tx <- signTx tr dir rawTx [faucetPrv, stakePrv, opPrv]
-
-    let cfg = CardanoNodeConfig
-            { nodeDir = dir
-            , nodeConfigFile = config
-            , nodeTopologyFile = topology
-            , nodeDatabaseDir = "db"
-            , nodeDlgCertFile = Nothing
-            , nodeSignKeyFile = Nothing
-            , nodeOpCertFile = Just opCert
-            , nodeKesKeyFile = Just kesPrv
-            , nodeVrfKeyFile = Just vrfPrv
-            , nodePort = Just (NodePort port)
-            , nodeLoggingHostname = Just name
-            }
-
-    pure (cfg, opPub, tx)
-
--- | Start a "stake pool node". The pool will register itself.
-withStakePool
-    :: Tracer IO ClusterLog
-    -- ^ Trace for subprocess control logging
-    -> FilePath
-    -- ^ Parent state directory. Node and stake pool data will be created in a
-    -- subdirectory of this.
-    -> Int
-    -- ^ Stake pool index in the cluster
-    -> NodeParams
-    -- ^ Configuration for the underlying node
-    -> Integer
-    -- ^ Pledge amount / initial stake
-    -> PoolConfig
-    -- ^ Pool configuration
-    -> IO a
-    -- ^ Action to run with the stake pool running
-    -> IO a
-withStakePool tr baseDir idx params pledgeAmt poolConfig action =
-    bracketTracer' tr "withStakePool" $ do
-        createDirectory dir
-        withStaticServer dir $ \url -> do
-            traceWith tr $ MsgStartedStaticServer dir url
-            (cfg, opPub, tx) <- setupStakePoolData
-                tr dir name params url pledgeAmt (retirementEpoch poolConfig)
-            withCardanoNodeProcess tr name cfg $ \socket -> do
-                submitTx tr socket name tx
-                timeout 120
-                    ( "pool registration"
-                    , waitUntilRegistered tr socket name opPub )
-                action
-  where
-    dir = baseDir </> name
-    name = "pool-" ++ show idx
+    NodeParams genesisFiles hardForks (port, peers) logCfg = params
 
 -- | Run a SMASH stub server, serving some delisted pool IDs.
 withSMASH
-    :: FilePath
+    :: Tracer IO ClusterLog
+    -> FilePath
     -- ^ Parent directory to store static files
     -> (String -> IO a)
     -- ^ Action, taking base URL
     -> IO a
-withSMASH parentDir action = do
+withSMASH tr parentDir action = do
     let staticDir = parentDir </> "smash"
     let baseDir = staticDir </> "api" </> "v1"
+
 
     -- write pool metadatas
     forM_ operatorsFixture $ \(poolId, _, _, _, metadata) -> do
@@ -881,18 +1152,27 @@ withSMASH parentDir action = do
             hash = blake2b256S (BL.toStrict bytes)
             hashFile = poolDir </> hash
 
+
+        traceWith tr $
+            MsgRegisteringPoolMetadataInSMASH (T.unpack $ toText poolId) hash
+
         createDirectoryIfMissing True poolDir
         BL8.writeFile (poolDir </> hashFile) bytes
 
-    -- write delisted pools
+    -- Write delisted pools
+    --
+    -- FIXME: The pool config is too entangled. We should rely on only
+    -- [PoolConfig] here, delete operatorsFixture, and not hard-code the
+    -- delisted pools.
     let delisted = [SMASHPoolId (T.pack
             "b45768c1a2da4bd13ebcaa1ea51408eda31dcc21765ccbd407cda9f2")]
-        bytes = Aeson.encode delisted
+    let bytes = Aeson.encode delisted
     BL8.writeFile (baseDir </> "delisted") bytes
 
     -- health check
     let health = Aeson.encode (HealthStatusSMASH "OK" "1.2.0")
     BL8.writeFile (baseDir </> "status") health
+
 
     withStaticServer staticDir action
 
@@ -911,20 +1191,27 @@ setLoggingName :: String -> LogFileConfig -> LogFileConfig
 setLoggingName name cfg = cfg { extraLogDir = filename <$> extraLogDir cfg }
     where filename = (</> (name <.> "log"))
 
-genConfig
+data GenesisFiles = GenesisFiles
+    { byronGenesis :: FilePath
+    , shelleyGenesis :: FilePath
+    , alonzoGenesis :: FilePath
+    } deriving (Show, Eq)
+
+genNodeConfig
     :: FilePath
     -- ^ A top-level directory where to put the configuration.
-    -> UTCTime
+    -> String -- Node name
+    -> GenesisFiles
     -- ^ Genesis block start time
     -> ClusterEra
     -- ^ Last era to hard fork into.
     -> LogFileConfig
     -- ^ Minimum severity level for logging and optional /extra/ logging output
-    -> IO (FilePath, Block, NetworkParameters, NodeToClientVersionData)
-genConfig dir systemStart clusterEra logCfg = do
+    -> IO (FilePath, Block, NetworkParameters, NodeToClientVersionData, [PoolCertificate])
+genNodeConfig dir name genesisFiles clusterEra logCfg = do
     let LogFileConfig severity mExtraLogFile extraSev = logCfg
-    let startTime = round @_ @Int . utcTimeToPOSIXSeconds $ systemStart
-    let systemStart' = posixSecondsToUTCTime . fromRational . toRational $ startTime
+    let GenesisFiles{byronGenesis,shelleyGenesis,alonzoGenesis} = genesisFiles
+
     source <- getShelleyTestDataPath
 
     let fileScribe (path, sev) = ScribeDefinition
@@ -945,76 +1232,37 @@ genConfig dir systemStart clusterEra logCfg = do
     ----
     -- Configuration
     Yaml.decodeFileThrow (source </> "node.config")
-        >>= withAddedKey "ShelleyGenesisFile" shelleyGenesisFile
-        >>= withAddedKey "ByronGenesisFile" byronGenesisFile
-        >>= withAddedKey "AlonzoGenesisFile" alonzoGenesisFile
-        >>= enableAlonzoIfNeeded
+        >>= withAddedKey "ShelleyGenesisFile" shelleyGenesis
+        >>= withAddedKey "ByronGenesisFile" byronGenesis
+        >>= withAddedKey "AlonzoGenesisFile" alonzoGenesis
         >>= withHardForks clusterEra
         >>= withAddedKey "minSeverity" Debug
         >>= withScribes scribes
         >>= withObject (addMinSeverityStdout severity)
-        >>= Yaml.encodeFile (dir </> "node.config")
+        >>= Yaml.encodeFile (dir </> ("node" <> name <> ".config"))
 
-    ----
-    -- Byron Genesis
-    Yaml.decodeFileThrow @_ @Aeson.Value (source </> "byron-genesis.yaml")
-        >>= withAddedKey "startTime" startTime
-        >>= withObject transformInitialFunds
-        >>= Aeson.encodeFile byronGenesisFile
 
-    ----
-    -- Shelley Genesis
-    Yaml.decodeFileThrow @_ @Aeson.Value (source </> "shelley-genesis.yaml")
-        >>= withObject (pure . updateSystemStart systemStart')
-        >>= Aeson.encodeFile shelleyGenesisFile
-
-    Yaml.decodeFileThrow @_ @Aeson.Value (source </> "alonzo-genesis.yaml")
-        >>= Aeson.encodeFile alonzoGenesisFile
-
-    ----
-    -- Initial Funds.
-    PreserveInitialFundsOrdering initialFunds <-
-        Yaml.decodeFileThrow @_ @Aeson.Value (source </> "byron-genesis.yaml")
-        >>= withAddedKey "startTime" startTime
-        >>= either fail pure . Aeson.parseEither parseJSON
-    (byronGenesisData, byronGenesisHash) <- unsafeRunExceptT
-        $ withExceptT show
-        $ readGenesisData byronGenesisFile
-    let (byronParams, _) = Byron.fromGenesisData (byronGenesisData, byronGenesisHash)
-    let gp = genesisParameters byronParams
-    let block0 = Byron.genesisBlockFromTxOuts gp initialFunds
-
-    ----
     -- Parameters
-    shelleyGenesis <- Yaml.decodeFileThrow
-        @_ @(ShelleyGenesis StandardShelley) shelleyGenesisFile
-    let networkMagic = sgNetworkMagic shelleyGenesis
-    let shelleyParams = fst $ Shelley.fromGenesisData shelleyGenesis []
+    sg <- Yaml.decodeFileThrow
+        @_ @(ShelleyGenesis StandardShelley) shelleyGenesis
+
+    let (np, block0, genesisPools) = fromGenesisData sg
+    let networkMagic = sgNetworkMagic sg
     let versionData = NodeToClientVersionData $ NetworkMagic networkMagic
 
     pure
-        ( dir </> "node.config"
+        ( dir </> ("node" <> name <> ".config")
         , block0
-        , byronParams { protocolParameters = protocolParameters shelleyParams }
+        , np
         , versionData
+        , genesisPools
         )
   where
-    shelleyGenesisFile :: FilePath
-    shelleyGenesisFile = dir </> "shelley-genesis.json"
-
-    alonzoGenesisFile :: FilePath
-    alonzoGenesisFile = dir </> "alonzo-genesis.json"
-
-    byronGenesisFile :: FilePath
-    byronGenesisFile = dir </> "byron-genesis.json"
-
     withScribes scribes =
         withAddedKey "setupScribes" scribes
         >=> withAddedKey "defaultScribes"
             (map (\s -> [toJSON $ scKind s, toJSON $ scName s]) scribes)
 
-    -- we need to specify genesis file location every run in tmp
-    withAddedKey k v = withObject (pure . Aeson.insert k (toJSON v))
     withHardForks era =
         withObject (pure . Aeson.union (Aeson.fromList hardForks))
       where
@@ -1025,11 +1273,14 @@ genConfig dir systemStart clusterEra logCfg = do
             | hardFork <- [ShelleyHardFork .. era]
             ]
 
+withAddedKey
+    :: (MonadFail m, Yaml.ToJSON a)
+    => Aeson.Key
+    -> a
+    -> Aeson.Value
+    -> m Aeson.Value
+withAddedKey k v = withObject (pure . Aeson.insert k (toJSON v))
 
-    enableAlonzoIfNeeded =
-        if clusterEra == AlonzoHardFork
-        then withAddedKey "TestEnableDevelopmentNetworkProtocols" True
-        else return
 -- | Generate a topology file from a list of peers.
 genTopology :: FilePath -> [Int] -> IO FilePath
 genTopology dir peers = do
@@ -1043,7 +1294,6 @@ genTopology dir peers = do
         , "port"    .= port
         , "valency" .= (1 :: Int)
         ]
-
 -- | Create a key pair for a node operator's offline key and a new certificate
 -- issue counter
 genOperatorKeyPair :: Tracer IO ClusterLog -> FilePath -> IO (FilePath, FilePath, FilePath, Aeson.Value)
@@ -1088,16 +1338,13 @@ genVrfKeyPair tr dir = do
     pure (vrfPrv, vrfPub)
 
 -- | Create a stake address key pair
-genStakeAddrKeyPair :: Tracer IO ClusterLog -> FilePath -> IO (FilePath, FilePath)
-genStakeAddrKeyPair tr dir = do
-    let stakePub = dir </> "stake.pub"
-    let stakePrv = dir </> "stake.prv"
+genStakeAddrKeyPair :: Tracer IO ClusterLog -> (FilePath, FilePath) -> IO ()
+genStakeAddrKeyPair tr (stakePrv, stakePub)= do
     cli tr
         [ "stake-address", "key-gen"
         , "--verification-key-file", stakePub
         , "--signing-key-file", stakePrv
         ]
-    pure (stakePrv, stakePub)
 
 -- | Issue a node operational certificate
 issueOpCert :: Tracer IO ClusterLog -> FilePath -> FilePath -> FilePath -> FilePath -> IO FilePath
@@ -1144,38 +1391,6 @@ issueStakeScriptCert tr dir prefix stakeScript = do
         , "--out-file", file
         ]
     pure file
-
--- | Create a stake pool registration certificate
-issuePoolRegistrationCert
-    :: Tracer IO ClusterLog
-    -> FilePath
-    -> FilePath
-    -> FilePath
-    -> FilePath
-    -> String
-    -> Aeson.Value
-    -> Integer
-    -> IO FilePath
-issuePoolRegistrationCert
-    tr dir opPub vrfPub stakePub baseURL metadata pledgeAmt = do
-        let file  = dir </> "pool.cert"
-        let bytes = Aeson.encode metadata
-        BL8.writeFile (dir </> "metadata.json") bytes
-        cli tr
-            [ "stake-pool", "registration-certificate"
-            , "--cold-verification-key-file", opPub
-            , "--vrf-verification-key-file", vrfPub
-            , "--pool-pledge", show pledgeAmt
-            , "--pool-cost", "0"
-            , "--pool-margin", "0.1"
-            , "--pool-reward-account-verification-key-file", stakePub
-            , "--pool-owner-stake-verification-key-file", stakePub
-            , "--metadata-url", baseURL </> "metadata.json"
-            , "--metadata-hash", blake2b256S (BL.toStrict bytes)
-            , "--mainnet"
-            , "--out-file", file
-            ]
-        pure file
 
 issuePoolRetirementCert
     :: Tracer IO ClusterLog
@@ -1224,6 +1439,24 @@ preparePoolRegistration tr dir stakePub certs pledgeAmt = do
         , "--tx-out", addr <> "+" <> show pledgeAmt
         , "--ttl", "400"
         , "--fee", show (faucetAmt - pledgeAmt - depositAmt)
+        , "--out-file", file
+        ] ++ mconcat ((\cert -> ["--certificate-file",cert]) <$> certs)
+
+    pure (file, faucetPrv)
+
+preparePoolRetirement
+    :: Tracer IO ClusterLog
+    -> FilePath
+    -> [FilePath]
+    -> IO (FilePath, FilePath)
+preparePoolRetirement tr dir certs = do
+    let file = dir </> "tx.raw"
+    (faucetInput, faucetPrv) <- takeFaucet
+    cli tr $
+        [ "transaction", "build-raw"
+        , "--tx-in", faucetInput
+        , "--ttl", "400"
+        , "--fee", show (faucetAmt)
         , "--out-file", file
         ] ++ mconcat ((\cert -> ["--certificate-file",cert]) <$> certs)
 
@@ -1581,40 +1814,6 @@ submitTx tr conn name signedTx =
         , "--mainnet", "--cardano-mode"
         ]
 
--- | Wait for a command which depends on connecting to the given socket path to
--- succeed.
---
--- It retries every second, for up to 30 seconds. An exception is thrown if
--- it has waited for too long.
-waitForSocket :: Tracer IO ClusterLog -> CardanoNodeConn -> IO ()
-waitForSocket tr conn = do
-    let msg = "Checking for usable socket file " <> toText conn
-    -- TODO: check whether querying the tip works just as well.
-    cliRetry tr msg =<< cliConfigNode tr conn
-        ["query", "tip"
-        , "--mainnet"
-        --, "--testnet-magic", "764824073"
-        , "--cardano-mode"
-        ]
-    traceWith tr $ MsgSocketIsReady conn
-
--- | Wait until a stake pool shows as registered on-chain.
-waitUntilRegistered :: Tracer IO ClusterLog -> CardanoNodeConn -> String -> FilePath -> IO ()
-waitUntilRegistered tr conn name opPub = do
-    poolId <- fmap getFirstLine . readProcessStdout_ =<< cliConfig tr
-        [ "stake-pool", "id"
-        , "--stake-pool-verification-key-file", opPub
-        ]
-    (exitCode, distribution, err) <- cliNode tr conn
-        [ "query", "stake-distribution"
-        , "--mainnet"
-        ]
-    traceWith tr $ MsgStakeDistribution name exitCode distribution err
-    unless (BL8.toStrict poolId `BS.isInfixOf` BL8.toStrict distribution) $ do
-        threadDelay 5000000
-        waitUntilRegistered tr conn name opPub
-
-
 -- | Hard-wired faucets referenced in the genesis file. Purpose is simply to
 -- fund some initial transaction for the cluster. Faucet have plenty of money to
 -- pay for certificates and are intended for a one-time usage in a single
@@ -1760,7 +1959,6 @@ operatorsFixture =
 resetGlobals :: IO ()
 resetGlobals = do
     void $ swapMVar faucetIndex 1
-    void $ swapMVar operators operatorsFixture
 
 getClusterEra :: FilePath -> IO ClusterEra
 getClusterEra dir = read <$> readFile (dir </> "era")
@@ -1796,15 +1994,6 @@ faucetAmt = 1000 * oneMillionAda
 oneMillionAda :: Integer
 oneMillionAda = 1_000_000_000_000
 
--- | Add a "systemStart" field in a given object with the current POSIX time as a
--- value.
-updateSystemStart
-    :: UTCTime
-    -> Aeson.Object
-    -> Aeson.Object
-updateSystemStart systemStart =
-    Aeson.insert "systemStart" (toJSON systemStart)
-
 -- | Add a @setupScribes[1].scMinSev@ field in a given config object.
 -- The full lens library would be quite helpful here.
 addMinSeverityStdout
@@ -1825,26 +2014,6 @@ addMinSeverityStdout severity ob = case Aeson.lookup "setupScribes" ob of
         | otherwise = Aeson.Object scribe
     setMinSev a = a
 
--- | Transform initial funds back to a big object instead of a list of
--- singletons.
-transformInitialFunds
-    :: Aeson.Object
-    -> IO Aeson.Object
-transformInitialFunds o = do
-    let res = HM.update toObject "nonAvvmBalances" (Aeson.toHashMap o)
-    pure $ Aeson.fromHashMap res
-  where
-    toObject = \case
-        Aeson.Array xs ->
-            pure $ Aeson.Object $ Aeson.fromList (singleton <$> V.toList xs)
-        _ ->
-            error "transformInitialFunds: expected initialFunds to be an array."
-    singleton = \case
-        Aeson.Object obj ->
-            head $ Aeson.toList obj
-        _ ->
-            error "transformInitialFunds: expected initialFunds to be many singletons"
-
 -- | Do something with an a JSON object. Fails if the given JSON value isn't an
 -- object.
 withObject
@@ -1857,14 +2026,6 @@ withObject action = \case
     _ -> fail
         "withObject: was given an invalid JSON. Expected an Object but got \
         \something else."
-
--- | Little helper to run an action within a certain delay. Fails if the action
--- takes too long.
-timeout :: Int -> (String, IO a) -> IO a
-timeout t (title, action) = do
-    race (threadDelay $ t * 1000000) action >>= \case
-        Left _  -> fail ("Waited too long for: " <> title)
-        Right a -> pure a
 
 -- | Hash a ByteString using blake2b_256 and encode it in base16
 blake2b256S :: ByteString -> String
@@ -1883,6 +2044,8 @@ data ClusterLog
     | MsgStartingCluster FilePath
     | MsgLauncher String LauncherLog
     | MsgStartedStaticServer String FilePath
+    | MsgRegisteringPoolMetadataInSMASH String String
+    | MsgRegisteringPoolMetadata String String
     | MsgTempDir TempDirLog
     | MsgBracket Text BracketLog
     | MsgCLIStatus Text ExitCode BL8.ByteString BL8.ByteString
@@ -1899,6 +2062,19 @@ instance ToText ClusterLog where
     toText = \case
         MsgStartingCluster dir ->
             "Configuring cluster in " <> T.pack dir
+        MsgRegisteringPoolMetadata url hash -> T.pack $ unwords
+            [ "Hosting metadata for pool using url"
+            , url
+            , "with hash"
+            , hash
+            ]
+        MsgRegisteringPoolMetadataInSMASH pool hash -> T.pack $ unwords
+            [ "Registering metadata for pool"
+            , pool
+            , "with SMASH with the metadata hash"
+            , hash
+            ]
+
         MsgRegisteringStakePools 0 -> mconcat
                 [ "Not registering any stake pools due to "
                 , "NO_POOLS=1. Some tests may fail."
@@ -1962,6 +2138,9 @@ instance HasSeverityAnnotation ClusterLog where
         MsgDebug _ -> Debug
         MsgGenOperatorKeyPair _ -> Debug
         MsgCLI _ -> Debug
+        MsgRegisteringPoolMetadataInSMASH{} -> Warning -- FIXME
+        MsgRegisteringPoolMetadata{} -> Warning -- FIXME
 
 bracketTracer' :: Tracer IO ClusterLog -> Text -> IO a -> IO a
 bracketTracer' tr name = bracketTracer (contramap (MsgBracket name) tr)
+

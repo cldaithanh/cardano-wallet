@@ -461,23 +461,25 @@ withShelleyServer tracers action = do
             createDirectory db
             let logCfg = LogFileConfig Error Nothing Error
             let clusterCfg = LocalClusterConfig [] maxBound logCfg
-            withCluster nullTracer dir clusterCfg (setupFaucet dir) $
+            let initialFunds = error "todo: initial funds in latency bench"
+            withCluster nullTracer dir clusterCfg initialFunds $
                 onClusterStart act db
 
-    setupFaucet dir (RunningNode conn _ _) = do
-        let encodeAddr = T.unpack . encodeAddress @'Mainnet
-        let addresses = map (first encodeAddr) shelleyIntegrationTestFunds
-        let addressesMA = map (first encodeAddr) (maryIntegrationTestAssets (Coin 10_000_000))
-        sendFaucetFundsTo nullTracer conn dir addresses
-        sendFaucetAssetsTo nullTracer conn dir 20 addressesMA
+--    setupFaucet dir (RunningNode conn _ _ _) = do
+--        let encodeAddr = T.unpack . encodeAddress @'Mainnet
+--        let addresses = map (first encodeAddr) shelleyIntegrationTestFunds
+--        let addressesMA = map (first encodeAddr) (maryIntegrationTestAssets (Coin 10_000_000))
+--        sendFaucetFundsTo nullTracer conn dir addresses
+--        sendFaucetAssetsTo nullTracer conn dir 20 addressesMA
 
-    onClusterStart act db (RunningNode conn block0 (np, vData)) = do
+    onClusterStart act db (RunningNode conn block0 (np, vData) _) = do
         listen <- walletListenFromEnv
         serveWallet
             (NodeSource conn vData)
             np
             tunedForMainnetPipeliningStrategy
             (SomeNetworkDiscriminant $ Proxy @'Mainnet)
+            []
             tracers
             (SyncTolerance 10)
             (Just db)

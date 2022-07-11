@@ -69,6 +69,15 @@ import Prelude
 
 import Cardano.Address.Derivation
     ( XPub, xpubPublicKey )
+import Cardano.Api
+    ( AsType (AsStakeKey, AsStakePoolKey)
+    , Key (verificationKeyHash)
+    , serialiseToCBOR
+    )
+import Cardano.Api.Shelley
+    ( AsType (AsVrfKey) )
+import Cardano.Binary
+    ( fromCBOR )
 import Cardano.BM.Data.Output
     ( ScribeDefinition (..)
     , ScribeFormat (..)
@@ -81,6 +90,10 @@ import Cardano.BM.Data.Tracer
     ( HasPrivacyAnnotation (..), HasSeverityAnnotation (..) )
 import Cardano.CLI
     ( parseLoggingSeverity )
+import Cardano.CLI.Byron.Commands
+    ( VerificationKeyFile (VerificationKeyFile) )
+import Cardano.CLI.Shelley.Key
+    ( VerificationKeyOrFile (..), readVerificationKeyOrFile )
 import Cardano.Launcher
     ( LauncherLog, ProcessHasExited (..) )
 import Cardano.Launcher.Node
@@ -94,13 +107,17 @@ import Cardano.Ledger.BaseTypes
     ( Network (Mainnet)
     , NonNegativeInterval
     , PositiveUnitInterval
+    , StrictMaybe (..)
     , UnitInterval
     , boundRational
+    , textToUrl
     )
+import Cardano.Ledger.Crypto
+    ( StandardCrypto )
 import Cardano.Ledger.Era
     ( Era (Crypto) )
 import Cardano.Ledger.Shelley.API
-    ( ShelleyGenesis (..) )
+    ( ShelleyGenesis (..), ShelleyGenesisStaking (sgsPools) )
 import Cardano.Pool.Metadata
     ( SMASHPoolId (..) )
 import Cardano.Startup
@@ -175,6 +192,8 @@ import Data.Foldable
     ( traverse_ )
 import Data.Functor
     ( ($>), (<&>) )
+import Data.Generics.Product.Fields
+    ( setField )
 import Data.IntCast
     ( intCast )
 import Data.List
@@ -229,6 +248,7 @@ import qualified Cardano.Wallet.Primitive.Types.TokenBundle as TokenBundle
 import qualified Cardano.Wallet.Primitive.Types.TokenMap as TokenMap
 import qualified Codec.Binary.Bech32 as Bech32
 import qualified Codec.CBOR.Encoding as CBOR
+import qualified Codec.CBOR.Read as CBOR
 import qualified Codec.CBOR.Write as CBOR
 import qualified Data.Aeson as Aeson
 import qualified Data.Aeson.Key as Aeson
@@ -239,6 +259,7 @@ import qualified Data.ByteString.Char8 as B8
 import qualified Data.ByteString.Lazy as BL
 import qualified Data.ByteString.Lazy.Char8 as BL8
 import qualified Data.Map.Strict as Map
+import qualified Data.Set as Set
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as T
 import qualified Data.Text.Encoding.Error as T
@@ -444,6 +465,8 @@ data ConfiguredPool = ConfiguredPool
     , recipe
         :: PoolRecipe
       -- ^ The 'PoolRecipe' used to create this 'ConfiguredPool'.
+    , registerViaShelleyGenesis
+        :: IO (ShelleyGenesis StandardShelley -> ShelleyGenesis StandardShelley)
     , registerViaTx :: RunningNode -> IO ()
     }
 
@@ -561,6 +584,40 @@ configurePool tr baseDir metadataServer pr@(PoolRecipe pledgeAmt i mretirementEp
 
                     action $ RunningNode socket block0 (bp, vd) genesisPools
 
+        , registerViaShelleyGenesis = do
+            poolId <- stakePoolIdFromOperatorVerKey opPub
+            vrf <- poolVrfFromFile vrfPub
+            stakePubHash <- stakingKeyHashFromFile ownerPub
+            pledgeAddr <- stakingAddrFromVkFile ownerPub
+
+            let params = Ledger.PoolParams
+                  { _poolId = poolId
+                  , _poolVrf = vrf
+                  , _poolPledge = Ledger.Coin $ intCast pledgeAmt
+                  , _poolCost = Ledger.Coin 0
+                  , _poolMargin = unsafeUnitInterval 0.1
+                  , _poolRAcnt = Ledger.RewardAcnt Mainnet $ Ledger.KeyHashObj stakePubHash
+                  , _poolOwners = Set.fromList [stakePubHash]
+                  , _poolRelays = mempty
+                  , _poolMD = SJust $ Ledger.PoolMetadata
+                        (fromMaybe (error "invalid url (too long)")
+                            $ textToUrl
+                            $ T.pack metadataURL)
+                        (blake2b256 (BL.toStrict metadataBytes))
+                  }
+
+            let updateStaking = \sgs -> sgs
+                    { Ledger.sgsPools = (Map.singleton poolId params)
+                        <> (sgsPools sgs)
+                    , Ledger.sgsStake = (Map.singleton stakePubHash poolId)
+                        <> Ledger.sgsStake sgs
+                    }
+            let poolSpecificFunds = Map.fromList
+                    [(pledgeAddr, Ledger.Coin $ intCast pledgeAmt)]
+            return $ \sg -> sg
+                { sgInitialFunds = poolSpecificFunds <> (sgInitialFunds sg)
+                , sgStaking = updateStaking (sgStaking sg)
+                }
         , registerViaTx = \(RunningNode socket _ _ _) -> do
             stakeCert <- issueStakeVkCert tr dir "stake-pool" ownerPub
             let poolRegistrationCert = dir </> "pool.cert"
@@ -801,7 +858,7 @@ generateGenesis dir systemStart initialFunds addPoolsToGenesis = do
             , _rho = unsafeUnitInterval 0.178650067
             , _tau = unsafeUnitInterval 0.1
             , _a0 = unsafeNonNegativeInterval 0.1
-            , _d = unsafeUnitInterval 0.25
+            , _d = unsafeUnitInterval 0
 
             -- The epoch bound on pool retirements specifies how many epochs
             -- in advance retirements may be announced. For testing purposes,
@@ -892,30 +949,43 @@ withCluster tr dir LocalClusterConfig{..} initialFunds onClusterStart = bracketT
         systemStart <- addUTCTime 1 <$> getCurrentTime
         configuredPools <- configurePools tr dir metadataServer cfgStakePools
 
+        addGenesisPools <- do
+                genesisDeltas <- mapM registerViaShelleyGenesis configuredPools
+                pure $ foldr (.) id genesisDeltas
+        let federalizeNetwork =
+                let
+                    adjustPParams f genesis = genesis
+                        { sgProtocolParams = f (sgProtocolParams genesis) }
+                in
+                    adjustPParams (setField @"_d" (unsafeUnitInterval 0.25))
+
         genesisFiles <- generateGenesis
             dir
             systemStart
             initialFunds
-            id
+            (if postAlonzo then addGenesisPools else federalizeNetwork)
 
-        ports <- rotate <$> randomUnusedTCPPorts (1 + nPools)
-        let bftCfg = NodeParams
-                genesisFiles
-                cfgLastHardFork
-                (head ports)
-                cfgNodeLogging
-        withBFTNode tr dir bftCfg $ \bftSocket block0 param -> do
-            -- FIXME: genesis pools may techincally be incorrect;
-            -- withBFTNode should pass in the @RunningNode@ instead.
-            let runningBFTNode = RunningNode bftSocket block0 param []
-            -- NOTE: We used to perform 'registerViaTx' as part of 'launchPools'
-            -- where we waited for the pools to become active (e.g. get a stake
-            -- distribution)  in parallel. Now waiting seems to work fine
-            -- though, and we will soon only run tests on babbage anyway...
-            mapM_ (`registerViaTx` runningBFTNode) configuredPools
-            launchPools configuredPools genesisFiles (tail ports) onClusterStart'
+        if postAlonzo
+        then do
+            ports <- rotate <$> randomUnusedTCPPorts nPools
+            launchPools configuredPools genesisFiles ports onClusterStart'
+        else do
+            ports <- rotate <$> randomUnusedTCPPorts (1 + nPools)
+            let bftCfg = NodeParams
+                    genesisFiles
+                    cfgLastHardFork
+                    (head ports)
+                    cfgNodeLogging
+            withBFTNode tr dir bftCfg $ \bftSocket block0 param -> do
+                -- FIXME: genesis pools may techincally be incorrect;
+                -- withBFTNode should pass in the @RunningNode@ instead.
+                let runningBFTNode = RunningNode bftSocket block0 param []
+                mapM_ (`registerViaTx` runningBFTNode) configuredPools
+                launchPools configuredPools genesisFiles (tail ports) onClusterStart'
   where
     nPools = length cfgStakePools
+
+    postAlonzo = cfgLastHardFork >= BabbageHardFork
 
     onClusterStart' node@(RunningNode socket _ _ _) = do
         (rawTx, faucetPrv) <- prepareKeyRegistration tr dir
@@ -1392,6 +1462,43 @@ issueStakeScriptCert tr dir prefix stakeScript = do
         ]
     pure file
 
+
+stakePoolIdFromOperatorVerKey
+    :: FilePath -> IO (Ledger.KeyHash 'Ledger.StakePool (StandardCrypto))
+stakePoolIdFromOperatorVerKey filepath = do
+    stakePoolVerKey <- either (error . show) id <$> readVerificationKeyOrFile AsStakePoolKey
+        (VerificationKeyFilePath $ VerificationKeyFile filepath)
+    let bytes = serialiseToCBOR $ verificationKeyHash stakePoolVerKey
+    pure $ either (error . show) snd $ CBOR.deserialiseFromBytes fromCBOR (BL.fromStrict bytes)
+
+poolVrfFromFile
+    :: FilePath -> IO (Ledger.Hash StandardCrypto (Ledger.VerKeyVRF StandardCrypto))
+poolVrfFromFile filepath = do
+    stakePoolVerKey <- either (error . show) id <$> readVerificationKeyOrFile AsVrfKey
+        (VerificationKeyFilePath $ VerificationKeyFile filepath)
+    let bytes = serialiseToCBOR $ verificationKeyHash stakePoolVerKey
+    pure $ either (error . show) snd $ CBOR.deserialiseFromBytes fromCBOR (BL.fromStrict bytes)
+
+stakingKeyHashFromFile
+    :: FilePath -> IO (Ledger.KeyHash 'Ledger.Staking StandardCrypto)
+stakingKeyHashFromFile filepath = do
+    stakePoolVerKey <- either (error . show) id <$> readVerificationKeyOrFile AsStakeKey
+        (VerificationKeyFilePath $ VerificationKeyFile filepath)
+    let bytes = serialiseToCBOR $ verificationKeyHash stakePoolVerKey
+    pure $ either (error . show) snd $ CBOR.deserialiseFromBytes fromCBOR (BL.fromStrict bytes)
+
+stakingAddrFromVkFile
+    :: FilePath -> IO (Ledger.Addr StandardCrypto)
+stakingAddrFromVkFile filepath = do
+    stakePoolVerKey <- either (error . show) id <$> readVerificationKeyOrFile AsStakeKey
+        (VerificationKeyFilePath $ VerificationKeyFile filepath)
+    let bytes = serialiseToCBOR $ verificationKeyHash stakePoolVerKey
+    let payKH = either (error . show) snd $ CBOR.deserialiseFromBytes fromCBOR (BL.fromStrict bytes)
+    let delegKH = either (error . show) snd $ CBOR.deserialiseFromBytes fromCBOR (BL.fromStrict bytes)
+    return $ Ledger.Addr Mainnet
+        (Ledger.KeyHashObj payKH)
+        (Ledger.StakeRefBase (Ledger.KeyHashObj delegKH))
+
 issuePoolRetirementCert
     :: Tracer IO ClusterLog
     -> FilePath
@@ -1814,6 +1921,40 @@ submitTx tr conn name signedTx =
         , "--mainnet", "--cardano-mode"
         ]
 
+-- | Wait for a command which depends on connecting to the given socket path to
+-- succeed.
+--
+-- It retries every second, for up to 30 seconds. An exception is thrown if
+-- it has waited for too long.
+waitForSocket :: Tracer IO ClusterLog -> CardanoNodeConn -> IO ()
+waitForSocket tr conn = do
+    let msg = "Checking for usable socket file " <> toText conn
+    -- TODO: check whether querying the tip works just as well.
+    cliRetry tr msg =<< cliConfigNode tr conn
+        ["query", "tip"
+        , "--mainnet"
+        --, "--testnet-magic", "764824073"
+        , "--cardano-mode"
+        ]
+    traceWith tr $ MsgSocketIsReady conn
+
+-- | Wait until a stake pool shows as registered on-chain.
+waitUntilRegistered :: Tracer IO ClusterLog -> CardanoNodeConn -> String -> FilePath -> IO ()
+waitUntilRegistered tr conn name opPub = do
+    poolId <- fmap getFirstLine . readProcessStdout_ =<< cliConfig tr
+        [ "stake-pool", "id"
+        , "--stake-pool-verification-key-file", opPub
+        ]
+    (exitCode, distribution, err) <- cliNode tr conn
+        [ "query", "stake-distribution"
+        , "--mainnet"
+        ]
+    traceWith tr $ MsgStakeDistribution name exitCode distribution err
+    unless (BL8.toStrict poolId `BS.isInfixOf` BL8.toStrict distribution) $ do
+        threadDelay 5000000
+        waitUntilRegistered tr conn name opPub
+
+
 -- | Hard-wired faucets referenced in the genesis file. Purpose is simply to
 -- fund some initial transaction for the cluster. Faucet have plenty of money to
 -- pay for certificates and are intended for a one-time usage in a single
@@ -2026,6 +2167,14 @@ withObject action = \case
     _ -> fail
         "withObject: was given an invalid JSON. Expected an Object but got \
         \something else."
+
+-- | Little helper to run an action within a certain delay. Fails if the action
+-- takes too long.
+timeout :: Int -> (String, IO a) -> IO a
+timeout t (title, action) = do
+    race (threadDelay $ t * 1000000) action >>= \case
+        Left _  -> fail ("Waited too long for: " <> title)
+        Right a -> pure a
 
 -- | Hash a ByteString using blake2b_256 and encode it in base16
 blake2b256S :: ByteString -> String
